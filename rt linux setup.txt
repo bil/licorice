@@ -1,0 +1,92 @@
+Hardware Setup
+
+Remove HDD and install SSD 
+
+Install Ubuntu (server for RT)
+
+Boot computer with ethernet and boot usb plugged in
+press f9 while booting up to boot from the flash drive
+Install Ubuntu Server
+
+install system essentials and openssh 
+
+
+
+Patch kernel (http://www.howtogeek.com/howto/ubuntu/how-to-customize-your-ubuntu-kernel/)
+
+# sudo apt-get update && sudo apt-get upgrade
+# sudo apt-get install ncurses-dev
+# sudo apt-get install build-essential
+
+# wget ftp://ftp.kernel.org/pub/linux/kernel/v4.x/linux-4.4.12.tar.gz
+# wget http://www.kernel.org/pub/linux/kernel/projects/rt/4.4/patch-4.4.12-rt19.patch.gz
+
+# tar -zxvf linux-4.4.12.tar.gz
+# cd linux-4.4.12
+# zcat ../patch-4.4.12-rt19.patch.gz | patch -p1
+
+# cp /boot/config-4.4.0-21-generic ~/linux-4.4.12/.config
+
+# make menuconfig
+
+Changes:
+
+
+turn on:
+General Setup > Timers subsystem > High Resolution Timer Support
+General setup > Timers subsystem > NO_HZ
+
+
+Preempt Full
+
+Turn off (power options):
+
+Under Power management and ACPI options > ACPI Support:
+
+Turn off everything except power management timer support
+
+Turn off APM
+
+Power management and ACPI options > CPU Frequency scaling
+
+# sudo apt-get install kernel-package libssl-deb
+# make-kpkg clean
+
+# fakeroot make-kpkg –-initrd –-append-to-version=-custom kernel_image kernel_headers
+
+# sudo dpkg -i linux-image-...-.deb
+ 
+# sudo dpkg -i linux-headers-...-.deb
+
+reboot
+
+# uname -r
+
+check that installed kernel is the correct one
+
+
+
+Install Emacs
+
+# sudo apt-add-repository ppa:cassou/emacs
+# sudo apt-get install emacs24 emacs24-el emacs24-common-non-dfsg
+
+
+Compile Program
+
+gcc -Wall
+
+Run program with Lowest Niceness
+
+# sudo nice -n -20 ./testProgram
+
+
+Parallel Ports:
+
+interrupt number: 
+# cat /proc/interrupts | grep parport0
+
+base:
+# cat /proc/ioports | grep parport0
+
+More kernel options:
