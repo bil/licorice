@@ -3,34 +3,21 @@
 #include <sys/time.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/io.h>
 #include <unistd.h>
 #include <sched.h>
 #include <sys/mman.h>
 
 #define USECREQ 1000
 #define SECREQ 0
-#define PARA_PORT_BASE_ADDR 0x3000
 #define PRIORITY 49
-#define MAX_SAFE_STACK (8*1024)
+pid_t ppid;
 
-static unsigned char outVal = 0;
-
-void event_handler(int signum) {
-  //printf("interrupt\n");
-  outVal = ~outVal;
-  outb(outVal,PARA_PORT_BASE_ADDR); 
-}
-
-void stack_prefault() {
-  unsigned char dummy[MAX_SAFE_STACK];
-  memset(dummy, 0, MAX_SAFE_STACK);
+void event_handler  (int signum) {
+ kill(ppid, SIGALRM);
 }
 int main(int argc, char* argv[]) {
-  if(ioperm(PARA_PORT_BASE_ADDR, 1, 1)) {
-    printf("io permission denied\n");
-    exit(1);
-  }
+  ppid = (int)atoi(argv[1]);
+  printf("%d\n",ppid);
   struct sched_param param;
   param.sched_priority = PRIORITY;
   if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
@@ -41,7 +28,6 @@ int main(int argc, char* argv[]) {
     printf("lock error\n");
     exit(1);
   }
-  stack_prefault();
   struct sigaction sa;
   struct itimerval timer;
   memset (&sa, 0, sizeof(sa));
