@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "constants.h"
 
 extern sigset_t exitMask;
@@ -14,6 +15,14 @@ void die(char *errorStr, void (*pHandleExit)()) {
   perror(errorStr);
   pHandleExit();
   exit(1);
+}
+
+void set_sighandler(int signum, void *psh) {
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = psh;
+  sa.sa_flags = SA_RESTART;
+  sigaction(signum, &sa, NULL);
 }
 
 void open_shared_mem(int *pfd, uint8_t **ppmem, const char *pName, int numPages, int shm_flags, void (*pHandleExit)()) {
