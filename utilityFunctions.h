@@ -1,7 +1,10 @@
-#ifndef _UTILITY_FUNCTIONS_
-#define _UTILITY_FUNCTIONS_ 
 #include <stdint.h>
 
-uint8_t* calcOffsetInBlock(uint8_t blockNum, int offset, uint8_t* curPtr);
+#ifndef _UTILITY_FUNCTIONS_
+#define _UTILITY_FUNCTIONS_ 
+
+void die(char *errorStr, void (*pHandleExit)());
+
+void open_shared_mem(int *pfd, uint8_t **ppmem, const char *pName, int numPages, int shm_flags, void (*pHandleExit)());
 
 #endif
