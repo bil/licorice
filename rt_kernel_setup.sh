@@ -1,11 +1,21 @@
 #! /bin/bash
+
+# Before execeuting script, clone licorice repository into ~/shenoyREU
+
+# install things
 sudo apt-get update && 
 sudo apt-get upgrade &&
 sudo apt-get install ncurses-dev &&
 sudo apt-get install build-essential &&
+
+# download kernel and rt patch
 wget ftp://ftp.kernel.org/pub/linux/kernel/v4.x/linux-4.4.12.tar.gz &&
 wget http://www.kernel.org/pub/linux/kernel/projects/rt/4.4/patch-4.4.12-rt19.patch.gz &&
 tar -zxvf linux-4.4.12.tar.gz &&
+
+# move config file for kernel
+cp ~/shenoyREU/.config ~/linux-4.4.12/.config
+
 cd linux-4.4.12 &&
 zcat ../patch-4.4.12-rt19.patch.gz | patch -p1 &&
 sudo apt-get install kernel-package libssl-dev &&
