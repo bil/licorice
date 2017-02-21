@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <semaphore.h>
 #include <sys/wait.h>
+#include <stdatomic.h>
 #include "constants.h"
 #include "utilityFunctions.h"
 
@@ -50,6 +51,7 @@ static uint32_t *pDataEnd;
 static sem_t *pSem;
 static int numChildren[MAX_NUM_ROUNDS];
 static int numRounds;
+static bool networkCreated = false;
 
 void handle_exit(int exitStatus) {
   sigprocmask(SIG_BLOCK, &exitMask, NULL);
@@ -102,7 +104,7 @@ void event_handler(int signum) {
   alrmNum++;
 
   // only trigger network process on first iterations
-  if (alrmNum <= MS_OFFSET) {
+  if (alrmNum <= LATENCY) {
     kill(n_pid, SIGALRM);
   }
   else { // normal behavior on subsequent iterations
@@ -124,9 +126,13 @@ void event_handler(int signum) {
     pFinish[MAX_NUM_CHILDREN] = 0xff;
 
     // update ms start and end pointers for children
+    //***** added recently, not tested yet ********
+    //might need a lock around this with fence, since this should
+    //look atomic to children. could use pthread reader writer locks
+    atomic_thread_fence(memory_order_seq_cst);
     *pMSStart = *pMSEnd;
     *pMSEnd = *pDataEnd;
-
+    atomic_thread_fence(memory_order_release);
     // trigger network process
     kill(n_pid, SIGALRM);
 
@@ -152,7 +158,13 @@ void usr1_handler(int signum) {
 }
 
 void usr2_handler(int signum) {
-  printf("Network process created.\n");
+  if (networkCreated) {
+    printf("Network process ready.\n");
+  }
+  else {
+    printf("Network process created.\n");
+    networkCreated = true;
+  }
 }
 
 void chld_handler(int sig) {
@@ -240,7 +252,7 @@ int main(int argc, char* argv[]) {
     // execute network process
     // signal handlers and mmap are not preserved on exec
     execvp(argv[0],argv);
-    printf("exec error.\n");
+    printf("network exec error.\n");
     exit(1);
     //in case execvp fails
   }
@@ -262,7 +274,7 @@ int main(int argc, char* argv[]) {
     // execute network process
     // signal handlers and mmap are not preserved on exec
     execvp(argv[0],argv);
-    printf("exec error.\n");
+    printf("logger exec error.\n");
     exit(1);
     //in case execvp fails
   }
@@ -303,7 +315,7 @@ int main(int argc, char* argv[]) {
         // execute child process
         // signal handlers and mmap are not preserved on exec
         execvp(argv[0],argv);
-        printf("exec error.\n");
+        printf("child exec error.\n");
         exit(1);
         //in case execvp fails
       }
