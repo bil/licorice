@@ -23,4 +23,4 @@ logger: logger.c sqlHelpers.c shmHelpers.c networkUtilities.c utilityFunctions.c
 	$(CC) $(CYFLAGS) {{child}}.c networkUtilities.c utilityFunctions.c -o {{child}} $(CYLDFLAGS)
 {% endfor %}
 clean:
-	rm -f timer network logger {% for c in children %}{{c}} {{c}}.c {{c}}.h{% endfor %}
+	rm -f timer network logger *.db {% for c in children %}{{c}} {{c}}.c {{c}}.h{% endfor %}
