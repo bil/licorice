@@ -7,6 +7,8 @@ TEMPLATE_DIR='./templates'
 GENERATE_DIR='./generate'
 MODULE_DIR='./modules'
 OUTPUT_DIR='./out'
+EXPORT_DIR='./export'
+
 TMP_MODULE_DIR='./.modules'
 TMP_OUTPUT_DIR='./.out'
 
@@ -98,14 +100,10 @@ def parse(config):
   # process signals
   cerebus = False
   line = False
-  for s in config['signals']:
-    signal = config['signals'][s]
-    if not signal.has_key('type'): 
-      continue
-    if signal['type'] == 'cerebus':
-      cerebus = True
-    elif signal['type'] == 'line':
-      line = True
+  if 'cerebus_in' in signals.keys():
+    cerebus = True
+  if 'line' in signals.keys(): 
+    line = True
 
   # TODO for now, only allow either line or cerebus. one must be specified
   assert cerebus ^ line
@@ -175,17 +173,19 @@ def parse(config):
 
         # prepare module parameters
         dependencies = {}
-        for name in modules:
-          mod = modules[name]
-          if (mod['in'] == module_args['out']):
-            if dependencies[mod['in']]:
-              dependencies[mod['in']] += 1
-            else:
-              dependencies[mod['in']] = 1
+        for out_sig in module_args['out']:
+          for name in modules:
+            mod = modules[name]
+            for in_sig in mod['in']:
+              if (in_sig == out_sig):
+                if dependencies.has_key(in_sig):
+                  dependencies[in_sig] += 1
+                else:
+                  dependencies[in_sig] = 1
 
         depends_on = []
         for i in module_args['in']:
-          if not signals[i]['special']:
+          if not signals[i].has_key('special'):
             depends_on.append(i)
 
         special_cerebus = []
@@ -251,3 +251,10 @@ def parse(config):
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE), 'w')
   mod_out_f.write(module_template.render(children=children))
   mod_out_f.close()
+
+def export():
+  os.mkdir(EXPORT_DIR)
+  if os.path.exists(MODULE_DIR):
+      shutil.copytree(MODULE_DIR, EXPORT_DIR + "/modules")
+  if os.path.exists(OUTPUT_DIR):
+    shutil.copytree(OUTPUT_DIR, EXPORT_DIR + "/out")
