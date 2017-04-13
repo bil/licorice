@@ -49,6 +49,7 @@ static uint32_t *pMSEnd;
 static uint32_t *pDataStart;
 static uint32_t *pDataEnd;
 static sem_t *pSem;
+static sem_t *pSignalSems;
 static int numChildren[MAX_NUM_ROUNDS];
 static int numRounds;
 static bool networkCreated = false;
@@ -230,6 +231,9 @@ int main(int argc, char* argv[]) {
   pDataStart = (uint32_t*)pmem + SMEM0_DATA_START_OFFSET;
   pDataEnd = (uint32_t*)pmem + SMEM0_DATA_END_OFFSET;
   pFinish = pmem + SMEM0_HEADER_LEN;
+  //Might need to change name of jinja variable
+  open_shared_mem(&pSignalSems, SMEMSIG_PATHNAME, 1 
+    + ({{numSIGS}} * sizeof (sem_t) - 1) / getpagesize() , O_TRUNC | O_CREAT | O_RDWR);
   printf("Memory mapped.\nForking children...\n");
   // zero'd out byte in shared memory corresponding to child in child process
 
