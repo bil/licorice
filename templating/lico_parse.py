@@ -13,6 +13,8 @@ if args.export == True:
   export()
   exit()
 
+args = arg_parser.parse_args()
+
 if args.config == None:
   print "Must specify config file."
   exit()
