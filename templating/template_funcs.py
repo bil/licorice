@@ -114,7 +114,8 @@ def parse(config):
     print "- line"
 
   # process modules
-
+  sem_location = 0
+  sem_dict = {}
   print
   print "Modules:"
   children = []
@@ -182,11 +183,22 @@ def parse(config):
                   dependencies[in_sig] += 1
                 else:
                   dependencies[in_sig] = 1
+        for dependency in dependencies:
+          if not sem_dict.has_key(dependency):
+            sem_dict[dependency] = sem_location
+            sem_location += 1
+          #store num dependencies in 0 and location of sem in 1
+          dependencies[dependency] = (dependencies[dependency], sem_dict[dependency])
+
 
         depends_on = []
         for i in module_args['in']:
           if not signals[i].has_key('special'):
-            depends_on.append(i)
+            if not sem_dict.has_key(i):
+              sem_dict[i] = sem_location
+              sem_location += 1
+            #store the signal name in 0 and location of sem in 1
+            depends_on.append((i, sem_dict[i]))
 
         special_cerebus = []
         if cerebus:

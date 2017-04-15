@@ -54,8 +54,15 @@ static int numChildren[MAX_NUM_ROUNDS];
 static int numRounds;
 static bool networkCreated = false;
 
+
+static int sigalrm_recv;
+static int sigexit_recv;
+static int sigchld_recv;
+
+
 void handle_exit(int exitStatus) {
   sigprocmask(SIG_BLOCK, &exitMask, NULL);
+  printf("exiting...\n");
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
   for (int i = 0; i < numRounds; i++) {
@@ -93,10 +100,10 @@ void set_sched_prior(int priority) {
   }
 }
 
-// Handle SIGALRM on millisecond
-void event_handler(int signum) {
+static void check_children() {
   sigprocmask(SIG_BLOCK, &alrmMask, NULL);
-
+  if (sigalrm_recv > 1)
+    die("Timer missed a tick.");
   // flip bits and output to parallel port
   outVal = ~outVal;
   outb(outVal,PARA_PORT_BASE_ADDR);
@@ -112,9 +119,9 @@ void event_handler(int signum) {
     // check if children have finished execution in allotted time
     for (int i = 0; i < numChildren[numRounds - 1]; i++) {
       if (pFinish[i]) {
-        usleep(5000);
+        //usleep(5000);
         // printf("i:%d pFinish[%d]: %d\n", i, i, pFinish[i]);
-        die("Child timing violation\n");
+        die("Child timing violation.\n");
       } 
       pFinish[i] = 0xff;
     }
@@ -145,30 +152,29 @@ void event_handler(int signum) {
     }
     sem_post(pSem);
   }
-
+  sigalrm_recv--;
   sigprocmask(SIG_UNBLOCK, &alrmMask, NULL);
 }
 
+// Handle SIGALRM on millisecond
+void event_handler(int signum) {
+  sigalrm_recv++;
+}
+
 void exit_handler(int signum) {
-  printf("exiting...\n");
-  handle_exit(0);
+  sigexit_recv++;
 }
 
 void usr1_handler(int signum) {
-  printf("Child created.\n");
+  //do nothing, this sig is just used for communication
 }
 
 void usr2_handler(int signum) {
-  if (networkCreated) {
-    printf("Network process ready.\n");
-  }
-  else {
-    printf("Network process created.\n");
-    networkCreated = true;
-  }
+  //do nothing, this sig is just used for communication
 }
 
-void chld_handler(int sig) {
+void dead_child() {
+  --sigchld_recv;
   int saved_errno = errno;
   int dead_pid;
   while ((dead_pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0);
@@ -190,6 +196,10 @@ void chld_handler(int sig) {
   }
   errno = saved_errno;
   die("I have lost a child :( \n");
+}
+
+void chld_handler(int sig) {
+  sigchld_recv++;
 }
 
 void stack_prefault() {
@@ -234,6 +244,12 @@ int main(int argc, char* argv[]) {
   //Might need to change name of jinja variable
   open_shared_mem(&pSignalSems, SMEMSIG_PATHNAME, 1 
     + ({{numSIGS}} * sizeof (sem_t) - 1) / getpagesize() , O_TRUNC | O_CREAT | O_RDWR);
+
+  sem_t *curSem = pSignalSems;
+  //initialize signal passing semaphores
+  for (int i = 0; i < {{numSIGS}}; i++, curSem++) {
+    sem_init(curSem, true, 0);
+  }
   printf("Memory mapped.\nForking children...\n");
   // zero'd out byte in shared memory corresponding to child in child process
 
@@ -261,6 +277,7 @@ int main(int argc, char* argv[]) {
     //in case execvp fails
   }
   pause();
+  printf("Network process created.\n");
 
   // fork and exec data logger process
   if ((l_pid = fork()) == -1) {
@@ -324,7 +341,7 @@ int main(int argc, char* argv[]) {
         //in case execvp fails
       }
       pause();
-    
+      printf("Child created.\n");
       numChildren[numRounds]++;
       procName = strtok(NULL, ",");
     }
@@ -348,7 +365,7 @@ int main(int argc, char* argv[]) {
 
   kill(n_pid, SIGUSR2);
   pause();
-
+  printf("Network process ready.\n");
   // set up timer
   printf("Setting up timer...\n");
   struct itimerval timer;
@@ -359,6 +376,12 @@ int main(int argc, char* argv[]) {
   //tell network to start gathering data.  First ms is therefore slightly longer than the rest.
   setitimer(ITIMER_REAL, &timer, NULL);
   while(1) {
+    if (sigexit_recv)
+      handle_exit(0);
+    if (sigchld_recv)
+      dead_child();
+    if (sigalrm_recv)
+      check_children();
     pause();
   }
 }
