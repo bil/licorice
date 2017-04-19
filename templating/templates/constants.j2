@@ -10,7 +10,7 @@
 #define LINE 0
 /*
 * The offset from which to run the child processes, zero-indexed. Usually 
-* the first (CPU 0) is for the parent timer process it self, the second
+* the first (CPU 0) is for the parent timer process itself, the second
 * is for Redis, the third is the network process (CPU 2), and the last is
 * for the logger process (CPU 3). So, this should be a minimum of 4.
 */
@@ -28,14 +28,7 @@
 * The maximum number of child processes the timer process should have, excluding the network
 * process. To specify the number of children and which executables are run, use runOrder.csv
 */
-#define MAX_NUM_CHILDREN 3
-/*
-* The maximum number of rounds of child processes that are run. When a round finishes, the next 
-* round is run and each previous round must be completely finished before the subsequent round
-* is started. This option can technically be arbitrarily high, but there is a small static overhead
-* for each round, so a lower number of rounds is generally better
-*/
-#define MAX_NUM_ROUNDS 3
+#define NUM_CHILDREN {{num_children}}
 /*
 * The number of Cerebus channels that data is being read in on.
 */
@@ -89,6 +82,11 @@
 * since it is simply spliced into SQL command without any error checking.
 */
 #define DATALOGGER_UNITS_TABLE_NAME "units_table"
+
+/*
+ * Maximum number of characters for a module name
+ */
+#define MAX_MODULE_NAME_LEN 64
 /***************************************
 * Advanced user configurable constants *
 ***************************************/
