@@ -121,6 +121,9 @@ def parse(config):
     print "- line"
 
   # process modules
+  sem_location = 0
+  sem_dict = {}
+  num_sem_sigs = 0
 
   print
   print "Modules:"
@@ -129,6 +132,15 @@ def parse(config):
   for module_name, module_args in modules.iteritems():
     if module_args['type'] == 'python':
       child_names.append(module_name)
+
+    # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
+    for sig_name in module_args['in']:
+      if not signals[sig_name].has_key('special'):
+        if not sem_dict.has_key(sig_name):
+          sem_dict[sig_name] = sem_location
+          sem_location += 1
+    num_sem_sigs = len(sem_dict)
+
   for module_name, module_args in modules.iteritems():
       # get module info
       module_type = module_args['type'] # type must exist
@@ -193,16 +205,21 @@ def parse(config):
                 child_index = child_names.index(name)
                 parent_index = child_names.index(module_name)
                 if dependencies.has_key(in_sig):
-                  dependencies[in_sig]["count"] += 1
+                  dependencies[in_sig] += 1
                   dependency_graph[child_index].append(parent_index)
                 else:
                   dependency_graph[child_index] = {parent_index}
                   dependencies[in_sig] = 1
+        for dependency in dependencies:
+          #store num dependencies in 0 and location of sem in 1
+          dependencies[dependency] = (dependencies[dependency], sem_dict[dependency])
+
 
         depends_on = []
-        for i in module_args['in']:
-          if not signals[i].has_key('special'):
-            depends_on.append(i)
+        for in_sig in module_args['in']:
+          if not signals[in_sig].has_key('special'):
+            #store the signal name in 0 and location of sem in 1
+            depends_on.append((in_sig, sem_dict[in_sig]))
 
         special_cerebus = []
         if cerebus:
@@ -229,7 +246,8 @@ def parse(config):
           depends_on=depends_on,
           out_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['out'])) },
           in_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['in'])) },
-          special_signals=special_cerebus + special_line
+          special_signals=special_cerebus + special_line,
+          num_sigs = num_sem_sigs
         ))
         mod_out_f.close()
 
@@ -270,7 +288,7 @@ def parse(config):
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_TIMER), 'w')
   topo_children = map(list, list(toposort(dependency_graph)))
   topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
-  num_cores = max(topo_lens)
+  num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
   num_children = len(child_names)
   assert(num_cores < MAX_NUM_CORES)
   mod_out_f.write(module_template.render(
@@ -279,7 +297,8 @@ def parse(config):
     topo_height=len(topo_children),
     child_names=child_names, 
     num_children=len(child_names),
-    num_cores=num_cores
+    num_cores=num_cores,
+    num_sigs=num_sem_sigs
   ))
   mod_out_f.close()
 
