@@ -1,7 +1,8 @@
 CC = gcc
-CFLAGS = -Wall -O2
-CFLAGSUNOPT = -Wall -O0
-CFLAGS+ = -g -Wall -O2
+DEFAULTFLAGS = -Wall
+CFLAGS = -O2 $(DEFAULTFLAGS)
+CFLAGSUNOPT = -O0 $(DEFAULTFLAGS)
+CFLAGS+ = -g -O2 $(DEFAULTFLAGS)
 CYFLAGS = -Os -I /usr/include/python2.7
 LDFLAGS = -levent -lhiredis -lrt -pthread -lsqlite3 -lasound
 LDTESTFLAGS = -lsqlite3 -pthread
