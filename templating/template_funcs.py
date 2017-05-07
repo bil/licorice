@@ -78,8 +78,8 @@ def parse(config):
   # load yaml config
   signals = config['signals']
   modules = config['modules']
-  # set up output directory
 
+  # set up output directory
   if os.path.exists(OUTPUT_DIR):
     while True:
       sys.stdout.write("Ok to remove old output directory? ")
@@ -101,9 +101,6 @@ def parse(config):
 
   shutil.copytree(TEMPLATE_DIR, OUTPUT_DIR, ignore=shutil.ignore_patterns(('*.j2')))
 
-  # likely need to do something unique with these?
-  special_signals = ['logged_signals', 'log_sqlite']
-
   # process signals
   cerebus = False
   line = False
@@ -120,6 +117,14 @@ def parse(config):
   if line:
     print "- line"
 
+  external_signals = []
+  internal_signals = []
+  for signal_name, signal_args in signals.iteritems():
+    if signal_args.has_key('args'):
+      external_signals.append(signal_name)
+    else: 
+      internal_signals.append(signal_name)
+
   # process modules
   sem_location = 0
   sem_dict = {}
@@ -127,11 +132,17 @@ def parse(config):
 
   print
   print "Modules:"
-  child_names = []
+  module_names = []
+  source_names = []
+  sink_names = []
   dependency_graph = {}
   for module_name, module_args in modules.iteritems():
-    if module_args['type'] == 'python':
-      child_names.append(module_name)
+    if all(map(lambda x: x in external_signals, module_args['in'])):
+      source_names.append(module_name)
+    if all(map(lambda x: x in external_signals, module_args['out'])):
+      sink_names.append(module_name)
+    if all(map(lambda x: x in internal_signals, module_args['in'] + module_args['out'])):
+      module_names.append(module_name)
 
     # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
     for sig_name in module_args['in']:
@@ -141,7 +152,7 @@ def parse(config):
           sem_location += 1
     num_sem_sigs = len(sem_dict)
 
-  for module_name, module_args in modules.iteritems():
+  for module_name in module_names:
       # get module info
       module_type = module_args['type'] # type must exist
 
@@ -172,11 +183,20 @@ def parse(config):
         module_template = jinja2.Template(template_f.read())
         # write to logger module file
         mod_out_f = open(os.path.join(OUTPUT_DIR, 'logger.c'), 'w')
+
+        depends_on = []
+        for in_sig in module_args['in']:
+          if not signals[in_sig].has_key('special'): # if the signal does not come directly from a source
+            #store the signal name in 0 and location of sem in 1
+            depends_on.append((in_sig, sem_dict[in_sig]))
+
         mod_out_f.write(module_template.render(
           name=module_name, 
           config=config, 
           cerebus=cerebus, 
-          line=line
+          line=line,
+          num_sigs=num_sem_sigs,
+          dep_on=depends_on
         ))
         mod_out_f.close()
 
@@ -202,8 +222,8 @@ def parse(config):
             for in_sig in mod['in']:
               if (in_sig == out_sig):
                 signal = signals[in_sig]
-                child_index = child_names.index(name)
-                parent_index = child_names.index(module_name)
+                child_index = module_names.index(name)
+                parent_index = module_names.index(module_name)
                 if dependencies.has_key(in_sig):
                   dependencies[in_sig] += 1
                   dependency_graph[child_index].append(parent_index)
@@ -247,7 +267,8 @@ def parse(config):
           out_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['out'])) },
           in_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['in'])) },
           special_signals=special_cerebus + special_line,
-          num_sigs = num_sem_sigs
+          num_sigs = num_sem_sigs,
+          top_level = (len(depends_on) == 0)
         ))
         mod_out_f.close()
 
@@ -278,7 +299,7 @@ def parse(config):
   module_template = jinja2.Template(template_f.read())
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE), 'w')
   mod_out_f.write(module_template.render(
-    child_names=child_names
+    child_names=module_names
   ))
   mod_out_f.close()
 
@@ -289,14 +310,14 @@ def parse(config):
   topo_children = map(list, list(toposort(dependency_graph)))
   topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
-  num_children = len(child_names)
+  num_children = len(module_names)
   assert(num_cores < MAX_NUM_CORES)
   mod_out_f.write(module_template.render(
     topo_order=topo_children,
     topo_lens=topo_lens,
     topo_height=len(topo_children),
-    child_names=child_names, 
-    num_children=len(child_names),
+    child_names=module_names, 
+    num_children=num_children,
     num_cores=num_cores,
     num_sigs=num_sem_sigs
   ))
