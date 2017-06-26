@@ -35,7 +35,7 @@ zcat $TMP_DIR/patch-4.4.12-rt19.patch.gz | patch -p1
 
 # build kernel
 make-kpkg clean
-fakeroot make-kpkg --initrd --append-to-version=-licorice binary
+CONCURRENCY_LEVEL=9 fakeroot make-kpkg --initrd --append-to-version=-licorice binary
 
 # install kernel
 sudo dpkg -i linux-image-4.4.12-custom-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
