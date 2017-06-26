@@ -38,8 +38,8 @@ make-kpkg clean
 CONCURRENCY_LEVEL=9 fakeroot make-kpkg --initrd --append-to-version=-licorice binary
 
 # install kernel
-sudo dpkg -i linux-image-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
-sudo dpkg -i linux-headers-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
+sudo dpkg -i $KERNEL_DIR/linux-image-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
+sudo dpkg -i $KERNEL_DIR/linux-headers-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
 
 # reboot when done
 #sudo reboot
