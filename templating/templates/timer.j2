@@ -24,7 +24,7 @@
 
 // process IDs for each child numbered according to the index of the child's name
 // in childProcNames
-static pid_t ch_pids[{{num_children}}];
+static pid_t ch_pids[NUM_CHILDREN];
 static char childProcnames[NUM_CHILDREN][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in child_names[:-1] %}"{{n}}", {% endfor %}"{{child_names[-1]}}"{{'}'}};
 static int childLens[CHILD_HEIGHT] = {{'{'}}{% for l in topo_lens[:-1] %}{{l}}, {% endfor %}{{topo_lens[-1]}}{{'}'}};
 static int childTopoOrder[CHILD_HEIGHT][{{num_cores}}];
@@ -54,7 +54,6 @@ static int sigchld_recv;
 static int num_cores;
 
 void handle_exit(int exitStatus) {
-  sigprocmask(SIG_BLOCK, &exitMask, NULL);
   printf("exiting...\n");
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
@@ -76,6 +75,7 @@ void handle_exit(int exitStatus) {
   printf("%lu SIGALRMs sent\n", alrmNum);
   // close shared memory
   munmap(pmem, PAGESIZE);
+  munmap(pSignalSems, 1 + ({{num_sigs}} * sizeof (sem_t) - 1));
   shm_unlink(SMEM0_PATHNAME);
   munlockall();
   exit(exitStatus);
@@ -90,7 +90,6 @@ void set_sched_prior(int priority) {
 }
 
 static void check_children() {
-  sigprocmask(SIG_BLOCK, &alrmMask, NULL);
   if (sigalrm_recv > 1)
     die("Timer missed a tick.");
   // flip bits and output to parallel port
@@ -105,16 +104,15 @@ static void check_children() {
     kill(n_pid, SIGALRM);
   }
   else { // normal behavior on subsequent iterations
-    // check if last round of children have finished execution in allotted time
+    // check if children have finished execution in allotted time (could just check last round, but need to properly figure out topo stuff again)
     for (int i = 0; i < childLens[CHILD_HEIGHT-1]; i++) {
       int chNum = childTopoOrder[CHILD_HEIGHT-1][i];
-
       if (pFinish[chNum]) {
         usleep(5000);
         // printf("i:%d pFinish[%d]: %d\n", i, i, pFinish[i]);
         die("Child timing violation.\n");
       } 
-      pFinish[i] = 0xff;
+      pFinish[chNum] = 0xff;
     }
     // check if logger has finished execution in allotted time
     if (pFinish[NUM_CHILDREN]) {
@@ -138,13 +136,14 @@ static void check_children() {
     // trigger first round of child processes. block if network is updating spike wave data
     sem_wait(pSem);
     kill(l_pid, SIGALRM);
-    for (int i = 0; i < childLens[0]; i++) {
-      kill(ch_pids[childTopoOrder[0][i]], SIGALRM);
-    }
+{%-for sem_pair in source_sems %}
+  for (int i = 0; i < {{sem_pair[1]}}; i++) {
+    sem_post(&pSignalSems[{{sem_pair[0]}}]);
+  }
+{%-endfor%}
     sem_post(pSem);
   }
   sigalrm_recv--;
-  sigprocmask(SIG_UNBLOCK, &alrmMask, NULL);
 }
 
 // Handle SIGALRM on millisecond
@@ -202,8 +201,7 @@ int main(int argc, char* argv[]) {
 
   // make sure parport is writeable
   if (ioperm(PARA_PORT_BASE_ADDR, 1, 1)) {
-    printf("io permission denied\n");
-    exit(1);
+    die("io permission denied\n");
   }
 
   // set signal masks
@@ -213,16 +211,16 @@ int main(int argc, char* argv[]) {
   sigdelset(&alrmMask, SIGINT);
 
   // set signal handlers
-  set_sighandler(SIGINT, &exit_handler);
-  set_sighandler(SIGALRM, &event_handler);
-  set_sighandler(SIGUSR1, &usr1_handler);
-  set_sighandler(SIGUSR2, &usr2_handler);
-  set_sighandler(SIGCHLD, &chld_handler);
+  set_sighandler(SIGINT, &exit_handler, &exitMask);
+  set_sighandler(SIGALRM, &event_handler, &alrmMask);
+  set_sighandler(SIGUSR1, &usr1_handler, NULL);
+  set_sighandler(SIGUSR2, &usr2_handler, NULL);
+  set_sighandler(SIGCHLD, &chld_handler, NULL);
   printf("Handlers installed.\n");
 
   // create shared memory and map it
   printf("Mapping memory...\n");
-  open_shared_mem(&pmem, SMEM0_PATHNAME, 1, O_TRUNC | O_CREAT | O_RDWR);
+  open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
   // set pmem header variables
   pSem = (sem_t*)pmem;
   pMSStart = (uint32_t*)pmem + SMEM0_MS_START_OFFSET;
@@ -231,8 +229,8 @@ int main(int argc, char* argv[]) {
   pDataEnd = (uint32_t*)pmem + SMEM0_DATA_END_OFFSET;
   pFinish = pmem + SMEM0_HEADER_LEN;
   //Might need to change name of jinja variable
-  open_shared_mem((uint8_t **)&pSignalSems, SMEMSIG_PATHNAME, 1 
-    + ({{num_sigs}} * sizeof (sem_t) - 1) / getpagesize() , O_TRUNC | O_CREAT | O_RDWR);
+  open_shared_mem((uint8_t **)&pSignalSems, SMEMSIG_PATHNAME,
+    1 + ({{num_sigs}} * sizeof (sem_t) - 1), O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
 
   sem_t *curSem = pSignalSems;
   //initialize signal passing semaphores
@@ -256,9 +254,10 @@ int main(int argc, char* argv[]) {
   if (n_pid == 0) { // only runs for network process
     cpu_set_t mask;
     CPU_ZERO(&mask);
-    for (int i = 0; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
-      CPU_SET(i, &mask);
-    }
+    // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
+    //   CPU_SET(i, &mask);
+    // }
+    CPU_SET(NETWORK_CPU, &mask);
     sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY);
@@ -274,48 +273,25 @@ int main(int argc, char* argv[]) {
   pause();
   printf("Network process created.\n");
 
-  // fork and exec data logger process
-  if ((l_pid = fork()) == -1) {
-    die("fork failed \n");
-  }
-  if (l_pid == 0) { // only runs for logger process
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
-      CPU_SET(i, &mask);
-    }
-    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    setpriority(PRIO_PROCESS, 0, -19);
-    set_sched_prior(PRIORITY);
-    char* argv[2] = {LOGGER_PROCNAME, NULL};
-    
-    // execute network process
-    // signal handlers and mmap are not preserved on exec
-    execvp(argv[0],argv);
-    printf("logger exec error. %s \n", strerror(errno));
-    exit(1);
-    //in case execvp fails
-  }
-  pause();
-
+  // fork and exec child processes
 {% for i in range(0, topo_height) -%}
 {% for j in range(0, topo_lens[i]) -%}
   childTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
 {% endfor %}
 {%- endfor -%}
 
+
   for (int i = 0; i < CHILD_HEIGHT; i++) {
     for (int j = 0; j < childLens[i]; j++) {
       int childNum = childTopoOrder[i][j];
+      printf("%d\n", childNum);
       if ((ch_pids[childNum] = fork()) == -1) {
         die("fork failed\n");
       }
       if (ch_pids[childNum] == 0) {  // only runs for child processes
         cpu_set_t mask;
         CPU_ZERO(&mask);
-        for (int k = 1; k < num_cores - 1; k++) {  // leave one core for system (core num_cores-1)
-          CPU_SET(k, &mask);
-        }
+        CPU_SET(j + CPU_OFFSET, &mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &mask);
         setpriority(PRIO_PROCESS, 0, -19);
         set_sched_prior(PRIORITY);
@@ -337,6 +313,31 @@ int main(int argc, char* argv[]) {
     }
   }
   printf("Child(ren) created.\n");
+
+  // fork and exec data logger process
+  if ((l_pid = fork()) == -1) {
+    die("fork failed \n");
+  }
+  if (l_pid == 0) { // only runs for logger process
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    // for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
+    //   CPU_SET(i, &mask);
+    // }
+    CPU_SET(LOGGER_CPU, &mask);
+    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    setpriority(PRIO_PROCESS, 0, -19);
+    set_sched_prior(PRIORITY);
+    char* argv[2] = {LOGGER_PROCNAME, NULL};
+    
+    // execute network process
+    // signal handlers and mmap are not preserved on exec
+    execvp(argv[0],argv);
+    printf("logger exec error. %s \n", strerror(errno));
+    exit(1);
+    //in case execvp fails
+  }
+  pause();
 
   // set up scheduler with priority
   set_sched_prior(PRIORITY);
