@@ -1,6 +1,5 @@
 #include "utilityFunctions.h"
 #include <sys/mman.h>
-#include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -40,10 +39,12 @@ void die(char *errorStr) {
 * create a signal handler that handles signal signum and runs the function *psh
 * when signum is raised
 */
-void set_sighandler(int signum, void *psh) {
+void set_sighandler(int signum, void *psh, sigset_t *block_mask) {
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = psh;
+  if (block_mask)
+    sa.sa_mask = *block_mask;
   sa.sa_flags = SA_RESTART;
   if (signum == SIGCHLD) {
     sa.sa_flags |= SA_NOCLDSTOP;
@@ -56,26 +57,26 @@ void set_sighandler(int signum, void *psh) {
 /*
 * open a shared memory block with:
 * name: pName
-* size: numPages * PAGESIZE
+* size: numBytes
 * flags: shm_flags
 * *ppmem then points to the beginning of this block of memory once the function has run
 * 
 * If the file descriptor needs to be ftruncated (i.e., this is the first process opening)
 * this shared memory, then make sure the O_CREAT flag is set in shm_flags
 */
-void open_shared_mem(uint8_t **ppmem, const char *pName, int numPages, int shm_flags) {
+void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags) {
   int fd = shm_open(pName, shm_flags, 0600);
   if(fd == -1) {
     die("shm_open failed\n");
   }
   // check if O_CREAT (1 << 6) is set 
   if (shm_flags & O_CREAT) {
-    if (ftruncate(fd, PAGESIZE * numPages)) {
+    if (ftruncate(fd, numBytes)) {
       die("ftruncate failed.\n");
       exit(1);
     } 
   }
-  *ppmem = (uint8_t*) mmap(NULL, PAGESIZE * numPages, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  *ppmem = (uint8_t*) mmap(NULL, numBytes, mmap_flags, MAP_SHARED, fd, 0);
   if (*ppmem == (void*)-1) {
     die("mmap failed\n");
   }
