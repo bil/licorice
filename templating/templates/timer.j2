@@ -20,18 +20,14 @@
 #include "constants.h"
 #include "utilityFunctions.h"
 
-// CSV file that dictates which processes run during the millisecond
-// Format of csv is: one row of comma separated values for each 
-// 'round' of computation processes. Each value in a row corresponds
-// to the name of the process that will run in that 'round'. The same 
-// process can be specified multiple times in the same row and across rows.
-#define RUNORDER_FILE "runOrder.csv"
-// buffer length used for reading in processes from runOrder.csv
-#define BUF_LEN 1024
+#define CHILD_HEIGHT {{topo_height}}
 
-// process IDs for each child by round
-// ch_pid[1][2] refers to the pid of the third child process in the second round
-static pid_t ch_pid[MAX_NUM_ROUNDS][MAX_NUM_CHILDREN];
+// process IDs for each child numbered according to the index of the child's name
+// in childProcNames
+static pid_t ch_pids[{{num_children}}];
+static char childProcnames[NUM_CHILDREN][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in child_names[:-1] %}"{{n}}", {% endfor %}"{{child_names[-1]}}"{{'}'}};
+static int childLens[CHILD_HEIGHT] = {{'{'}}{% for l in topo_lens[:-1] %}{{l}}, {% endfor %}{{topo_lens[-1]}}{{'}'}};
+static int childTopoOrder[CHILD_HEIGHT][{{num_cores}}];
 // network pid
 static pid_t n_pid;
 // logger pid
@@ -50,10 +46,6 @@ static uint32_t *pDataStart;
 static uint32_t *pDataEnd;
 static sem_t *pSem;
 static sem_t *pSignalSems;
-static int numChildren[MAX_NUM_ROUNDS];
-static int numRounds;
-static bool networkCreated = false;
-
 
 static int sigalrm_recv;
 static int sigexit_recv;
@@ -65,13 +57,9 @@ void handle_exit(int exitStatus) {
   printf("exiting...\n");
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
-  for (int i = 0; i < numRounds; i++) {
-    for(int j = 0; j < numChildren[i]; j++) {
-      if (ch_pid[i][j] != -1) {
-        kill(ch_pid[i][j], SIGINT);
-         while (waitpid(ch_pid[i][j], 0, WNOHANG) > 0);
-      }
-    }
+  for (int i = 0; i < NUM_CHILDREN; i++) {
+    kill(ch_pids[i], SIGINT);
+    while (waitpid(ch_pids[i], 0, WNOHANG) > 0);
   }
   // send SIGINT to logger process and wait
   if (l_pid != -1) {
@@ -116,22 +104,24 @@ static void check_children() {
     kill(n_pid, SIGALRM);
   }
   else { // normal behavior on subsequent iterations
-    // check if children have finished execution in allotted time
-    for (int i = 0; i < numChildren[numRounds - 1]; i++) {
-      if (pFinish[i]) {
-        //usleep(5000);
+    // check if last round of children have finished execution in allotted time
+    for (int i = 0; i < childLens[CHILD_HEIGHT-1]; i++) {
+      int chNum = childTopoOrder[CHILD_HEIGHT-1][i];
+
+      if (pFinish[chNum]) {
+        usleep(5000);
         // printf("i:%d pFinish[%d]: %d\n", i, i, pFinish[i]);
         die("Child timing violation.\n");
       } 
       pFinish[i] = 0xff;
     }
     // check if logger has finished execution in allotted time
-    if (pFinish[MAX_NUM_CHILDREN]) {
+    if (pFinish[NUM_CHILDREN]) {
       printf("Logger timing violation on ms: %lu \n", alrmNum);
       //usleep(5000);
       //die("Logger timing violation.\n");
     }
-    pFinish[MAX_NUM_CHILDREN] = 0xff;
+    pFinish[NUM_CHILDREN] = 0xff;
 
     // update ms start and end pointers for children
     //***** added recently, not tested yet ********
@@ -147,8 +137,12 @@ static void check_children() {
     // trigger first round of child processes. block if network is updating spike wave data
     sem_wait(pSem);
     kill(l_pid, SIGALRM);
-    for (int i = 0; i < numChildren[0]; i++) {
-      kill(ch_pid[0][i], SIGALRM);
+    // for (int i = 0; i < childLens[0]; i++) {
+    //   printf("%d\n", ch_pids[childTopoOrder[0][i]]);
+    //   kill(ch_pids[childTopoOrder[0][i]], SIGALRM);
+    // }
+    for (int i = 0; i < NUM_CHILDREN; i++) {
+      kill(ch_pids[i], SIGALRM);
     }
     sem_post(pSem);
   }
@@ -186,11 +180,9 @@ void dead_child() {
     n_pid = -1;
   }
   else {
-    for (int i = 0; i < numRounds; i++) {
-      for (int j = 0; j < numChildren[i]; j++) {
-        if (ch_pid[i][j] == dead_pid) {
-          ch_pid[i][j] = -1;
-        }  
+    for (int i = 0; i < NUM_CHILDREN; i++) {
+      if (ch_pids[i] == dead_pid) {
+        ch_pids[i] = -1;
       }
     }
   }
@@ -242,12 +234,12 @@ int main(int argc, char* argv[]) {
   pDataEnd = (uint32_t*)pmem + SMEM0_DATA_END_OFFSET;
   pFinish = pmem + SMEM0_HEADER_LEN;
   //Might need to change name of jinja variable
-  open_shared_mem(&pSignalSems, SMEMSIG_PATHNAME, 1 
-    + ({{numSIGS}} * sizeof (sem_t) - 1) / getpagesize() , O_TRUNC | O_CREAT | O_RDWR);
+  open_shared_mem((uint8_t **)&pSignalSems, SMEMSIG_PATHNAME, 1 
+    + ({{num_sigs}} * sizeof (sem_t) - 1) / getpagesize() , O_TRUNC | O_CREAT | O_RDWR);
 
   sem_t *curSem = pSignalSems;
   //initialize signal passing semaphores
-  for (int i = 0; i < {{numSIGS}}; i++, curSem++) {
+  for (int i = 0; i < {{num_sigs}}; i++, curSem++) {
     sem_init(curSem, true, 0);
   }
   printf("Memory mapped.\nForking children...\n");
@@ -301,36 +293,29 @@ int main(int argc, char* argv[]) {
   }
   pause();
 
-  FILE *runOrder = fopen(RUNORDER_FILE, "r");
-  char line[BUF_LEN];
-  char *procName;
-  char *pos;
-  numRounds = 0;
+{% for i in range(0, topo_height) -%}
+{% for j in range(0, topo_lens[i]) -%}
+  childTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
+{% endfor %}
+{%- endfor -%}
 
-  while (fgets(line, 1024, runOrder) != NULL) {
-    if ((pos=strchr(line, '\n')) != NULL)
-    *pos = '\0';
-
-    numChildren[numRounds] = 0;    
-    procName = strtok(line, ",");
-    while(procName != NULL) {
-      if (numChildren[numRounds] >= MAX_NUM_CHILDREN){
-        die("Too many children\n");
-      }
-      if ((ch_pid[numRounds][numChildren[numRounds]] = fork()) == -1) {
+  for (int i = 0; i < CHILD_HEIGHT; i++) {
+    for (int j = 0; j < childLens[i]; j++) {
+      int childNum = childTopoOrder[i][j];
+      if ((ch_pids[childNum] = fork()) == -1) {
         die("fork failed\n");
       }
-      if (ch_pid[numRounds][numChildren[numRounds]] == 0) {  // only runs for child processes
+      if (ch_pids[childNum] == 0) {  // only runs for child processes
         cpu_set_t mask;
         CPU_ZERO(&mask);
-        CPU_SET(numChildren[numRounds] + CPU_OFFSET, &mask);
+        CPU_SET(j + CPU_OFFSET, &mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &mask);
         setpriority(PRIO_PROCESS, 0, -19);
         set_sched_prior(PRIORITY);
         char buf[4];
         char procBuf[64];
-        sprintf(buf, "%d",numChildren[numRounds]);
-        sprintf(procBuf, "./%s", procName);
+        sprintf(buf, "%d", childNum);
+        sprintf(procBuf, "./%s", childProcnames[childNum]);
         char* argv[3] = {procBuf, buf, NULL};
         
         // execute child process
@@ -342,13 +327,7 @@ int main(int argc, char* argv[]) {
       }
       pause();
       printf("Child created.\n");
-      numChildren[numRounds]++;
-      procName = strtok(NULL, ",");
     }
-    numRounds++;
-  }
-  if (numRounds > MAX_NUM_ROUNDS) {
-    die("Too many rounds");
   }
   printf("Child(ren) created.\n");
 
