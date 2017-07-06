@@ -1,26 +1,45 @@
 #! /bin/bash
 
-# Before execeuting script, clone licorice repository into ~/shenoyREU
+# This works for xenial-lts
 
-# install things
-sudo apt-get update && 
-sudo apt-get upgrade &&
-sudo apt-get install ncurses-dev &&
-sudo apt-get install build-essential &&
+# This is to be executed from the git repository directory, otherwise change REPO_DIR
 
-# download kernel and rt patch
-wget ftp://ftp.kernel.org/pub/linux/kernel/v4.x/linux-4.4.12.tar.gz &&
-wget http://www.kernel.org/pub/linux/kernel/projects/rt/4.4/patch-4.4.12-rt19.patch.gz &&
-tar -zxvf linux-4.4.12.tar.gz &&
+# set some variables
+REPO_DIR=`pwd`
+KERNEL_DIR=~/rt
+TMP_DIR=/tmp
 
-# move config file for kernel
-cp ~/shenoyREU/.config ~/linux-4.4.12/.config
+# update to most recent version of packages, install essentials, do some cleanup
+sudo apt-get update
+sudo apt-get -y upgrade
+sudo apt-get -y install libncurses5-dev build-essential libssl-dev kernel-package
+sudo apt-get -y autoremove
 
-cd linux-4.4.12 &&
-zcat ../patch-4.4.12-rt19.patch.gz | patch -p1 &&
-sudo apt-get install kernel-package libssl-dev &&
-make-kpkg clean &&
-fakeroot make-kpkg –-initrd –-append-to-version=-custom kernel_image kernel_headers &&
-sudo dpkg -i linux-image-4.4.12-custom-rt19_4.4.12-custom-rt19-10.00.Custom_amd64.deb &&
-sudo dpkg -i linux-headers-4.4.12-custom-rt19_4.4.12-custom-rt19-10.00.Custom_amd64.deb &&
-sudo reboot
+# download kernel and rt-patch if not exists
+cd $TMP_DIR
+wget -N http://www.kernel.org/pub/linux/kernel/v4.x/linux-4.4.12.tar.gz
+wget -N http://www.kernel.org/pub/linux/kernel/projects/rt/4.4/older/patch-4.4.12-rt19.patch.gz
+
+# reset kernel folder and extract linux source
+rm -rf $KERNEL_DIR
+mkdir -p $KERNEL_DIR
+cd $KERNEL_DIR
+tar -zxvf $TMP_DIR/linux-4.4.12.tar.gz
+
+# copy kernel .config file from git
+cp $REPO_DIR/.config $KERNEL_DIR/linux-4.4.12/.config
+
+# patch kernel with realtime patch
+cd $KERNEL_DIR/linux-4.4.12
+zcat $TMP_DIR/patch-4.4.12-rt19.patch.gz | patch -p1
+
+# build kernel
+make-kpkg clean
+CONCURRENCY_LEVEL=9 fakeroot make-kpkg --initrd --append-to-version=-licorice binary
+
+# install kernel
+sudo dpkg -i $KERNEL_DIR/linux-image-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
+sudo dpkg -i $KERNEL_DIR/linux-headers-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
+
+# reboot when done
+#sudo reboot
