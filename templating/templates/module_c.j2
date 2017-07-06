@@ -1,0 +1,83 @@
+{% block header %}
+// This is the definition of the C module {{name}}
+//
+void {{name}} ()
+{
+
+// setup signals and whatnot here if necessary
+
+{% endblock %}
+
+{% block IO %}
+{% set args = config['modules'][name] %}
+
+{# inputs and outputs seem like they are going to be defined similarly, so just loop through them #}
+{% for IO in ['in', 'out'] %}
+  {# check existence of IO for this module #}
+  {% if IO in args %}
+
+    {% for sig in args[IO] %} {# loop through IO signals #}
+  
+      {# figure out what type of argument this is #}
+      {% if 'type' in config['signals'][sig] %}
+  
+        {# this is a flatbuffer signal input #}
+        // put in whatever code here that will define the {{input}} flatbuffer in C
+  
+      {% endif %}
+  
+      {# pull in signal arguments as a struct, if they exist #}
+      {% if 'args' in config['signals'][sig] %}
+        {% set sig_args = config['signals'][sig]['args'] %}
+        struct {{sig}}_info_struct
+        {
+          {% for field in sig_args %}
+            {% if sig_args[field] is string %}
+              char *{{field}}; 
+            {% elif sig_args[field] is number %}
+              double {{field}};
+            {% endif %}
+          {% endfor %}
+        };
+    
+        {# this really should be set with #define macros for the values of the fields, but...lazy right now #}
+        struct {{sig}}_info_struct {{sig}}_info;
+        {% for field in sig_args %}
+          {% if field is string %}
+    	    {{sig}}_info.{{field}} = "{{sig_args[field]}}";
+          {% elif field is number %}
+    	    {{sig}}_info.{{field}} = {{sig_args[field]}};
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+  
+    {% endfor %} {# done looping through input #}
+  
+  {% endif %}
+
+{% endfor %}
+
+{% endblock %}
+
+{% block user_code %}
+
+{{user_code}}
+
+{% endblock %}
+
+{% block footer %}
+
+// put stuff that needs to go at the end here
+
+}
+
+
+int main ()
+{
+  {{name}}();
+
+  return 0;
+}
+
+
+{% endblock %}
