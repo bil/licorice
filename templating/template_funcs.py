@@ -1,6 +1,7 @@
 import os, shutil
 import jinja2
 import sys
+from toposort import toposort
 
 # some constants
 TEMPLATE_DIR='./templates'
@@ -17,10 +18,16 @@ TEMPLATE_MODULE_PY='module_py.j2'
 TEMPLATE_LOGGER='logger.j2'
 TEMPLATE_NETWORK='network.j2'
 TEMPLATE_MAKEFILE='Makefile.j2'
+TEMPLATE_TIMER='timer.j2'
+TEMPLATE_CONSTANTS='constants.j2'
 
 GENERATE_MODULE_PY='user_code_py.j2'
 
 OUTPUT_MAKEFILE='Makefile'
+OUTPUT_TIMER='timer.c'
+OUTPUT_CONSTANTS='constants.h'
+
+MAX_NUM_CORES = 4
 
 def generate(config):
   print "Generating modules...\n"
@@ -116,14 +123,29 @@ def parse(config):
   # process modules
   sem_location = 0
   sem_dict = {}
+  num_sem_sigs = 0
+
   print
   print "Modules:"
-  children = []
+  child_names = []
+  dependency_graph = {}
+  for module_name, module_args in modules.iteritems():
+    if module_args['type'] == 'python':
+      child_names.append(module_name)
+
+    # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
+    for sig_name in module_args['in']:
+      if not signals[sig_name].has_key('special'):
+        if not sem_dict.has_key(sig_name):
+          sem_dict[sig_name] = sem_location
+          sem_location += 1
+    num_sem_sigs = len(sem_dict)
+
   for module_name, module_args in modules.iteritems():
       # get module info
       module_type = module_args['type'] # type must exist
 
-      # handle network special module type
+      # parse network special module type
       if module_name == "network":
         print " - network (special)"
         # load network module template
@@ -141,7 +163,7 @@ def parse(config):
         ))
         mod_out_f.close()
       
-      # handle logger special moduel type
+      # parse logger special module type
       elif module_name == "logger":
         print " - logger (special)"
         # load logger module template
@@ -158,7 +180,7 @@ def parse(config):
         ))
         mod_out_f.close()
 
-      # handle cython module type
+      # parse cython module type
       elif module_type == 'python':
         print " - " + module_name + " (py)"
         # load Python module template 
@@ -179,26 +201,25 @@ def parse(config):
             mod = modules[name]
             for in_sig in mod['in']:
               if (in_sig == out_sig):
+                signal = signals[in_sig]
+                child_index = child_names.index(name)
+                parent_index = child_names.index(module_name)
                 if dependencies.has_key(in_sig):
                   dependencies[in_sig] += 1
+                  dependency_graph[child_index].append(parent_index)
                 else:
+                  dependency_graph[child_index] = {parent_index}
                   dependencies[in_sig] = 1
         for dependency in dependencies:
-          if not sem_dict.has_key(dependency):
-            sem_dict[dependency] = sem_location
-            sem_location += 1
           #store num dependencies in 0 and location of sem in 1
           dependencies[dependency] = (dependencies[dependency], sem_dict[dependency])
 
 
         depends_on = []
-        for i in module_args['in']:
-          if not signals[i].has_key('special'):
-            if not sem_dict.has_key(i):
-              sem_dict[i] = sem_location
-              sem_location += 1
+        for in_sig in module_args['in']:
+          if not signals[in_sig].has_key('special'):
             #store the signal name in 0 and location of sem in 1
-            depends_on.append((i, sem_dict[i]))
+            depends_on.append((in_sig, sem_dict[in_sig]))
 
         special_cerebus = []
         if cerebus:
@@ -210,13 +231,12 @@ def parse(config):
           special_cerebus.append(['channel_data', 'get_channel_data'])
           special_cerebus.append(['all_channel_data', 'get_all_channel_data'])
 
-        special_line = {}
+        special_line = []
         if line:
-          pass # TODO must put in methods for getClark S362ting line data
+          pass # TODO must put in methods for getting line data
 
         # write to Python module file
         mod_out_f = open(os.path.join(OUTPUT_DIR, module_name + '.pyx'), 'w')
-
         mod_out_f.write(module_template.render(
           name=module_name, 
           args=module_args,
@@ -224,10 +244,12 @@ def parse(config):
           user_code=mod_user_code, 
           dependencies=dependencies, 
           depends_on=depends_on,
-          special_cerebus=special_cerebus
+          out_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['out'])) },
+          in_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['in'])) },
+          special_signals=special_cerebus + special_line,
+          num_sigs = num_sem_sigs
         ))
         mod_out_f.close()
-        children.append(module_name)
 
       # handle C module type
       elif module_type == 'C':
@@ -251,17 +273,42 @@ def parse(config):
         ))
         mod_out_f.close()
 
-  # create Makefile
-
-  # load Python module template 
+  # parse Makefile
   template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_MAKEFILE), 'r')
-
-  # setup module template
   module_template = jinja2.Template(template_f.read())
-
-  # write to to Python module file
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE), 'w')
-  mod_out_f.write(module_template.render(children=children))
+  mod_out_f.write(module_template.render(
+    child_names=child_names
+  ))
+  mod_out_f.close()
+
+  # parse timer parent
+  template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_TIMER), 'r')
+  module_template = jinja2.Template(template_f.read())
+  mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_TIMER), 'w')
+  topo_children = map(list, list(toposort(dependency_graph)))
+  topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
+  num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
+  num_children = len(child_names)
+  assert(num_cores < MAX_NUM_CORES)
+  mod_out_f.write(module_template.render(
+    topo_order=topo_children,
+    topo_lens=topo_lens,
+    topo_height=len(topo_children),
+    child_names=child_names, 
+    num_children=len(child_names),
+    num_cores=num_cores,
+    num_sigs=num_sem_sigs
+  ))
+  mod_out_f.close()
+
+  # parse constants.h
+  template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_CONSTANTS), 'r')
+  module_template = jinja2.Template(template_f.read())
+  mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_CONSTANTS), 'w')
+  mod_out_f.write(module_template.render(
+    num_children=num_children
+  ))
   mod_out_f.close()
 
 def export():
