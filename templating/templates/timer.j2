@@ -53,8 +53,15 @@ static int sigchld_recv;
 
 static int num_cores;
 
+static struct itimerval timer;
+
 void handle_exit(int exitStatus) {
   printf("exiting...\n");
+  timer.it_value.tv_sec = 0;
+  timer.it_value.tv_usec = 0;
+  timer.it_interval.tv_sec = 0;
+  timer.it_interval.tv_usec = 0;
+  setitimer(ITIMER_REAL, &timer, NULL);
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
   for (int i = 0; i < NUM_CHILDREN; i++) {
@@ -246,6 +253,9 @@ int main(int argc, char* argv[]) {
   // get number of cores
   // Could also use _SC_NPROCESSORS_ONLN, but here we assume that all cores are online
   num_cores = sysconf(_SC_NPROCESSORS_CONF);
+  
+  // set priority
+  set_sched_prior(PRIORITY);
 
   // fork and exec network process
   if ((n_pid = fork()) == -1) {
@@ -271,7 +281,7 @@ int main(int argc, char* argv[]) {
     //in case execvp fails
   }
   pause();
-  printf("Network process created.\n");
+  printf("Network ready.\n");
 
   // fork and exec child processes
 {% for i in range(0, topo_height) -%}
@@ -339,23 +349,13 @@ int main(int argc, char* argv[]) {
   }
   pause();
 
-  // set up scheduler with priority
-  set_sched_prior(PRIORITY);
-  printf("Scheduler set.\n");
-
-  // lock stack mem
-  if (mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
-    die("Lock error \n");
-  }
-  stack_prefault();
-  printf("Memory locked and prefaulted.\n");
+  make_realtime();
 
   kill(n_pid, SIGUSR2);
   pause();
   printf("Network process ready.\n");
   // set up timer
   printf("Setting up timer...\n");
-  struct itimerval timer;
   timer.it_value.tv_sec = SECREQ;
   timer.it_value.tv_usec = USECREQ;
   timer.it_interval.tv_sec = SECREQ;

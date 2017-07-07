@@ -7,21 +7,40 @@
 #include <string.h>
 #include "constants.h"
 
-extern sigset_t exitMask;
+static sigset_t exitMask;
 static void (*exit_handler)(int errorStr);
 
-
-/*
-* initialize utilities
-* set function to run on exit
-*/ 
-void init_utils(void (*pHandleExit)(int errorStr)) {
-  exit_handler = pHandleExit;
+/* 
+ * prefault stack to avoid faults during execution
+ */
+static void stack_prefault() {
+  unsigned char dummy[MAX_SAFE_STACK];
+  memset(dummy, 0, MAX_SAFE_STACK);
 }
 
 /*
-* run the function specified by exit_handler and print the given error message
-*/
+ * initialize utilities
+ * set function to run on exit
+ */ 
+void init_utils(void (*pHandleExit)(int errorStr), sigset_t *pExitMask) {
+  exit_handler = pHandleExit;
+  exitMask = *pExitMask;
+}
+
+/*
+ * finish necessary real-time setup before process execution begins
+ */
+void make_realtime() {
+  // lock stack mem
+  if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
+    die("NETWORK ERROR: memory lock error.\n");
+  }
+  stack_prefault();
+}
+
+/*
+ * run the function specified by exit_handler and print the given error message
+ */
 void die(char *errorStr) {
 // void die(const char *format, ...) {  
   sigprocmask(SIG_BLOCK, &exitMask, NULL);
@@ -36,9 +55,9 @@ void die(char *errorStr) {
 }
 
 /* 
-* create a signal handler that handles signal signum and runs the function *psh
-* when signum is raised
-*/
+ * create a signal handler that handles signal signum and runs the function *psh
+ * when signum is raised
+ */
 void set_sighandler(int signum, void *psh, sigset_t *block_mask) {
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
@@ -82,4 +101,3 @@ void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_f
   }
   close(fd);
 }
-
