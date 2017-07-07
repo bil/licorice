@@ -15,8 +15,9 @@ TMP_OUTPUT_DIR='./.out'
 
 TEMPLATE_MODULE_C='module_c.j2'
 TEMPLATE_MODULE_PY='module_py.j2'
-TEMPLATE_SINK='logger.j2'
-TEMPLATE_SOURCE='network.j2'
+TEMPLATE_LOGGER='logger.j2'
+TEMPLATE_SINK='sink.j2'
+TEMPLATE_SOURCE='source.j2'
 TEMPLATE_MAKEFILE='Makefile.j2'
 TEMPLATE_TIMER='timer.j2'
 TEMPLATE_CONSTANTS='constants.j2'
@@ -81,17 +82,17 @@ def parse(config):
 
   # set up output directory
   if os.path.exists(OUTPUT_DIR):
-    while True:
-      sys.stdout.write("Ok to remove old output directory? ")
-      choice = raw_input().lower()
-      if choice == 'y':
-        break
-      elif choice == 'n':
-        print "Could not complete parsing. Backup old output directory if necessary and try again."
-        exit()
-      else:
-        print "Please respond with 'y' or 'n'."
-    print 
+    # while True:
+    #   sys.stdout.write("Ok to remove old output directory? ")
+    #   choice = raw_input().lower()
+    #   if choice == 'y':
+    #     break
+    #   elif choice == 'n':
+    #     print "Could not complete parsing. Backup old output directory if necessary and try again."
+    #     exit()
+    #   else:
+    #     print "Please respond with 'y' or 'n'."
+    # print 
     if os.path.exists(TMP_OUTPUT_DIR):
       shutil.rmtree(TMP_OUTPUT_DIR) 
     shutil.move(OUTPUT_DIR, TMP_OUTPUT_DIR)
@@ -100,23 +101,6 @@ def parse(config):
     print "Removing old output directory.\n"
 
   shutil.copytree(TEMPLATE_DIR, OUTPUT_DIR, ignore=shutil.ignore_patterns(('*.j2')))
-
-  # process signals
-  cerebus = False
-  line = False
-  if 'cerebus_in' in signals.keys():
-    cerebus = True
-  if 'line' in signals.keys(): 
-    line = True
-
-  # TODO for now, only allow either line or cerebus. one must be specified
-  assert cerebus ^ line
-  print "Inputs: "
-  if cerebus:
-    print "- cerebus"
-  if line:
-    print "- line"
-
   external_signals = []
   internal_signals = []
   for signal_name, signal_args in signals.iteritems():
@@ -129,6 +113,7 @@ def parse(config):
   sem_location = 0
   sem_dict = {}
   num_sem_sigs = 0
+  logged_signals = {}
 
   print
   print "Modules:"
@@ -137,13 +122,21 @@ def parse(config):
   sink_names = []
   source_outputs = {}
   dependency_graph = {}
+  in_signals = {}
+  out_signals = {}
   for module_name, module_args in modules.iteritems():
     if all(map(lambda x: x in external_signals, module_args['in'])):
       source_names.append(module_name)
       for sig in module_args['out']:
         source_outputs[sig] = 0
+      for sig in module_args['in']:
+        assert signals[sig]['args'].has_key('type')
+        in_signals[sig] = signals[sig]['args']['type']
     if all(map(lambda x: x in external_signals, module_args['out'])):
       sink_names.append(module_name)
+      for sig in module_args['out']:
+        assert signals[sig]['args'].has_key('type')
+        out_signals[sig] = signals[sig]['args']['type']
     if all(map(lambda x: x in internal_signals, module_args['in'] + module_args['out'])):
       module_names.append(module_name)
 
@@ -154,9 +147,22 @@ def parse(config):
         sem_location += 1
     num_sem_sigs = len(sem_dict)
 
+  print source_names
+  print sink_names
+  print module_names
+
+  # process input signals
+  print 
+  print "Inputs: "
+  for sig_name, sig_type in in_signals.iteritems():
+    print "-" + sig_name + ": " + sig_type 
+  print "Outputs: "
+  for sig_name, sig_type in out_signals.iteritems():
+    print "-" + sig_name + ": " + sig_type 
+
   all_names = source_names + sink_names + module_names
   assert (len(all_names) == len(set(all_names)))
-  
+
   for name in all_names:
       # get module info
       module_args = modules[name]
@@ -171,19 +177,20 @@ def parse(config):
         # setup network module template
         module_template = jinja2.Template(template_f.read())
         # write to network module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.c'), 'w')
+        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.pyx'), 'w')
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
           signals=signals, 
-          cerebus=cerebus, 
-          line=line
+          out_signals= { x: signals[x] for x in (set(signals.keys()) & set(module_args['out'])) },
+          max_buf_size=100, # TODO, don't hardcode this
+          cerebus=False, 
+          line=False
         ))
         mod_out_f.close()
       
       # parse sink
       elif name in sink_names:
-        assert(module_language == 'C')
         print " - " + name + " (sink)"
         # load logger module template
         template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_SINK), 'r')
@@ -191,7 +198,7 @@ def parse(config):
         module_template = jinja2.Template(template_f.read())
         # write to logger module file
         mod_out_f = open(os.path.join(OUTPUT_DIR, 'logger.c'), 'w')
-
+ 
         module_depends_on = []
         source_depends_on = []
         for in_sig in module_args['in']:
@@ -206,8 +213,8 @@ def parse(config):
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
-          cerebus=cerebus, 
-          line=line,
+          cerebus=False, 
+          line=False,
           num_sigs=num_sem_sigs,
           s_dep_on=source_depends_on,
           m_dep_on=module_depends_on,
@@ -322,7 +329,10 @@ def parse(config):
   module_template = jinja2.Template(template_f.read())
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE), 'w')
   mod_out_f.write(module_template.render(
-    child_names=module_names
+    child_names=module_names,
+    logger_needed=(len(logged_signals)!=0),
+    source_names=source_names,
+    sink_names=sink_names
   ))
   mod_out_f.close()
 

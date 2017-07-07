@@ -4,24 +4,37 @@ CFLAGS = -O2 $(DEFAULTFLAGS)
 CFLAGSUNOPT = -O0 $(DEFAULTFLAGS)
 CFLAGS+ = -g -O2 $(DEFAULTFLAGS)
 CYFLAGS = -Os -I /usr/include/python2.7
-LDFLAGS = -levent -lhiredis -lrt -pthread -lsqlite3 -lasound
+LDFLAGS = -levent -lhiredis -lrt -pthread -lsqlite3 -lasound 
 LDTESTFLAGS = -lsqlite3 -pthread
-CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt
+CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt -lzmq
 
-all: timer network logger {% for c in child_names %}{{c}} {% endfor %}
+all: timer {% for so in source_names %}{{so}}{% endfor %} {%- for si in sink_names %}{{si}}{% endfor %} {{"logger" if logger_needed}} {% for c in child_names %}{{c}} {% endfor %}
 
 timer: timer.c utilityFunctions.c 
 	$(CC) $(CFLAGS) timer.c utilityFunctions.c -o timer $(LDFLAGS)
 
-network: network.c utilityFunctions.c networkUtilities.c
-	$(CC) $(CFLAGS) network.c utilityFunctions.c networkUtilities.c -o network $(LDFLAGS)
+{% for source in source_names -%}
+{{source}}:  {{source}}.pyx utilityFunctions.c
+	cython --embed -o {{source}}.c {{source}}.pyx
+	$(CC) $(CYFLAGS) {{source}}.c utilityFunctions.c -o {{source}} $(CYLDFLAGS)
+{%- endfor %}
 
+{% for sink in sink_names -%}
+{{sink}}:  {{sink}}.c utilityFunctions.c networkUtilities.c
+	$(CC) $(CFLAGS) {{sink}}.c utilityFunctions.c networkUtilities.c -o {{sink}} $(LDFLAGS)
+{%- endfor %}
+
+{% if logger_needed -%}
 logger: logger.c sqlHelpers.c shmHelpers.c networkUtilities.c utilityFunctions.c sqlite3async.c
 	$(CC) $(CFLAGS) logger.c sqlHelpers.c shmHelpers.c networkUtilities.c utilityFunctions.c sqlite3async.c -o logger $(LDFLAGS)
-{% for child in child_names %}
+{%- endif %}
+
+{% for child in child_names -%}
 {{child}}: {{child}}.pyx networkUtilities.c utilityFunctions.c
 	cython --embed -o {{child}}.c {{child}}.pyx
 	$(CC) $(CYFLAGS) {{child}}.c networkUtilities.c utilityFunctions.c -o {{child}} $(CYLDFLAGS)
-{% endfor %}
+{%- endfor %}
+
 clean:
 	rm -f timer network logger *.db {% for c in child_names %}{{c}} {{c}}.c {{c}}.h{% endfor %}
+
