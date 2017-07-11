@@ -1,0 +1,237 @@
+from libc.stdio cimport printf, stdout, fflush
+from libc.stdlib cimport exit
+from libc.stdint cimport uint8_t, uint16_t, uint32_t
+from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
+from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
+from posix.unistd cimport getppid, pause, close, getpid
+from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
+from posix.fcntl cimport O_RDWR
+from posix.types cimport pid_t
+from libc.errno cimport errno, EINTR
+from libc.string cimport memset
+
+import SharedArray as sa
+import numpy as np
+cimport numpy as np
+cimport cython
+import ctypes
+import portio
+{% if out_signal['args']['parser'] -%}
+import {{parser}}
+{%- endif %}
+
+{% set sig_type = out_signal['args']['type'] -%}
+{% if sig_type == 'parport' -%}
+{% elif sig_type == 'udp' -%}
+cdef extern from "<arpa/inet.h>":
+  uint16_t htons(uint16_t hostshort)
+  int inet_aton(const char *cp, in_addr *inp)
+
+cdef extern from "<netinet/in.h>":
+  enum: IPPROTO_UDP
+  ctypedef uint16_t in_port_t
+  ctypedef unsigned short sa_family_t
+  struct in_addr:
+    uint32_t s_addr
+  struct sockaddr_in:
+    sa_family_t sin_family
+    in_port_t sin_port
+    in_addr sin_addr
+    unsigned char sin_zero[8]
+
+cdef extern from "<sys/socket.h>":
+  enum: AF_INET
+  enum: SOCK_DGRAM
+  ctypedef uint32_t socklen_t
+  struct sockaddr:
+    unsigned char sa_len
+    unsigned char sa_family  
+    char  sa_data[14]
+  ssize_t recvfrom(int, void *restrict, size_t, int, sockaddr *restrict, socklen_t *restrict)
+  int bind(int, const sockaddr *, socklen_t)
+  int socket(int domain, int type, int protocol)
+  ssize_t sendto(int socket, const void *message, size_t length,
+       int flags, const sockaddr *dest_addr,
+       socklen_t dest_len);
+{% elif sig_type == 'zmq' -%}
+cdef extern from "zmq.h":
+  int zmq_close(void *s)
+  int zmq_ctx_destroy(void *context)
+  void *zmq_ctx_new()
+  void *zmq_socket(void *, int type)
+  int zmq_bind(void *s, const char *addr)
+  int zmq_recv(void *s, void *buf, size_t len, int flags)
+{% endif %}
+
+cdef extern from "semaphore.h":
+  enum: __SIZEOF_SEM_T
+  cdef union sem_union:
+    char __size[__SIZEOF_SEM_T]
+    long int __align
+  ctypedef sem_union sem_t
+  int sem_init(sem_t *, int, unsigned)
+  int sem_wait(sem_t *)
+  int sem_getvalue(sem_t *restrict, int *restrict)
+  int sem_post(sem_t *)
+
+cdef extern from "utilityFunctions.h":
+  void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
+  void die(char *errorStr)
+  void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags)
+  void set_sighandler(int signum, void *psh, sigset_t *block_mask)
+  void make_realtime()
+
+cdef extern from "constants.h":
+  enum: NUM_CHANNELS
+  enum: MAX_PATH_LEN
+  enum: NUM_CHILDREN
+  enum: PAGESIZE
+  enum: SMEM0_HEADER_LEN
+  cdef const char *SMEM0_PATHNAME
+  cdef const char *SMEMSIG_PATHNAME
+
+#include <stdatomic.h>
+
+cdef int numMS = 0
+cdef pid_t ppid
+cdef sigset_t exitMask
+cdef char pathName[MAX_PATH_LEN]
+
+{% if sig_type == 'udp' -%}
+cdef int s
+cdef sockaddr_in si_other
+cdef socklen_t slen=sizeof(si_other)
+cdef socklen_t recv_len
+{% elif sig_type == 'zmq' -%}
+cdef void *radio
+cdef void *context
+{%- endif %}
+
+cdef sem_t *pSignalSems
+cdef int sigalrm_recv = 0
+cdef uint8_t *pFinish
+cdef uint8_t *pmem
+
+cdef uint32_t *pSignalMem
+cdef uint32_t *pLocalSignalMem
+cdef uint32_t *sigPtr # TODO don't hardcode type
+
+in_sig = None
+
+cdef void handle_exit(int exitStatus):
+{%- if sig_type == 'udp' %}
+  close(s)
+{%- elif sig_type == 'zmq' %}
+  zmq_close(radio)
+  zmq_ctx_destroy(context)
+{%- endif %}
+  exit(exitStatus)
+
+cdef void exit_handler(int signum):
+  handle_exit(0)
+
+cdef void handle_alrm():
+  global sigalrm_recv, numMS
+  numMS += 1
+  # printf("sink\n")
+{%- for dep_on in s_dep_on %}
+  sem_wait(&pSignalSems[{{dep_on[1]}}])
+{%- if sig_type == 'udp' %}
+  if (sendto(s, sigPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
+    die("sendto() failed")
+{%- elif sig_type == 'parport' %}
+  portio.outb(sigPtr[0],0x{{out_signal['args']['addr']}})
+{%- endif %}
+{%- endfor %}
+
+{%- for dep_on in m_dep_on %}
+  sem_wait(&pSignalSems[{{dep_on[1]}}])
+  {% set sig = logged_signals[dep_on[0]] -%}
+  # TODO handle non-integer shapes
+  # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
+{%- endfor %}
+
+  pFinish[NUM_CHILDREN] = 0x0
+  sigalrm_recv -= 1
+
+cdef void alrm_handler(int signum):
+  global sigalrm_recv
+  sigalrm_recv += 1
+
+cdef void bus_handler(int signum):
+  printf("Bus Error\n")
+  handle_exit(1)
+
+cdef void segv_handler(int signum):
+  printf("Seg Fault\n")
+  handle_exit(1)
+
+cdef void usr2_handler(int signum):
+  pass
+
+# main
+sigfillset(&exitMask)
+init_utils(&handle_exit, &exitMask)
+
+ppid = getppid()
+
+set_sighandler(SIGINT, &exit_handler, &exitMask)
+set_sighandler(SIGALRM, &alrm_handler, &exitMask)
+set_sighandler(SIGBUS, &bus_handler, &exitMask)
+set_sighandler(SIGSEGV, &segv_handler, &exitMask)
+set_sighandler(SIGUSR2, &usr2_handler, NULL)
+
+# open and map shared parent memory
+open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
+pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
+
+open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
+pFinish = pmem + SMEM0_HEADER_LEN
+pFinish[NUM_CHILDREN] = 0x0
+
+open_shared_mem(<uint8_t **>&pSignalSems, SMEMSIG_PATHNAME, 1 
+    + ({{num_sigs}} * sizeof(sem_t) - 1), O_RDWR,  PROT_READ | PROT_WRITE)
+
+created_mem = sa.list()
+{% for sig,args in in_signals.iteritems() %}
+if any(['{{sig}}' == x[0] for x in created_mem]):
+  in_sig = sa.attach("shm://{{sig}}") # TODO, fix dtype stuff
+  sa.mlock(in_sig)
+else:
+  die("numpy signal not created\n")
+{% endfor %}
+sigPtr = <uint32_t *><long>in_sig.__array_interface__['data'][0] # TODO don't hardcode type
+
+{% if sig_type == 'udp' -%}
+# create a UDP socket
+s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+if (s == -1):
+  die("NETWORK ERROR: socket\n")
+# zero out the structure
+memset(<char *> &si_other, 0, sizeof(si_other))
+si_other.sin_family = AF_INET
+si_other.sin_port = htons(51004)
+if (inet_aton("{{out_signal['args']['addr']}}", &si_other.sin_addr)==0):
+  die("inet_aton() failed\n")
+{% elif sig_type == 'parport' -%}
+# make sure parport is writeable
+if (portio.ioperm(0x{{out_signal['args']['addr']}}, 1, 1)):
+  die("io permission denied\n")
+{% elif sig_type == 'zmq' -%}
+context = zmq_ctx_new()
+if (not context):
+  die("Could not create ZMQ context.\n")
+radio = zmq_socket(context, ZMQ_RADIO)
+if (not radio):
+  die("Could not create ZMQ socket.\n")
+rc = zmq_connect(radio, "udp://192.168.1.1:5555");
+assert (rc == 0)
+{%- endif %}
+
+make_realtime()
+
+kill(ppid,SIGUSR1)
+while(True):
+  if (sigalrm_recv):
+    handle_alrm()
+  pause()
