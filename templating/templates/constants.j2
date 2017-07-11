@@ -13,15 +13,18 @@
 * the first (CPU 0) is for the parent timer process itself, the second
 * is for Redis, the third is the network process (CPU 2), and the last is
 * for the logger process (CPU 3). So, this should be a minimum of 4.
+* MODULES CURRENTLY RUNNING ON CPUS 1 -> NUM_CORES-1. 
 */
 #define CPU_OFFSET 4
 /*
 * The processor number on which to run the networking process, which is receiving
-* packets from the Cerberus system.
+* packets from the Cerberus system. NETWORK CURRENTLY RUNNING  ON ALL MODULE CORES. 
+* (nothing special about network)
 */
 #define NETWORK_CPU 2
 /*
-* The processor number on which to run the data logging process
+* The processor number on which to run the data logging process. LOGGER CURRENTLY RUNNING 
+* ON ALL MODULE CORES. (nothing special about logger)
 */
 #define LOGGER_CPU 3
 /*
@@ -82,6 +85,12 @@
 * since it is simply spliced into SQL command without any error checking.
 */
 #define DATALOGGER_UNITS_TABLE_NAME "units_table"
+
+/*
+* Table name for NumPy SharedArray signals table.  Make sure this name complies 
+* with SQL syntax, since it is simply spliced into SQL command without any error checking.
+*/
+#define DATALOGGER_SIGNALS_TABLE_NAME "signals_table"
 
 /*
  * Maximum number of characters for a module name
@@ -182,8 +191,12 @@
 #define NUM_BYTES_FOR_SPIKE_FRAMES (2 * (2 * SAMPLES_PER_SPIKE + 4) * NUM_CHANNELS)
 
 #define NUM_BYTES_DIGITAL_RASTER (NUM_BYTES_DIGITAL_RASTER_PER_MS * 60 *1000 * RECORDED_HISTORY)
+
+// number of bytes needed for spike raster
+# define NUM_SPIKE_BYTES (NUM_BYTES_FOR_SPIKE_FRAMES + NUM_BYTES_DIGITAL_RASTER)
+
 //number of pages we need in a spike raster chunk
-#define NUM_SPIKE_PAGES (((NUM_BYTES_FOR_SPIKE_FRAMES + NUM_BYTES_DIGITAL_RASTER) % PAGESIZE) ? ((NUM_BYTES_FOR_SPIKE_FRAMES + NUM_BYTES_DIGITAL_RASTER) / PAGESIZE + 1) : ((NUM_BYTES_FOR_SPIKE_FRAMES + NUM_BYTES_DIGITAL_RASTER) / PAGESIZE))
+#define NUM_SPIKE_PAGES ((NUM_SPIKE_BYTES % PAGESIZE) ? (NUM_SPIKE_BYTES / PAGESIZE + 1) : (NUM_SPIKE_BYTES / PAGESIZE))
 
 // number of samples in a millisecond 
 #define NUM_SAMPLES_PER_MS (SAMPLING_RATE / 1000)

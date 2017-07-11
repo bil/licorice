@@ -1,6 +1,6 @@
 import argparse
 import yaml
-from template_funcs import parse, generate, export
+from template_funcs import *
 
 # do some argument parsing
 arg_parser = argparse.ArgumentParser(description='LiCoRICE config parser.')

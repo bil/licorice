@@ -15,8 +15,8 @@ TMP_OUTPUT_DIR='./.out'
 
 TEMPLATE_MODULE_C='module_c.j2'
 TEMPLATE_MODULE_PY='module_py.j2'
-TEMPLATE_LOGGER='logger.j2'
-TEMPLATE_NETWORK='network.j2'
+TEMPLATE_SINK='logger.j2'
+TEMPLATE_SOURCE='network.j2'
 TEMPLATE_MAKEFILE='Makefile.j2'
 TEMPLATE_TIMER='timer.j2'
 TEMPLATE_CONSTANTS='constants.j2'
@@ -78,8 +78,8 @@ def parse(config):
   # load yaml config
   signals = config['signals']
   modules = config['modules']
-  # set up output directory
 
+  # set up output directory
   if os.path.exists(OUTPUT_DIR):
     while True:
       sys.stdout.write("Ok to remove old output directory? ")
@@ -101,9 +101,6 @@ def parse(config):
 
   shutil.copytree(TEMPLATE_DIR, OUTPUT_DIR, ignore=shutil.ignore_patterns(('*.j2')))
 
-  # likely need to do something unique with these?
-  special_signals = ['logged_signals', 'log_sqlite']
-
   # process signals
   cerebus = False
   line = False
@@ -120,6 +117,14 @@ def parse(config):
   if line:
     print "- line"
 
+  external_signals = []
+  internal_signals = []
+  for signal_name, signal_args in signals.iteritems():
+    if signal_args.has_key('args'):
+      external_signals.append(signal_name)
+    else: 
+      internal_signals.append(signal_name)
+
   # process modules
   sem_location = 0
   sem_dict = {}
@@ -127,35 +132,48 @@ def parse(config):
 
   print
   print "Modules:"
-  child_names = []
+  module_names = []
+  source_names = []
+  sink_names = []
+  source_outputs = {}
   dependency_graph = {}
   for module_name, module_args in modules.iteritems():
-    if module_args['type'] == 'python':
-      child_names.append(module_name)
+    if all(map(lambda x: x in external_signals, module_args['in'])):
+      source_names.append(module_name)
+      for sig in module_args['out']:
+        source_outputs[sig] = 0
+    if all(map(lambda x: x in external_signals, module_args['out'])):
+      sink_names.append(module_name)
+    if all(map(lambda x: x in internal_signals, module_args['in'] + module_args['out'])):
+      module_names.append(module_name)
 
     # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
     for sig_name in module_args['in']:
-      if not signals[sig_name].has_key('special'):
-        if not sem_dict.has_key(sig_name):
-          sem_dict[sig_name] = sem_location
-          sem_location += 1
+      if not sem_dict.has_key(sig_name):
+        sem_dict[sig_name] = sem_location
+        sem_location += 1
     num_sem_sigs = len(sem_dict)
 
-  for module_name, module_args in modules.iteritems():
+  all_names = source_names + sink_names + module_names
+  assert (len(all_names) == len(set(all_names)))
+  
+  for name in all_names:
       # get module info
-      module_type = module_args['type'] # type must exist
+      module_args = modules[name]
+      module_language = module_args['language'] # language must be specified
 
-      # parse network special module type
-      if module_name == "network":
-        print " - network (special)"
+      # parse source
+      if name in source_names:
+        assert(module_language == 'C')
+        print " - " + name + " (source)"
         # load network module template
-        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_NETWORK), 'r')
+        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_SOURCE), 'r')
         # setup network module template
         module_template = jinja2.Template(template_f.read())
         # write to network module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, 'network.c'), 'w')
+        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.c'), 'w')
         mod_out_f.write(module_template.render(
-          name=module_name, 
+          name=name, 
           config=config, 
           signals=signals, 
           cerebus=cerebus, 
@@ -163,31 +181,49 @@ def parse(config):
         ))
         mod_out_f.close()
       
-      # parse logger special module type
-      elif module_name == "logger":
-        print " - logger (special)"
+      # parse sink
+      elif name in sink_names:
+        assert(module_language == 'C')
+        print " - " + name + " (sink)"
         # load logger module template
-        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_LOGGER), 'r')
+        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_SINK), 'r')
         # setup logger module template
         module_template = jinja2.Template(template_f.read())
         # write to logger module file
         mod_out_f = open(os.path.join(OUTPUT_DIR, 'logger.c'), 'w')
+
+        module_depends_on = []
+        source_depends_on = []
+        for in_sig in module_args['in']:
+          if in_sig in source_outputs.keys():
+            #store the signal name in 0 and location of sem in 1
+            source_outputs[in_sig] += 1
+            source_depends_on.append((in_sig, sem_dict[in_sig]))
+          else:
+            module_depends_on.append((in_sig, sem_dict[in_sig]))  
+        logged_signals = { sig_name: signals[sig_name] for sig_name in module_args['in'] }
+        print logged_signals 
         mod_out_f.write(module_template.render(
-          name=module_name, 
+          name=name, 
           config=config, 
           cerebus=cerebus, 
-          line=line
+          line=line,
+          num_sigs=num_sem_sigs,
+          s_dep_on=source_depends_on,
+          m_dep_on=module_depends_on,
+          logged_signals=logged_signals,
+          num_logged_signals=len(logged_signals)
         ))
         mod_out_f.close()
 
       # parse cython module type
-      elif module_type == 'python':
-        print " - " + module_name + " (py)"
+      elif module_language == 'python':
+        print " - " + name + " (py)"
         # load Python module template 
         template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_MODULE_PY), 'r')
 
         # open user Python module code
-        mod_user_f = open(os.path.join(MODULE_DIR, module_name + '.py'), 'r')
+        mod_user_f = open(os.path.join(MODULE_DIR, name + '.py'), 'r')
 
         # setup module template
         module_template = jinja2.Template(template_f.read())
@@ -197,29 +233,36 @@ def parse(config):
         # prepare module parameters
         dependencies = {}
         for out_sig in module_args['out']:
-          for name in modules:
-            mod = modules[name]
+          for tmp_name in all_names:
+            mod = modules[tmp_name]
             for in_sig in mod['in']:
               if (in_sig == out_sig):
-                signal = signals[in_sig]
-                child_index = child_names.index(name)
-                parent_index = child_names.index(module_name)
+                child_index = all_names.index(tmp_name)
+                parent_index = all_names.index(name)
                 if dependencies.has_key(in_sig):
                   dependencies[in_sig] += 1
-                  dependency_graph[child_index].append(parent_index)
                 else:
-                  dependency_graph[child_index] = {parent_index}
                   dependencies[in_sig] = 1
+                if dependency_graph.has_key(child_index):
+                  if all_names[child_index] not in sink_names: # take this out to include sinks in dependency graph
+                    dg_cidx = module_names.index(all_names[child_index])
+                    dg_pidx = module_names.index(name)
+                    dependency_graph[dg_cidx] = dependency_graph[dg_cidx].union({dg_pidx})
+                else: 
+                  if all_names[child_index] not in sink_names:
+                    dg_cidx = module_names.index(all_names[child_index])
+                    dg_pidx = module_names.index(name)
+                    dependency_graph[dg_cidx] = {dg_pidx}
         for dependency in dependencies:
           #store num dependencies in 0 and location of sem in 1
           dependencies[dependency] = (dependencies[dependency], sem_dict[dependency])
 
-
         depends_on = []
         for in_sig in module_args['in']:
-          if not signals[in_sig].has_key('special'):
-            #store the signal name in 0 and location of sem in 1
-            depends_on.append((in_sig, sem_dict[in_sig]))
+          if in_sig in source_outputs.keys():
+            source_outputs[in_sig] += 1
+          #store the signal name in 0 and location of sem in 1
+          depends_on.append((in_sig, sem_dict[in_sig]))
 
         special_cerebus = []
         if cerebus:
@@ -234,11 +277,10 @@ def parse(config):
         special_line = []
         if line:
           pass # TODO must put in methods for getting line data
-
         # write to Python module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, module_name + '.pyx'), 'w')
+        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.pyx'), 'w')
         mod_out_f.write(module_template.render(
-          name=module_name, 
+          name=name, 
           args=module_args,
           config=config, 
           user_code=mod_user_code, 
@@ -252,22 +294,24 @@ def parse(config):
         mod_out_f.close()
 
       # handle C module type
-      elif module_type == 'C':
-        print " - " + module_name + "(C)"
+      elif module_language == 'C':
+        raise NotImplementedError()
+        print " - " + name + "(C)"
+
         # load C module template 
         template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_MODULE_C), 'r')
 
         # open user C module code
-        mod_user_f = open(os.path.join(MODULE_DIR, module_name + '.c'), 'r')
+        mod_user_f = open(os.path.join(MODULE_DIR, name + '.c'), 'r')
 
         # setup module template
         module_template = jinja2.Template(template_f.read())
         mod_user_code = mod_user_f.read()
 
         # write to to C module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, module_name + '.c'), 'w')
+        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.c'), 'w')
         mod_out_f.write(module_template.render(
-          name=module_name, 
+          name=name, 
           config=config, 
           user_code=mod_user_code
         ))
@@ -278,7 +322,7 @@ def parse(config):
   module_template = jinja2.Template(template_f.read())
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE), 'w')
   mod_out_f.write(module_template.render(
-    child_names=child_names
+    child_names=module_names
   ))
   mod_out_f.close()
 
@@ -289,16 +333,22 @@ def parse(config):
   topo_children = map(list, list(toposort(dependency_graph)))
   topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
-  num_children = len(child_names)
+  num_children = len(module_names)
   assert(num_cores < MAX_NUM_CORES)
+  source_sems = map(lambda x: [sem_dict[x], source_outputs[x]] , source_outputs.keys())
   mod_out_f.write(module_template.render(
     topo_order=topo_children,
     topo_lens=topo_lens,
     topo_height=len(topo_children),
-    child_names=child_names, 
-    num_children=len(child_names),
+    child_names=module_names, 
     num_cores=num_cores,
-    num_sigs=num_sem_sigs
+    num_children=num_children,
+    source_names=source_names,
+    num_sources=len(source_names),
+    sink_names=sink_names,
+    num_sinks=len(sink_names),
+    num_sigs=num_sem_sigs,
+    source_sems=source_sems
   ))
   mod_out_f.close()
 
