@@ -16,8 +16,10 @@ TMP_OUTPUT_DIR='./.out'
 TEMPLATE_MODULE_C='module_c.j2'
 TEMPLATE_MODULE_PY='module_py.j2'
 TEMPLATE_LOGGER='logger.j2'
-TEMPLATE_SINK='sink.j2'
-TEMPLATE_SOURCE='source.j2'
+TEMPLATE_SINK_PY='sink.pyx.j2'
+TEMPLATE_SINK_C='sink.c.j2'
+TEMPLATE_SOURCE_PY='source.pyx.j2'
+TEMPLATE_SOURCE_C='source.c.j2'
 TEMPLATE_MAKEFILE='Makefile.j2'
 TEMPLATE_TIMER='timer.j2'
 TEMPLATE_CONSTANTS='constants.j2'
@@ -78,6 +80,7 @@ def parse(config):
   print "Parsing"
   # load yaml config
   signals = config['signals']
+  sigkeys = set(signals.keys())
   modules = config['modules']
 
   # set up output directory
@@ -115,8 +118,6 @@ def parse(config):
   num_sem_sigs = 0
   logged_signals = {}
 
-  print
-  print "Modules:"
   module_names = []
   source_names = []
   sink_names = []
@@ -147,21 +148,18 @@ def parse(config):
         sem_location += 1
     num_sem_sigs = len(sem_dict)
 
-  print source_names
-  print sink_names
-  print module_names
-
   # process input signals
-  print 
   print "Inputs: "
   for sig_name, sig_type in in_signals.iteritems():
-    print "-" + sig_name + ": " + sig_type 
+    print " - " + sig_name + ": " + sig_type 
   print "Outputs: "
   for sig_name, sig_type in out_signals.iteritems():
-    print "-" + sig_name + ": " + sig_type 
+    print " - " + sig_name + ": " + sig_type 
 
   all_names = source_names + sink_names + module_names
   assert (len(all_names) == len(set(all_names)))
+
+  print "Modules: "
 
   for name in all_names:
       # get module info
@@ -170,22 +168,31 @@ def parse(config):
 
       # parse source
       if name in source_names:
-        assert(module_language == 'C')
         print " - " + name + " (source)"
         # load network module template
-        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_SOURCE), 'r')
+        if module_language == 'python':
+          template = TEMPLATE_SOURCE_PY
+          extension = '.pyx'
+        else:
+          template = TEMPLATE_SOURCE_C
+          extension = '.c'
+        template_f = open(os.path.join(TEMPLATE_DIR, template), 'r')
         # setup network module template
         module_template = jinja2.Template(template_f.read())
         # write to network module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.pyx'), 'w')
+        mod_out_f = open(os.path.join(OUTPUT_DIR, name + extension), 'w')
+        so_in_sig = { x: signals[x] for x in (sigkeys & set(module_args['in'])) }
+        assert len(so_in_sig) == 1
+        so_in_sig = so_in_sig[so_in_sig.keys()[0]]
+        if not so_in_sig['parser']:
+          assert len(out_signals) == 1
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
           signals=signals, 
-          out_signals= { x: signals[x] for x in (set(signals.keys()) & set(module_args['out'])) },
-          max_buf_size=100, # TODO, don't hardcode this
-          cerebus=False, 
-          line=False
+          out_signals={x: signals[x] for x in (sigkeys & set(module_args['out']))},
+          max_buf_size=3750, # TODO, don't hardcode this
+          in_signal=so_in_sig
         ))
         mod_out_f.close()
       
@@ -193,11 +200,17 @@ def parse(config):
       elif name in sink_names:
         print " - " + name + " (sink)"
         # load logger module template
-        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_SINK), 'r')
+        if module_language == 'python':
+          template = TEMPLATE_SINK_PY
+          extension = '.pyx'
+        else:
+          template = TEMPLATE_SINK_C
+          extension = '.c'
+        template_f = open(os.path.join(TEMPLATE_DIR, template), 'r')
         # setup logger module template
         module_template = jinja2.Template(template_f.read())
         # write to logger module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, 'logger.c'), 'w')
+        mod_out_f = open(os.path.join(OUTPUT_DIR, name + extension), 'w')
  
         module_depends_on = []
         source_depends_on = []
@@ -208,8 +221,13 @@ def parse(config):
             source_depends_on.append((in_sig, sem_dict[in_sig]))
           else:
             module_depends_on.append((in_sig, sem_dict[in_sig]))  
-        logged_signals = { sig_name: signals[sig_name] for sig_name in module_args['in'] }
-        print logged_signals 
+        if (name == 'logger'): # TODO make this more generic
+          logged_signals = { sig_name: signals[sig_name] for sig_name in module_args['in'] }
+        si_out_sig = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
+        assert len(si_out_sig) == 1
+        si_out_sig = si_out_sig[si_out_sig.keys()[0]]
+        if not si_out_sig['parser']:
+          assert len(out_signals) == 1
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
@@ -219,7 +237,9 @@ def parse(config):
           s_dep_on=source_depends_on,
           m_dep_on=module_depends_on,
           logged_signals=logged_signals,
-          num_logged_signals=len(logged_signals)
+          num_logged_signals=len(logged_signals),
+          in_signals={x: signals[x] for x in (sigkeys & set(module_args['in']))},
+          out_signal=si_out_sig
         ))
         mod_out_f.close()
 
@@ -293,8 +313,8 @@ def parse(config):
           user_code=mod_user_code, 
           dependencies=dependencies, 
           depends_on=depends_on,
-          out_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['out'])) },
-          in_signals = { x: signals[x] for x in (set(signals.keys()) & set(module_args['in'])) },
+          out_signals = { x: signals[x] for x in (sigkeys & set(module_args['out'])) },
+          in_signals = { x: signals[x] for x in (sigkeys & set(module_args['in'])) },
           special_signals=special_cerebus + special_line,
           num_sigs = num_sem_sigs
         ))
@@ -332,7 +352,8 @@ def parse(config):
     child_names=module_names,
     logger_needed=(len(logged_signals)!=0),
     source_names=source_names,
-    sink_names=sink_names
+    sink_names=sink_names,
+    source_types=map(lambda x: modules[x]['language'], source_names)
   ))
   mod_out_f.close()
 
@@ -346,6 +367,7 @@ def parse(config):
   num_children = len(module_names)
   assert(num_cores < MAX_NUM_CORES)
   source_sems = map(lambda x: [sem_dict[x], source_outputs[x]] , source_outputs.keys())
+  parport_tick_addr = config['config']['parport_tick_addr'] if config['config'].has_key('parport_tick_addr') else None
   mod_out_f.write(module_template.render(
     topo_order=topo_children,
     topo_lens=topo_lens,
@@ -358,7 +380,9 @@ def parse(config):
     sink_names=sink_names,
     num_sinks=len(sink_names),
     num_sigs=num_sem_sigs,
-    source_sems=source_sems
+    source_sems=source_sems,
+    internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
+    parport_tick_addr=parport_tick_addr
   ))
   mod_out_f.close()
 
@@ -370,6 +394,8 @@ def parse(config):
     num_children=num_children
   ))
   mod_out_f.close()
+
+  print
 
 def export():
   os.mkdir(EXPORT_DIR)

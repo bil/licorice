@@ -21,22 +21,29 @@
 #include "utilityFunctions.h"
 
 #define CHILD_HEIGHT {{topo_height}}
+#define NUM_SOURCES {{source_names|length}}
+#define NUM_SINKS {{sink_names|length}}
 
 // process IDs for each child numbered according to the index of the child's name
 // in childProcNames
 static pid_t ch_pids[NUM_CHILDREN];
+{%- if child_names|length != 0 %}
 static char childProcnames[NUM_CHILDREN][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in child_names[:-1] %}"{{n}}", {% endfor %}"{{child_names[-1]}}"{{'}'}};
+{%- endif %}
 static int childLens[CHILD_HEIGHT] = {{'{'}}{% for l in topo_lens[:-1] %}{{l}}, {% endfor %}{{topo_lens[-1]}}{{'}'}};
 static int childTopoOrder[CHILD_HEIGHT][{{num_cores}}];
 // network pid
-static pid_t n_pid;
+static pid_t so_pids[NUM_SOURCES];
 // logger pid
-static pid_t l_pid;
-//
+static pid_t si_pids[NUM_SINKS];
+{% if parport_tick_addr -%}
 static unsigned char outVal = 0;
+{%- endif %}
 // pointer to start of shared memory containing group timestamp and waveform data
 static uint8_t *pmem;
 static uint8_t *pFinish;
+static uint32_t *pSignalMem;
+static uint32_t *pCurSignalMem;
 sigset_t exitMask;
 static sigset_t alrmMask;
 static unsigned long alrmNum = 0;
@@ -52,6 +59,7 @@ static int sigexit_recv;
 static int sigchld_recv;
 
 static int num_cores;
+static int ex_i, al_i, de_i;
 
 static struct itimerval timer;
 
@@ -64,19 +72,23 @@ void handle_exit(int exitStatus) {
   setitimer(ITIMER_REAL, &timer, NULL);
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
-  for (int i = 0; i < NUM_CHILDREN; i++) {
-    kill(ch_pids[i], SIGINT);
-    while (waitpid(ch_pids[i], 0, WNOHANG) > 0);
+  for (ex_i = 0; ex_i < NUM_CHILDREN; ex_i++) {
+    kill(ch_pids[ex_i], SIGINT);
+    while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
   }
   // send SIGINT to logger process and wait
-  if (l_pid != -1) {
-    kill(l_pid, SIGINT);
-    while (waitpid(l_pid, 0, WNOHANG) > 0);
+  for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
+    if (si_pids[ex_i] != -1) {
+      kill(si_pids[ex_i], SIGINT);
+      while (waitpid(si_pids[ex_i], 0, WNOHANG) > 0);
+    }
   }
   // send SIGINT to network process and wait
-  if (n_pid != -1) {
-    kill(n_pid, SIGINT);
-    while (waitpid(n_pid, 0, WNOHANG) > 0);
+  for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
+    if (so_pids[ex_i] != -1) {
+      kill(so_pids[ex_i], SIGINT);
+      while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
+    }
   }
   printf("Unmapping shared memory...\n");
   printf("%lu SIGALRMs sent\n", alrmNum);
@@ -97,26 +109,31 @@ void set_sched_prior(int priority) {
 }
 
 static void check_children() {
+  // printf("ms start\n");
   if (sigalrm_recv > 1)
     die("Timer missed a tick.");
+{% if parport_tick_addr -%}
   // flip bits and output to parallel port
   outVal = ~outVal;
-  outb(outVal,PARA_PORT_BASE_ADDR);
+  outb(outVal,0x{{parport_tick_addr}});
+{%- endif %}
 
   // increment SIGALRM counter
   alrmNum++;
 
   // only trigger network process on first iterations
   if (alrmNum <= LATENCY) {
-    kill(n_pid, SIGALRM);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
+      kill(so_pids[al_i], SIGALRM);
+    }
   }
   else { // normal behavior on subsequent iterations
-    // check if children have finished execution in allotted time (could just check last round, but need to properly figure out topo stuff again)
-    for (int i = 0; i < childLens[CHILD_HEIGHT-1]; i++) {
-      int chNum = childTopoOrder[CHILD_HEIGHT-1][i];
+    // check if children have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
+    for (al_i = 0; al_i < childLens[CHILD_HEIGHT-1]; al_i++) {
+      int chNum = childTopoOrder[CHILD_HEIGHT-1][al_i];
       if (pFinish[chNum]) {
         usleep(5000);
-        // printf("i:%d pFinish[%d]: %d\n", i, i, pFinish[i]);
+        // printf("al_i:%d pFinish[%d]: %d\n", al_i, al_i, pFinish[al_i]);
         die("Child timing violation.\n");
       } 
       pFinish[chNum] = 0xff;
@@ -136,15 +153,23 @@ static void check_children() {
     atomic_thread_fence(memory_order_seq_cst);
     *pMSStart = *pMSEnd;
     *pMSEnd = *pDataEnd;
+    // TODO make this generic for N signals
+    pCurSignalMem = pSignalMem + 0;
+    *(pCurSignalMem + 0) = *(pCurSignalMem + 1);
+    *(pCurSignalMem + 1) = *(pCurSignalMem + 2);
     atomic_thread_fence(memory_order_release);
     // trigger network process
-    kill(n_pid, SIGALRM);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
+      kill(so_pids[al_i], SIGALRM);
+    }
 
     // trigger first round of child processes. block if network is updating spike wave data
     sem_wait(pSem);
-    kill(l_pid, SIGALRM);
+    for (al_i = 0; al_i < NUM_SINKS; al_i++) {
+      kill(si_pids[al_i], SIGALRM);
+    }
 {%-for sem_pair in source_sems %}
-  for (int i = 0; i < {{sem_pair[1]}}; i++) {
+  for (al_i = 0; al_i < {{sem_pair[1]}}; al_i++) {
     sem_post(&pSignalSems[{{sem_pair[0]}}]);
   }
 {%-endfor%}
@@ -174,19 +199,21 @@ void dead_child() {
   --sigchld_recv;
   int saved_errno = errno;
   int dead_pid;
-  while ((dead_pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0);
+  while ((dead_pid = waitpid((pid_t)(-1), 0, WNOHANG)) == 0);
   printf("dead pid: %d \n", dead_pid);
-  if (l_pid == dead_pid) {
-    l_pid = -1;
+  for (de_i = 0; de_i < NUM_SINKS; de_i++) {   
+    if (si_pids[de_i] == dead_pid) {
+      si_pids[de_i] = -1;
+    }
   }
-  else if (n_pid == dead_pid){
-    n_pid = -1;
+  for (de_i = 0; de_i < NUM_SINKS; de_i++) {   
+    if (so_pids[de_i] == dead_pid) {
+      so_pids[de_i] = -1;
+    }
   }
-  else {
-    for (int i = 0; i < NUM_CHILDREN; i++) {
-      if (ch_pids[i] == dead_pid) {
-        ch_pids[i] = -1;
-      }
+  for (de_i = 0; de_i < NUM_CHILDREN; de_i++) {
+    if (ch_pids[de_i] == dead_pid) {
+      ch_pids[de_i] = -1;
     }
   }
   errno = saved_errno;
@@ -203,19 +230,21 @@ void stack_prefault() {
 }
 
 int main(int argc, char* argv[]) {
-  // initialize utilityFunctions
-  init_utils(&handle_exit);
-
-  // make sure parport is writeable
-  if (ioperm(PARA_PORT_BASE_ADDR, 1, 1)) {
-    die("io permission denied\n");
-  }
-
   // set signal masks
   sigemptyset(&exitMask);
   sigaddset(&exitMask, SIGALRM);  
   sigfillset(&alrmMask);
-  sigdelset(&alrmMask, SIGINT);
+  // sigdelset(&alrmMask, SIGINT);
+  // initialize utilityFunctions
+  init_utils(&handle_exit, &exitMask);
+
+{%- if parport_tick_addr %}
+
+  // make sure parport is writeable
+  if (ioperm(0x{{parport_tick_addr}}, 1, 1)) {
+    die("io permission denied\n");
+  }
+{%- endif %}
 
   // set signal handlers
   set_sighandler(SIGINT, &exit_handler, &exitMask);
@@ -227,6 +256,9 @@ int main(int argc, char* argv[]) {
 
   // create shared memory and map it
   printf("Mapping memory...\n");
+
+  open_shared_mem((uint8_t **)&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
+
   open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
   // set pmem header variables
   pSem = (sem_t*)pmem;
@@ -241,7 +273,8 @@ int main(int argc, char* argv[]) {
 
   sem_t *curSem = pSignalSems;
   //initialize signal passing semaphores
-  for (int i = 0; i < {{num_sigs}}; i++, curSem++) {
+  int i;
+  for (i = 0; i < {{num_sigs}}; i++, curSem++) {
     sem_init(curSem, true, 0);
   }
   printf("Memory mapped.\nForking children...\n");
@@ -257,11 +290,13 @@ int main(int argc, char* argv[]) {
   // set priority
   set_sched_prior(PRIORITY);
 
+
+{% for name in source_names -%} // TODO write this loop in C
   // fork and exec network process
-  if ((n_pid = fork()) == -1) {
+  if ((so_pids[{{loop.index0}}] = fork()) == -1) {
     die("fork failed \n");
   }
-  if (n_pid == 0) { // only runs for network process
+  if (so_pids[{{loop.index0}}] == 0) { // only runs for network process
     cpu_set_t mask;
     CPU_ZERO(&mask);
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
@@ -271,7 +306,7 @@ int main(int argc, char* argv[]) {
     sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY);
-    char* argv[2] = {NETWORK_PROCNAME, NULL};
+    char* argv[2] = {"./{{name}}", NULL};
     
     // execute network process
     // signal handlers and mmap are not preserved on exec
@@ -281,17 +316,19 @@ int main(int argc, char* argv[]) {
     //in case execvp fails
   }
   pause();
-  printf("Network ready.\n");
+{%- endfor %}
+  printf("Sources ready.\n");
+  printf("source pid: %d\n", so_pids[0]);
 
+{% if child_names|length != 0 -%}
   // fork and exec child processes
 {% for i in range(0, topo_height) -%}
 {% for j in range(0, topo_lens[i]) -%}
   childTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
-{% endfor %}
-{%- endfor -%}
-
-
-  for (int i = 0; i < CHILD_HEIGHT; i++) {
+{%- endfor %}
+{%- endfor %}
+  
+  for (i = 0; i < CHILD_HEIGHT; i++) {
     for (int j = 0; j < childLens[i]; j++) {
       int childNum = childTopoOrder[i][j];
       printf("%d\n", childNum);
@@ -319,16 +356,17 @@ int main(int argc, char* argv[]) {
         //in case execvp fails
       }
       pause();
-      printf("Child created.\n");
     }
   }
-  printf("Child(ren) created.\n");
+  printf("Internal modules ready.\n");
+{%- endif %}
 
+{% for name in sink_names -%}  // TODO write this loop in C
   // fork and exec data logger process
-  if ((l_pid = fork()) == -1) {
+  if ((si_pids[{{loop.index0}}] = fork()) == -1) {
     die("fork failed \n");
   }
-  if (l_pid == 0) { // only runs for logger process
+  if (si_pids[{{loop.index0}}] == 0) { // only runs for logger process
     cpu_set_t mask;
     CPU_ZERO(&mask);
     // for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
@@ -338,7 +376,7 @@ int main(int argc, char* argv[]) {
     sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY);
-    char* argv[2] = {LOGGER_PROCNAME, NULL};
+    char* argv[2] = {"./{{name}}", NULL};
     
     // execute network process
     // signal handlers and mmap are not preserved on exec
@@ -348,11 +386,16 @@ int main(int argc, char* argv[]) {
     //in case execvp fails
   }
   pause();
+{%- endfor %}
+  printf("Sinks ready.\n");
+  printf("sink pid: %d\n", si_pids[0]);
 
   make_realtime();
 
-  kill(n_pid, SIGUSR2);
-  pause();
+  for (i = 0; i < NUM_SOURCES; i++) { 
+    kill(so_pids[i], SIGUSR2);
+  }
+  pause(); // TODO fix pause here to wait for all network processes
   printf("Network process ready.\n");
   // set up timer
   printf("Setting up timer...\n");
