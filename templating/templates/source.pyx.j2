@@ -10,6 +10,7 @@ from libc.errno cimport errno, EINTR
 from posix.fcntl cimport O_RDWR
 from libc.string cimport memset
 from posix.ioctl cimport ioctl
+from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 
 import SharedArray as sa
 import numpy as np
@@ -53,7 +54,7 @@ cdef extern from "<sys/socket.h>":
   int socket(int domain, int type, int protocol)
 
 cdef extern from "sourceUtils.h":
-  in_addr get_ip (char* interface_name);
+  in_addr get_ip (char* interface_name)
 {% elif sig_type == 'zmq' -%}
 cdef extern from "zmq.h":
   int zmq_close(void *s)
@@ -123,7 +124,8 @@ cdef socklen_t recv_len = 1
 
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
-cdef sem_t *pSem;
+cdef sem_t *pSem
+cdef timespec timer, timer2
 
 {% if in_signal['args']['parser'] -%}
 out_sigs = []
@@ -164,6 +166,9 @@ cdef void segv_handler(int signum):
 
 cdef void alrm_handler(int signum):
   global numMS, parentSetup, readParport
+  clock_gettime(CLOCK_MONOTONIC_RAW, &timer2)
+  (<unsigned long *>pSignalMem)[102] = timer2.tv_sec
+  (<long *>pSignalMem)[103] = timer2.tv_nsec
   if (parentSetup):
     parentSetup = False
   numMS += 1
@@ -189,7 +194,7 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
 pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
 
-open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE);
+open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE)
 
 created_mem = sa.list()
 {% for sig,args in out_signals.iteritems() %}
@@ -258,7 +263,10 @@ while(True):
   # recv_len always 1 for parport
   if (readParport):
     readParport = False
+    clock_gettime(CLOCK_MONOTONIC_RAW, &timer)
     inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
+    (<unsigned long *>pSignalMem)[100] = timer.tv_sec
+    (<long *>pSignalMem)[101] = timer.tv_nsec
     # printf("network recv: %u\n", inVal)
     sigCurPtr[0] = inVal
   else:
