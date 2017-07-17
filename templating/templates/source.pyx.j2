@@ -22,6 +22,8 @@ import {{parser}}
 
 {% set sig_type = in_signal['args']['type'] -%}
 {% if sig_type == 'parport' -%}
+cdef extern from "<sys/socket.h>":
+  ctypedef uint32_t socklen_t
 {% elif sig_type == 'udp' -%}
 cdef extern from "<arpa/inet.h>":
   uint16_t htons(uint16_t hostshort)
@@ -62,6 +64,17 @@ cdef extern from "zmq.h":
   int zmq_recv(void *s, void *buf, size_t len, int flags)
 {% endif %}
 
+cdef extern from "semaphore.h":
+  enum: __SIZEOF_SEM_T
+  cdef union sem_union:
+    char __size[__SIZEOF_SEM_T]
+    long int __align
+  ctypedef sem_union sem_t
+  int sem_init(sem_t *, int, unsigned)
+  int sem_wait(sem_t *)
+  int sem_getvalue(sem_t *restrict, int *restrict)
+  int sem_post(sem_t *)
+
 cdef extern from "utilityFunctions.h":
   void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
   void die(char *errorStr)
@@ -74,6 +87,7 @@ cdef extern from "constants.h":
   enum: MAX_PATH_LEN
   enum: PAGESIZE
   enum: LATENCY
+  const char *SMEM0_PATHNAME
 
 #include <stdatomic.h>
 
@@ -84,11 +98,14 @@ cdef char pathName[MAX_PATH_LEN]
 cdef char buf[{{max_buf_size}}]
 {%- endif %}
 cdef char *outbuf
-cdef int buf_offset = 0
 cdef int parse_idx
-cdef int out_sig_size
+cdef uint32_t out_sig_num_samples
 {%- if sig_type == 'udp' or sig_type == 'zmq' %}
 cdef int num_packets = 0
+{%- endif %}
+{% if sig_type == 'parport' -%}
+cdef unsigned char inVal
+readParport = False
 {%- endif %}
 cdef int64_t numMS= -1 * LATENCY
 parentSetup = True
@@ -98,25 +115,30 @@ cdef int s
 cdef sockaddr_in si_me, si_other
 cdef socklen_t slen = sizeof(si_other) 
 cdef in_addr interface_ip
-cdef socklen_t recv_len
 {% elif sig_type == 'zmq' -%}
 cdef void *dish
 cdef void *context
-cdef socklen_t recv_len
 {%- endif %}
+cdef socklen_t recv_len = 1
 
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
+cdef sem_t *pSem;
 
 {% if in_signal['args']['parser'] -%}
 out_sigs = []
 {% else -%}
-cdef uint32_t *sigPtr
+cdef {{in_signal['schema']['data']['dtype']}}_t *sigStrtPtr
+cdef {{in_signal['schema']['data']['dtype']}}_t *sigEndPtr
+cdef {{in_signal['schema']['data']['dtype']}}_t *sigCurPtr
+cdef uint32_t max_num_samples_in_ms
 {%- endif %}
 
 cdef void handle_exit(int exitStatus):
+  created_mem = sa.list()
 {%- for sig,args in out_signals.iteritems() %}
-  sa.delete("shm://{{sig}}")
+  if any(['{{sig}}' == x[0] for x in created_mem]):
+    sa.delete("shm://{{sig}}")
 {%- endfor %}
 {%- if sig_type == 'udp' %}
   close(s)
@@ -141,10 +163,13 @@ cdef void segv_handler(int signum):
   handle_exit(1)
 
 cdef void alrm_handler(int signum):
-  global numMS, parentSetup
+  global numMS, parentSetup, readParport
   if (parentSetup):
     parentSetup = False
   numMS += 1
+{%- if sig_type == 'parport' %}
+  readParport = True
+{%- endif %}
 
 cdef void usr2_handler(int signum):
   pass
@@ -164,18 +189,24 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
 pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
 
+open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE);
+
 created_mem = sa.list()
 {% for sig,args in out_signals.iteritems() %}
 if any(['{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
   die("numpy signal already created\n")
 else:
-  out_sig_size = {{args['shape']}} * {{args['history']}}
+  out_sig_num_samples = {{args['shape']}} * {{args['history']}}
 {% if in_signal['args']['parser'] -%}
-  out_sigs.append = [sa.create("shm://{{sig}}", out_sig_size, dtype=np.{{args['dtype']}}), out_sig_size] # TODO, fix dtype stuff
+  out_sigs.append = [sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}), out_sig_num_samples] # TODO, fix dtype stuff
   sa.mlock(out_sig)
-{% else -%}
-  sigPtr = <uint32_t *><long>sa.create("shm://{{sig}}", out_sig_size, dtype=np.{{args['dtype']}}).__array_interface__['data'][0] # TODO don't hardcode type
+{%- else %}
+  tmp_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}})
+  sigStrtPtr = <{{in_signal['schema']['data']['dtype']}}_t *><long>tmp_sig.__array_interface__['data'][0] # TODO don't hardcode type
+  sigCurPtr = sigStrtPtr
+  sigEndPtr = sigStrtPtr + out_sig_num_samples
+  max_num_samples_in_ms = {{args['shape']}}
 {% endif %}
 {% endfor %}
 
@@ -217,30 +248,42 @@ kill(ppid, SIGUSR2)
 
 while(True):
 {%- if sig_type == 'udp' %}
-  recv_len = recvfrom(s, sigPtr, {{max_buf_size}}, 0, <sockaddr *> &si_other, &slen)
-  num_packets += 1
-{%- elif sig_type == 'parport' %}
-  data = portio.inb(0x{{in_signal['args']['addr']}})
-{%- elif sig_type == 'zmq' %}
-  recv_len = zmq_recv(dish, buf, {{max_buf_size}}, 0)
-  num_packets += 1
-{%- endif %}
-  if (parentSetup):
-    continue
-{%- if sig_type == 'udp' %}
+  recv_len = recvfrom(s, sigCurPtr, {{max_buf_size}}, 0, <sockaddr *> &si_other, &slen)
   if (recv_len == -1 and errno != EINTR):
-      die("NETWORK ERROR: recvfrom()")
+    die("NETWORK ERROR: recvfrom()")
   if (recv_len == -1):
     die("Read error.\n")
+  num_packets += 1
+{%- elif sig_type == 'parport' %}
+  # recv_len always 1 for parport
+  if (readParport):
+    readParport = False
+    inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
+    # printf("network recv: %u\n", inVal)
+    sigCurPtr[0] = inVal
+  else:
+    pause()
+    continue
+{%- elif sig_type == 'zmq' %}
+  recv_len = zmq_recv(dish, sigCurPtr, {{max_buf_size}}, 0)
+  # TODO handle zmq error
+  num_packets += 1
 {%- endif %}
+
+  if (parentSetup):
+    continue
+
+{%- if in_signal['args']['parser'] %}
+
+  # use user parser
   # int outlen = {{parser}}(buf, recv_len, &outbuf)
-  # parse_idx = 0
-  # while (parse_idx < recv_len):
-  #   in_sig[buf_offset] = buf[parse_idx]
-  #   buf_offset += 1
-  #   if (buf_offset >= out_sig_size):
-  #     buf_offset = 0
-  #   parse_idx += 1
-  pLocalSignalMem[2] = buf_offset
-  # printf("source: %d\n", recv_len)
-  # printf("%s\n", buf)
+  # memcpy
+{%- endif %}
+  
+  sem_wait(pSem)
+  sigCurPtr += recv_len
+  if ((sigCurPtr + max_num_samples_in_ms) > sigEndPtr):
+    pLocalSignalMem[3] = sigCurPtr - sigStrtPtr
+    sigCurPtr = sigStrtPtr
+  pLocalSignalMem[2] = sigCurPtr - sigStrtPtr
+  sem_post(pSem)

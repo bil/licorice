@@ -228,6 +228,7 @@ def parse(config):
         si_out_sig = si_out_sig[si_out_sig.keys()[0]]
         if not si_out_sig['parser']:
           assert len(out_signals) == 1
+        print si_out_sig
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
@@ -368,6 +369,7 @@ def parse(config):
   assert(num_cores < MAX_NUM_CORES)
   source_sems = map(lambda x: [sem_dict[x], source_outputs[x]] , source_outputs.keys())
   parport_tick_addr = config['config']['parport_tick_addr'] if config['config'].has_key('parport_tick_addr') else None
+  print parport_tick_addr
   mod_out_f.write(module_template.render(
     topo_order=topo_children,
     topo_lens=topo_lens,
