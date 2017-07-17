@@ -93,9 +93,12 @@ void handle_exit(int exitStatus) {
   printf("Unmapping shared memory...\n");
   printf("%lu SIGALRMs sent\n", alrmNum);
   // close shared memory
+  munmap(pSignalMem, PAGESIZE);
   munmap(pmem, PAGESIZE);
   munmap(pSignalSems, 1 + ({{num_sigs}} * sizeof (sem_t) - 1));
   shm_unlink(SMEM0_PATHNAME);
+  shm_unlink("/smem_sig_offsets");
+  shm_unlink(SMEMSIG_PATHNAME);
   munlockall();
   exit(exitStatus);
 }
@@ -151,20 +154,34 @@ static void check_children() {
     //might need a lock around this with fence, since this should
     //look atomic to children. could use pthread reader writer locks
     atomic_thread_fence(memory_order_seq_cst);
+    sem_wait(pSem);
     *pMSStart = *pMSEnd;
     *pMSEnd = *pDataEnd;
     // TODO make this generic for N signals
     pCurSignalMem = pSignalMem + 0;
-    *(pCurSignalMem + 0) = *(pCurSignalMem + 1);
-    *(pCurSignalMem + 1) = *(pCurSignalMem + 2);
+    if (*(pCurSignalMem + 1) == *(pCurSignalMem + 3)) 
+      *(pCurSignalMem + 0) = 0;
+    else 
+      *(pCurSignalMem + 0) = *(pCurSignalMem + 1);
+    if (!*(pCurSignalMem + 2))
+      *(pCurSignalMem + 1) = *(pCurSignalMem + 3);
+    else 
+      *(pCurSignalMem + 1) = *(pCurSignalMem + 2);
+
+    // printf("%d\n", *(pCurSignalMem + 0));
+    // printf("%d\n", *(pCurSignalMem + 1));
+    // printf("%d\n", *(pCurSignalMem + 2));
+    // printf("%d\n", *(pCurSignalMem + 3));
     atomic_thread_fence(memory_order_release);
+    sem_post(pSem);
+    
     // trigger network process
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
       kill(so_pids[al_i], SIGALRM);
     }
 
     // trigger first round of child processes. block if network is updating spike wave data
-    sem_wait(pSem);
+    // sem_wait(pSem);
     for (al_i = 0; al_i < NUM_SINKS; al_i++) {
       kill(si_pids[al_i], SIGALRM);
     }
@@ -173,7 +190,7 @@ static void check_children() {
     sem_post(&pSignalSems[{{sem_pair[0]}}]);
   }
 {%-endfor%}
-    sem_post(pSem);
+    // sem_post(pSem);
   }
   sigalrm_recv--;
 }

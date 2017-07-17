@@ -114,7 +114,15 @@ cdef uint8_t *pmem
 
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
-cdef uint32_t *sigPtr # TODO don't hardcode type
+lastVal = 1
+
+{% if out_signal['args']['parser'] -%}
+in_sigs = []
+{%- else %}
+cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigStrtPtr
+# cdef {{in_signals['dtype']}}_t *sigEndPtr
+# cdef {{in_signals['dtype']}}_t *curPtr
+{%- endif %}
 
 in_sig = None
 
@@ -131,16 +139,25 @@ cdef void exit_handler(int signum):
   handle_exit(0)
 
 cdef void handle_alrm():
-  global sigalrm_recv, numMS
+  global sigalrm_recv, numMS, lastVal
   numMS += 1
   # printf("sink\n")
 {%- for dep_on in s_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
 {%- if sig_type == 'udp' %}
-  if (sendto(s, sigPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
+  if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
     die("sendto() failed")
 {%- elif sig_type == 'parport' %}
-  portio.outb(sigPtr[0],0x{{out_signal['args']['addr']}})
+  # if (lastVal == sigStrtPtr[0]):
+  #   printf("numMS: %d\n", numMS)
+  #   printf("%d\n", pLocalSignalMem[0])
+  #   printf("%d\n", pLocalSignalMem[1])
+  #   printf("%d\n", pLocalSignalMem[2])
+  #   printf("%d\n", pLocalSignalMem[3])
+  # lastVal = sigStrtPtr[0]
+  # printf("%d\n", sigStrtPtr[0])
+  # printf("%d\n", sigStrtPtr[1])
+  portio.outb(sigStrtPtr[0],0x{{out_signal['args']['addr']}})
 {%- endif %}
 {%- endfor %}
 
@@ -200,7 +217,7 @@ if any(['{{sig}}' == x[0] for x in created_mem]):
 else:
   die("numpy signal not created\n")
 {% endfor %}
-sigPtr = <uint32_t *><long>in_sig.__array_interface__['data'][0] # TODO don't hardcode type
+sigStrtPtr = <{{in_signals[in_signals.keys()[0]]['dtype']}}_t *><long>in_sig.__array_interface__['data'][0] # TODO don't hardcode type
 
 {% if sig_type == 'udp' -%}
 # create a UDP socket
