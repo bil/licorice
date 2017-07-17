@@ -16,6 +16,10 @@ cimport numpy as np
 cimport cython
 import ctypes
 import portio
+
+# PYGAME
+import pygame
+
 {% if out_signal['args']['parser'] -%}
 import {{parser}}
 {%- endif %}
@@ -186,6 +190,15 @@ cdef void segv_handler(int signum):
 cdef void usr2_handler(int signum):
   pass
 
+# PYGAME
+cdef:
+    int width = 320
+    int height = 240
+    list speed = [1,1]
+    tuple black = (10,10,10)
+    int pxps = 120
+    int fps = 60
+
 # main
 sigfillset(&exitMask)
 init_utils(&handle_exit, &exitMask)
@@ -247,7 +260,17 @@ assert (rc == 0)
 
 make_realtime()
 
+# PYGAME
+pygame.init()
+screen = pygame.display.set_mode((width, height))
+background = pygame.Surface(screen.get_size()).convert()
+background.fill(black)
+screen.blit(background, (0, 0))
+pygame.display.flip()
+#ball = pygame.image.load("intro_ball.gif")
+
 kill(ppid,SIGUSR1)
+
 while(True):
   if (sigalrm_recv):
     handle_alrm()
