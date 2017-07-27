@@ -9,6 +9,7 @@ from posix.fcntl cimport O_RDWR
 from posix.types cimport pid_t
 from libc.errno cimport errno, EINTR
 from libc.string cimport memset
+from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 
 import SharedArray as sa
 import numpy as np
@@ -112,6 +113,10 @@ cdef int sigalrm_recv = 0
 cdef uint8_t *pFinish
 cdef uint8_t *pmem
 
+# timer debugging
+cdef timespec timer
+cdef long diff
+
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
 lastVal = 1
@@ -138,43 +143,6 @@ cdef void handle_exit(int exitStatus):
 cdef void exit_handler(int signum):
   handle_exit(0)
 
-cdef void handle_alrm():
-  global sigalrm_recv, numMS, lastVal
-  numMS += 1
-  # printf("sink\n")
-{%- for dep_on in s_dep_on %}
-  sem_wait(&pSignalSems[{{dep_on[1]}}])
-{%- if sig_type == 'udp' %}
-  if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
-    die("sendto() failed")
-{%- elif sig_type == 'parport' %}
-  # if (lastVal == sigStrtPtr[0]):
-  #   printf("numMS: %d\n", numMS)
-  #   printf("%d\n", pLocalSignalMem[0])
-  #   printf("%d\n", pLocalSignalMem[1])
-  #   printf("%d\n", pLocalSignalMem[2])
-  #   printf("%d\n", pLocalSignalMem[3])
-  # lastVal = sigStrtPtr[0]
-  # printf("%d\n", sigStrtPtr[0])
-  # printf("%d\n", sigStrtPtr[1])
-  portio.outb(sigStrtPtr[0],0x{{out_signal['args']['addr']}})
-{%- endif %}
-{%- endfor %}
-
-{%- for dep_on in m_dep_on %}
-  sem_wait(&pSignalSems[{{dep_on[1]}}])
-  {% set sig = logged_signals[dep_on[0]] -%}
-  # TODO handle non-integer shapes
-  # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
-{%- endfor %}
-
-  pFinish[NUM_CHILDREN] = 0x0
-  sigalrm_recv -= 1
-
-cdef void alrm_handler(int signum):
-  global sigalrm_recv
-  sigalrm_recv += 1
-
 cdef void bus_handler(int signum):
   printf("Bus Error\n")
   handle_exit(1)
@@ -193,7 +161,6 @@ init_utils(&handle_exit, &exitMask)
 ppid = getppid()
 
 set_sighandler(SIGINT, &exit_handler, &exitMask)
-set_sighandler(SIGALRM, &alrm_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
@@ -249,6 +216,48 @@ make_realtime()
 
 kill(ppid,SIGUSR1)
 while(True):
-  if (sigalrm_recv):
-    handle_alrm()
-  pause()
+  numMS += 1
+{%- for dep_on in s_dep_on %}
+  sem_wait(&pSignalSems[{{dep_on[1]}}])
+{%- if sig_type == 'udp' %}
+  if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
+    die("sendto() failed")
+{%- elif sig_type == 'parport' %}
+  # if (lastVal == sigStrtPtr[0]):
+  #   printf("numMS: %d\n", numMS)
+  #   printf("%d\n", pLocalSignalMem[0])
+  #   printf("%d\n", pLocalSignalMem[1])
+  #   printf("%d\n", pLocalSignalMem[2])
+  #   printf("%d\n", pLocalSignalMem[3])
+  # lastVal = sigStrtPtr[0]
+  # printf("%d\n", sigStrtPtr[0])
+  # printf("%d\n", sigStrtPtr[1])
+  
+  # printf("sink: %d\n", sigStrtPtr[pLocalSignalMem[0]])
+  # printf("sink: %d\n", pLocalSignalMem[0])
+  portio.outb(<unsigned char>sigStrtPtr[pLocalSignalMem[0]],0x{{out_signal['args']['addr']}})
+
+  # clock_gettime(CLOCK_MONOTONIC_RAW, &timer)
+  # printf("%lu\n", (<unsigned long *>pSignalMem)[100])
+  # printf("%ld\n", (<long *>pSignalMem)[101])
+  # printf("%lu\n", (<unsigned long *>pSignalMem)[102])
+  # printf("%ld\n", (<long *>pSignalMem)[103])
+  # printf("%lu\n", timer.tv_sec)
+  # printf("%ld\n", timer.tv_nsec)
+  # printf("\n");
+  # diff = timer.tv_nsec - (<long *>pSignalMem)[101]
+  # if (timer.tv_sec != (<unsigned long *>pSignalMem)[100]):
+  #   diff += 1000000000
+
+{%- endif %}
+{%- endfor %}
+
+{%- for dep_on in m_dep_on %}
+  sem_wait(&pSignalSems[{{dep_on[1]}}])
+  {% set sig = logged_signals[dep_on[0]] -%}
+  # TODO handle non-integer shapes
+  # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
+{%- endfor %}
+
+  pFinish[NUM_CHILDREN] = 0x0
+  sigalrm_recv -= 1
