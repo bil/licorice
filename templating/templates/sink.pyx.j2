@@ -232,9 +232,12 @@ while(True):
   # lastVal = sigStrtPtr[0]
   # printf("%d\n", sigStrtPtr[0])
   # printf("%d\n", sigStrtPtr[1])
-  portio.outb(<unsigned char>sigStrtPtr[0],0x{{out_signal['args']['addr']}})
+  
+  # printf("sink: %d\n", sigStrtPtr[pLocalSignalMem[0]])
+  # printf("sink: %d\n", pLocalSignalMem[0])
+  portio.outb(<unsigned char>sigStrtPtr[pLocalSignalMem[0]],0x{{out_signal['args']['addr']}})
 
-  clock_gettime(CLOCK_MONOTONIC_RAW, &timer)
+  # clock_gettime(CLOCK_MONOTONIC_RAW, &timer)
   # printf("%lu\n", (<unsigned long *>pSignalMem)[100])
   # printf("%ld\n", (<long *>pSignalMem)[101])
   # printf("%lu\n", (<unsigned long *>pSignalMem)[102])
@@ -242,9 +245,9 @@ while(True):
   # printf("%lu\n", timer.tv_sec)
   # printf("%ld\n", timer.tv_nsec)
   # printf("\n");
-  diff = timer.tv_nsec - (<long *>pSignalMem)[101]
-  if (timer.tv_sec != (<unsigned long *>pSignalMem)[100]):
-    diff += 1000000000
+  # diff = timer.tv_nsec - (<long *>pSignalMem)[101]
+  # if (timer.tv_sec != (<unsigned long *>pSignalMem)[100]):
+  #   diff += 1000000000
 
 {%- endif %}
 {%- endfor %}
