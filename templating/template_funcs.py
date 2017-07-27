@@ -371,6 +371,7 @@ def parse(config):
   parport_tick_addr = config['config']['parport_tick_addr'] if config['config'].has_key('parport_tick_addr') else None
   print parport_tick_addr
   mod_out_f.write(module_template.render(
+    config = config,
     topo_order=topo_children,
     topo_lens=topo_lens,
     topo_height=len(topo_children),

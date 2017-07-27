@@ -17,7 +17,7 @@ timer: timer.c utilityFunctions.c
 {% if source_types[loop.index0] == 'python' -%}
 {{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c
 	cython --embed -o {{source}}.c {{source}}.pyx
-	$(CC) $(CYFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(CYLDFLAGS)
+	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(CYLDFLAGS)
 {% else -%}
 {{source}}: {{source}}.c sourceUtils.c utilityFunctions.c
 	$(CC) $(CFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(LDFLAGS)
@@ -27,7 +27,7 @@ timer: timer.c utilityFunctions.c
 {% for sink in sink_names -%}
 {{sink}}:  {{sink}}.pyx utilityFunctions.c networkUtilities.c
 	cython --embed -o {{sink}}.c {{sink}}.pyx
-	$(CC) $(CYFLAGS) {{sink}}.c utilityFunctions.c -o {{sink}} $(CYLDFLAGS)
+	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c -o {{sink}} $(CYLDFLAGS)
 {%- endfor %}
 
 {% if logger_needed -%}
