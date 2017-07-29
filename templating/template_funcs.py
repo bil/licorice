@@ -228,7 +228,6 @@ def parse(config):
         si_out_sig = si_out_sig[si_out_sig.keys()[0]]
         if not si_out_sig['parser']:
           assert len(out_signals) == 1
-        print si_out_sig
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
@@ -293,18 +292,18 @@ def parse(config):
           depends_on.append((in_sig, sem_dict[in_sig]))
 
         special_cerebus = []
-        if cerebus:
-          special_cerebus.append(['spike_ms_timestamps', 'get_spike_ms_timestamps'])
-          special_cerebus.append(['channel_ms_timestamps', 'get_channel_ms_timestamps'])
-          special_cerebus.append(['ms_spikes', 'get_ms_spikes'])
-          special_cerebus.append(['spike_raster', 'get_spike_raster'])
-          special_cerebus.append(['ms_data', 'get_ms_data'])
-          special_cerebus.append(['channel_data', 'get_channel_data'])
-          special_cerebus.append(['all_channel_data', 'get_all_channel_data'])
+        # if cerebus:
+        #   special_cerebus.append(['spike_ms_timestamps', 'get_spike_ms_timestamps'])
+        #   special_cerebus.append(['channel_ms_timestamps', 'get_channel_ms_timestamps'])
+        #   special_cerebus.append(['ms_spikes', 'get_ms_spikes'])
+        #   special_cerebus.append(['spike_raster', 'get_spike_raster'])
+        #   special_cerebus.append(['ms_data', 'get_ms_data'])
+        #   special_cerebus.append(['channel_data', 'get_channel_data'])
+        #   special_cerebus.append(['all_channel_data', 'get_all_channel_data'])
 
         special_line = []
-        if line:
-          pass # TODO must put in methods for getting line data
+        # if line:
+        #   pass # TODO must put in methods for getting line data
         # write to Python module file
         mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.pyx'), 'w')
         mod_out_f.write(module_template.render(

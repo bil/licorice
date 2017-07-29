@@ -1,7 +1,8 @@
 from libc.stdio cimport printf, stdout, fflush
-from libc.stdlib cimport exit
-from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t
+from libc.stdlib cimport exit, malloc
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int32_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
+from libc.string cimport memcpy
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport getppid, pause, close, getpid
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
@@ -24,6 +25,9 @@ import {{parser}}
 {% if sig_type == 'parport' -%}
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
+{% elif sig_type == 'joystick' -%}
+import pygame
+#import math
 {% elif sig_type == 'udp' -%}
 cdef extern from "<arpa/inet.h>":
   uint16_t htons(uint16_t hostshort)
@@ -106,6 +110,9 @@ cdef int num_packets = 0
 {% if sig_type == 'parport' -%}
 cdef unsigned char inVal
 readParport = False
+{% elif sig_type == 'joystick' -%}
+cdef int JS_SCALE_CONST = 10000
+sendPos = False
 {%- endif %}
 cdef int64_t numMS= -1 * LATENCY
 parentSetup = True
@@ -119,7 +126,10 @@ cdef in_addr interface_ip
 cdef void *dish
 cdef void *context
 {%- endif %}
-cdef socklen_t recv_len = 1
+cdef uint32_t recv_len = 1
+{% if sig_type == 'joystick' -%}
+recv_len = 4
+{%- endif %}
 
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
@@ -145,6 +155,8 @@ cdef void handle_exit(int exitStatus):
 {%- elif sig_type == 'zmq'%}
   zmq_close(dish)
   zmq_ctx_destroy(context)
+{%- elif sig_type == 'joystick'%}
+  pygame.quit()
 {%- endif %}
 {%- if sig_type == 'udp' or sig_type == 'zmq' %}
   printf("Received %d packets over %ld ms.\n", num_packets, numMS)
@@ -163,12 +175,16 @@ cdef void segv_handler(int signum):
   handle_exit(1)
 
 cdef void alrm_handler(int signum):
-  global numMS, parentSetup, readParport
+  global numMS, parentSetup
   if (parentSetup):
     parentSetup = False
   numMS += 1
 {%- if sig_type == 'parport' %}
+  global readParport
   readParport = True
+{%- elif sig_type == 'joystick' %}
+  global sendPos
+  sendPos = True
 {%- endif %}
 
 cdef void usr2_handler(int signum):
@@ -207,7 +223,7 @@ else:
   sigCurPtr = sigStrtPtr
   sigEndPtr = sigStrtPtr + out_sig_num_samples
   max_num_samples_in_ms = {{args['shape']}}
-{% endif %}
+{%- endif %}
 {% endfor %}
 
 {% if sig_type == 'udp' -%}
@@ -237,6 +253,16 @@ if (not dish):
   die("Could not create ZMQ socket.\n")
 rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
 assert (rc == 0)
+{% elif sig_type == 'joystick' -%}
+pygame.init()
+pygame.joystick.init()
+
+# TODO add error checking
+joystick = pygame.joystick.Joystick(0)
+joystick.init()
+# c = 300
+# r = 150
+# theta = math.pi / 2
 {%- endif %}
 
 make_realtime()
@@ -268,6 +294,25 @@ while(True):
   recv_len = zmq_recv(dish, sigCurPtr, {{max_buf_size}}, 0)
   # TODO handle zmq error
   num_packets += 1
+{%- elif sig_type == 'joystick' %}
+  if (sendPos):
+    sendPos = False
+    # x = c + r * math.cos(theta)
+    # y = c - r * math.sin(theta)
+
+    pygame.event.pump()
+    for axis in range(joystick.get_numaxes()): #(use recv_len to be safe?)
+      sigCurPtr[axis] = int((joystick.get_axis(axis) * 10)/2)
+
+    # sigCurPtr[0] = int(x)
+    # sigCurPtr[1] = int(y)
+
+    # theta += 0.0015
+  else:
+    pause()
+    continue
+
+
 {%- endif %}
 
   if (parentSetup):
