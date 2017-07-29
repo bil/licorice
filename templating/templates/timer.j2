@@ -17,12 +17,14 @@
 #include <semaphore.h>
 #include <sys/wait.h>
 #include <stdatomic.h>
+#include <time.h>
 #include "constants.h"
 #include "utilityFunctions.h"
 
 #define CHILD_HEIGHT {{topo_height}}
 #define NUM_SOURCES {{source_names|length}}
 #define NUM_SINKS {{sink_names|length}}
+#define NSECS 600000
 
 // process IDs for each child numbered according to the index of the child's name
 // in childProcNames
@@ -62,6 +64,12 @@ static int num_cores;
 static int ex_i, al_i, de_i;
 
 static struct itimerval timer;
+
+// INSERTED
+static struct timespec record_timer;
+static long curTime;
+static time_t curSec;
+static FILE *f;
 
 void handle_exit(int exitStatus) {
   printf("exiting...\n");
@@ -119,6 +127,12 @@ static void check_children() {
   // flip bits and output to parallel port
   outVal = ~outVal;
   outb(outVal,0x{{parport_tick_addr}});
+  
+  // INSERTED
+  clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
+  curTime = record_timer.tv_nsec;
+  curSec = record_timer.tv_sec;
+  fprintf(f, "%ld %ld\n", curTime, curSec);
 {%- endif %}
 
   // increment SIGALRM counter
@@ -422,11 +436,20 @@ int main(int argc, char* argv[]) {
   timer.it_interval.tv_usec = USECREQ;
   //tell network to start gathering data.  First ms is therefore slightly longer than the rest.
   setitimer(ITIMER_REAL, &timer, NULL);
+
+  f = fopen("/home/a/output_filename","w");
+  if (f == NULL) {
+    printf("Error opening file!\n");
+    handle_exit(1);
+  }
+
   while(1) {
     if (sigexit_recv)
       handle_exit(0);
     if (sigchld_recv)
       dead_child();
+    if (sigalrm_recv > NSECS)
+      handle_exit(0);
     if (sigalrm_recv)
       check_children();
     pause();

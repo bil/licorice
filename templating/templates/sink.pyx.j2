@@ -1,6 +1,6 @@
 from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit
-from libc.stdint cimport uint8_t, uint16_t, uint32_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, int32_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
 from posix.unistd cimport getppid, pause, close, getpid
@@ -9,6 +9,7 @@ from posix.fcntl cimport O_RDWR
 from posix.types cimport pid_t
 from libc.errno cimport errno, EINTR
 from libc.string cimport memset
+from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 
 import SharedArray as sa
 import numpy as np
@@ -17,8 +18,6 @@ cimport cython
 import ctypes
 import portio
 
-# PYGAME
-import pygame
 
 {% if out_signal['args']['parser'] -%}
 import {{parser}}
@@ -65,6 +64,9 @@ cdef extern from "zmq.h":
   void *zmq_socket(void *, int type)
   int zmq_bind(void *s, const char *addr)
   int zmq_recv(void *s, void *buf, size_t len, int flags)
+{% elif sig_type == 'vis' -%}
+import pygame
+import sys, random, time, math, os.path
 {% endif %}
 
 cdef extern from "semaphore.h":
@@ -109,12 +111,34 @@ cdef socklen_t recv_len
 {% elif sig_type == 'zmq' -%}
 cdef void *radio
 cdef void *context
+{% elif sig_type == 'vis' -%}
+cdef:
+    int width = 600
+    int height = 600
+    tuple black = (0,0,0)
+    tuple white = (255,255,255)
+    tuple green = (92,244,6)
+    int ball_size = 20
+    char *audio_path = '/home/a/rigaudio'
+    char *success = 'EC_go.wav'
+    char *failure = 'C#C_failure.wav'
+    int n_trials = 0
+    int n_success = 0
+    list cursor_pos = [300, 300]
+    int inTrial = 1
+    int trial_time = 0
+    int rest_time = 0
+    int time_on_target = 0 
 {%- endif %}
 
 cdef sem_t *pSignalSems
 cdef int sigalrm_recv = 0
 cdef uint8_t *pFinish
 cdef uint8_t *pmem
+
+# timer debugging
+cdef timespec timer
+cdef long diff
 
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
@@ -136,48 +160,13 @@ cdef void handle_exit(int exitStatus):
 {%- elif sig_type == 'zmq' %}
   zmq_close(radio)
   zmq_ctx_destroy(context)
+{%- elif sig_type == 'vis' %}
+  pygame.quit()
 {%- endif %}
   exit(exitStatus)
 
 cdef void exit_handler(int signum):
   handle_exit(0)
-
-cdef void handle_alrm():
-  global sigalrm_recv, numMS, lastVal
-  numMS += 1
-  # printf("sink\n")
-{%- for dep_on in s_dep_on %}
-  sem_wait(&pSignalSems[{{dep_on[1]}}])
-{%- if sig_type == 'udp' %}
-  if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
-    die("sendto() failed")
-{%- elif sig_type == 'parport' %}
-  # if (lastVal == sigStrtPtr[0]):
-  #   printf("numMS: %d\n", numMS)
-  #   printf("%d\n", pLocalSignalMem[0])
-  #   printf("%d\n", pLocalSignalMem[1])
-  #   printf("%d\n", pLocalSignalMem[2])
-  #   printf("%d\n", pLocalSignalMem[3])
-  # lastVal = sigStrtPtr[0]
-  # printf("%d\n", sigStrtPtr[0])
-  # printf("%d\n", sigStrtPtr[1])
-  portio.outb(sigStrtPtr[0],0x{{out_signal['args']['addr']}})
-{%- endif %}
-{%- endfor %}
-
-{%- for dep_on in m_dep_on %}
-  sem_wait(&pSignalSems[{{dep_on[1]}}])
-  {% set sig = logged_signals[dep_on[0]] -%}
-  # TODO handle non-integer shapes
-  # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
-{%- endfor %}
-
-  pFinish[NUM_CHILDREN] = 0x0
-  sigalrm_recv -= 1
-
-cdef void alrm_handler(int signum):
-  global sigalrm_recv
-  sigalrm_recv += 1
 
 cdef void bus_handler(int signum):
   printf("Bus Error\n")
@@ -190,14 +179,74 @@ cdef void segv_handler(int signum):
 cdef void usr2_handler(int signum):
   pass
 
-# PYGAME
-cdef:
-    int width = 320
-    int height = 240
-    list speed = [1,1]
-    tuple black = (10,10,10)
-    int pxps = 120
-    int fps = 60
+{% if sig_type == 'vis' %}
+class Cursor(pygame.sprite.Sprite):
+
+    def __init__(self, color, radius, pos):
+       pygame.sprite.Sprite.__init__(self)
+
+       self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
+       self.image.fill((0,0,0,0))
+
+       self.rect = self.image.get_rect()
+       pygame.draw.circle(self.image, color, (radius, radius), radius)     
+       self.rect.x, self.rect.y = pos
+    
+    def update(self, offset):
+        # Do not move out of the screen
+        if self.rect.left < 0 and offset[0] < 0:
+          offset[0] = 0
+        if self.rect.top < 0 and offset[1] < 0: 
+          offset[1] = 0 
+        if self.rect.bottom > height and offset[1] > 0: 
+          offset[1] = 0
+        if self.rect.right > width and offset[0] > 0: 
+          offset[0] = 0
+
+        self.rect = self.rect.move(offset)
+
+        # self.rect.x = offset[0]
+        # self.rect.y = offset[1]
+
+class Target(pygame.sprite.Sprite):
+
+    def __init__(self, color, radius, positions, width, height):
+       pygame.sprite.Sprite.__init__(self)
+       self.positions = positions
+       
+       self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
+       self.image.fill((0,0,0,0))
+
+       self.rect = self.image.get_rect()
+       pygame.draw.circle(self.image, color, (radius, radius), radius)
+       self.new_pos(False)
+
+    def new_pos(self, center):
+      if center:
+        self.rect.x, self.rect.y = width/2, height/2
+      else:
+        self.rect.x, self.rect.y = random.choice(self.positions)
+
+def get_circle_pos(radius, center):
+  d = int(math.sqrt(radius ** 2 / 2))
+  positions = [
+    (center[0], center[1] + radius),
+    (center[0], center[1] - radius),
+    (center[0] + radius, center[1]),
+    (center[0] - radius, center[1]),
+    (center[0] - d, center[1] - d),
+    (center[0] + d, center[1] - d),
+    (center[0] - d, center[1] + d),
+    (center[0] + d, center[1] + d) 
+  ]
+  return positions
+
+# def play_sound(success):
+#   if success:
+#     success_sound.play()
+#   else:
+#     failure_sound.play()
+{%- endif %}
 
 # main
 sigfillset(&exitMask)
@@ -206,7 +255,6 @@ init_utils(&handle_exit, &exitMask)
 ppid = getppid()
 
 set_sighandler(SIGINT, &exit_handler, &exitMask)
-set_sighandler(SIGALRM, &alrm_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
@@ -256,22 +304,100 @@ if (not radio):
   die("Could not create ZMQ socket.\n")
 rc = zmq_connect(radio, "udp://192.168.1.1:5555");
 assert (rc == 0)
+{% elif sig_type == 'vis' -%}
+pygame.init()
+# pygame.mixer.init(11025)
+
+# success_sound = pygame.mixer.Sound(os.path.join(audio_path, success))
+# failure_sound = pygame.mixer.Sound(os.path.join(audio_path, failure))
+
+screen = pygame.display.set_mode((width, height))
+pygame.display.flip()
+
+target_positions = get_circle_pos(150, (width/2, height/2))
+cursor = Cursor(white, ball_size, cursor_pos)
+target = Target(green, ball_size, target_positions, width, height)
+sprites = pygame.sprite.Group(cursor, target)
+
 {%- endif %}
 
 make_realtime()
 
-# PYGAME
-pygame.init()
-screen = pygame.display.set_mode((width, height))
-background = pygame.Surface(screen.get_size()).convert()
-background.fill(black)
-screen.blit(background, (0, 0))
-pygame.display.flip()
-#ball = pygame.image.load("intro_ball.gif")
-
 kill(ppid,SIGUSR1)
-
+move_count = 0
 while(True):
-  if (sigalrm_recv):
-    handle_alrm()
-  pause()
+  numMS += 1
+{%- for dep_on in s_dep_on %}
+  sem_wait(&pSignalSems[{{dep_on[1]}}])
+{%- if sig_type == 'udp' %}
+  if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
+    die("sendto() failed")
+{%- elif sig_type == 'parport' %}
+  # if (lastVal == sigStrtPtr[0]):
+  #   printf("numMS: %d\n", numMS)
+  #   printf("%d\n", pLocalSignalMem[0])
+  #   printf("%d\n", pLocalSignalMem[1])
+  #   printf("%d\n", pLocalSignalMem[2])
+  #   printf("%d\n", pLocalSignalMem[3])
+  # lastVal = sigStrtPtr[0]
+  # printf("%d\n", sigStrtPtr[0])
+  # printf("%d\n", sigStrtPtr[1])
+  portio.outb(<unsigned char>sigStrtPtr[0],0x{{out_signal['args']['addr']}})
+
+  clock_gettime(CLOCK_MONOTONIC_RAW, &timer)
+  # printf("%lu\n", (<unsigned long *>pSignalMem)[100])
+  # printf("%ld\n", (<long *>pSignalMem)[101])
+  # printf("%lu\n", (<unsigned long *>pSignalMem)[102])
+  # printf("%ld\n", (<long *>pSignalMem)[103])
+  # printf("%lu\n", timer.tv_sec)
+  # printf("%ld\n", timer.tv_nsec)
+  # printf("\n");
+  diff = timer.tv_nsec - (<long *>pSignalMem)[101]
+  if (timer.tv_sec != (<unsigned long *>pSignalMem)[100]):
+    diff += 1000000000
+{%- elif sig_type == 'vis' %}
+  offset = [0,0]#[<int32_t>sigStrtPtr[0], <int32_t>sigStrtPtr[1]]
+
+  if inTrial:
+    if time_on_target >= 500 or trial_time >=3000:
+        #play_sound(time_on_target >= 500)
+        time_on_target = 0
+        trial_time = 0
+        inTrial = 0
+        screen.fill(black)
+        n_trials += 1
+    else:
+      trial_time += 1
+      if pygame.sprite.collide_rect(target, cursor):
+        time_on_target += 1
+      else:
+        time_on_target = 0
+
+      if numMS % 15 == 0: # Control fps?
+        sprites.update(offset)
+        screen.fill(black)
+        sprites.draw(screen)
+        pygame.display.flip()
+  else:
+    if rest_time >= 40:
+      inTrial = 1
+      rest_time = 0
+      target.new_pos(n_trials % 2)
+      sprites.add(target)
+      sprites.draw(screen)
+      pygame.display.flip()
+
+    else:
+      rest_time += 1
+{%- endif %}
+{%- endfor %}
+
+{%- for dep_on in m_dep_on %}
+  sem_wait(&pSignalSems[{{dep_on[1]}}])
+  {% set sig = logged_signals[dep_on[0]] -%}
+  # TODO handle non-integer shapes
+  # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
+{%- endfor %}
+
+  pFinish[NUM_CHILDREN] = 0x0
+  sigalrm_recv -= 1
