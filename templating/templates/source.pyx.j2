@@ -109,13 +109,12 @@ cdef int num_packets = 0
 {%- endif %}
 {% if sig_type == 'parport' -%}
 cdef unsigned char inVal
-readParport = False
 {% elif sig_type == 'joystick' -%}
 cdef int JS_SCALE_CONST = 10000
-sendPos = False
 {%- endif %}
 cdef int64_t numMS= -1 * LATENCY
 parentSetup = True
+readInput = False
 
 {% if sig_type == 'udp' -%}
 cdef int s
@@ -180,11 +179,11 @@ cdef void alrm_handler(int signum):
     parentSetup = False
   numMS += 1
 {%- if sig_type == 'parport' %}
-  global readParport
-  readParport = True
+  global readInput
+  readInput = True
 {%- elif sig_type == 'joystick' %}
-  global sendPos
-  sendPos = True
+  global readInput
+  readInput = True
 {%- endif %}
 
 cdef void usr2_handler(int signum):
@@ -257,7 +256,9 @@ assert (rc == 0)
 pygame.init()
 pygame.joystick.init()
 
-# TODO add error checking
+if pygame.joystick.get_count() < 1:
+  die("No joystick detected.\n")
+
 joystick = pygame.joystick.Joystick(0)
 joystick.init()
 # c = 300
@@ -282,8 +283,8 @@ while(True):
   num_packets += 1
 {%- elif sig_type == 'parport' %}
   # recv_len always 1 for parport
-  if (readParport):
-    readParport = False
+  if (readInput):
+    readInput = False
     inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
     # printf("network recv: %u\n", inVal)
     sigCurPtr[0] = inVal
@@ -295,14 +296,14 @@ while(True):
   # TODO handle zmq error
   num_packets += 1
 {%- elif sig_type == 'joystick' %}
-  if (sendPos):
-    sendPos = False
+  if (readInput):
+    readInput = False
     # x = c + r * math.cos(theta)
     # y = c - r * math.sin(theta)
 
     pygame.event.pump()
     for axis in range(joystick.get_numaxes()): #(use recv_len to be safe?)
-      sigCurPtr[axis] = int((joystick.get_axis(axis) * 10)/2)
+      sigCurPtr[axis] = int(joystick.get_axis(axis) * 5)
 
     # sigCurPtr[0] = int(x)
     # sigCurPtr[1] = int(y)

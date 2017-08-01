@@ -356,8 +356,7 @@ while(True):
   if (timer.tv_sec != (<unsigned long *>pSignalMem)[100]):
     diff += 1000000000
 {%- elif sig_type == 'vis' %}
-  offset = [0,0]#[<int32_t>sigStrtPtr[0], <int32_t>sigStrtPtr[1]]
-
+  offset = [<int32_t>sigStrtPtr[0], <int32_t>sigStrtPtr[1]]
   if inTrial:
     if time_on_target >= 500 or trial_time >=3000:
         #play_sound(time_on_target >= 500)
