@@ -125,6 +125,7 @@ def parse(config):
   dependency_graph = {}
   in_signals = {}
   out_signals = {}
+  line_source_exists = 0
   for module_name, module_args in modules.iteritems():
     if all(map(lambda x: x in external_signals, module_args['in'])):
       source_names.append(module_name)
@@ -186,6 +187,11 @@ def parse(config):
         so_in_sig = so_in_sig[so_in_sig.keys()[0]]
         if not so_in_sig['parser']:
           assert len(out_signals) == 1
+        if so_in_sig['args']['type'] == 'line':
+          line_source_exists = 1
+          so_in_sig['schema'] = {}
+          so_in_sig['schema']['data'] = {}
+          so_in_sig['schema']['data']['dtype'] = 'uint16'
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
@@ -228,7 +234,6 @@ def parse(config):
         si_out_sig = si_out_sig[si_out_sig.keys()[0]]
         if not si_out_sig['parser']:
           assert len(out_signals) == 1
-        print si_out_sig
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
@@ -394,7 +399,8 @@ def parse(config):
   module_template = jinja2.Template(template_f.read())
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_CONSTANTS), 'w')
   mod_out_f.write(module_template.render(
-    num_children=num_children
+    num_children=num_children,
+    line=line_source_exists
   ))
   mod_out_f.close()
 

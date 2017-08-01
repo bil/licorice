@@ -1,16 +1,17 @@
 from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit
-from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int16_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport getppid, pause, close, getpid
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.types cimport pid_t
-from libc.errno cimport errno, EINTR
+from libc.errno cimport errno, EINTR, EPIPE
 from posix.fcntl cimport O_RDWR
 from libc.string cimport memset
 from posix.ioctl cimport ioctl
 from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
+from libcpp cimport bool
 
 import sys
 import SharedArray as sa
@@ -24,10 +25,9 @@ import {{parser}}
 
 {% set testing = (config['config'].has_key('testing') and config['config']['testing']) %}
 {% set sig_type = in_signal['args']['type'] -%}
-{% if sig_type == 'parport' -%}
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
-{% elif sig_type == 'udp' -%}
+{% if sig_type == 'udp' -%}
 cdef extern from "<arpa/inet.h>":
   uint16_t htons(uint16_t hostshort)
 
@@ -46,7 +46,6 @@ cdef extern from "<netinet/in.h>":
 cdef extern from "<sys/socket.h>":
   enum: AF_INET
   enum: SOCK_DGRAM
-  ctypedef uint32_t socklen_t
   struct sockaddr:
     unsigned char sa_len
     unsigned char sa_family  
@@ -65,6 +64,19 @@ cdef extern from "zmq.h":
   void *zmq_socket(void *, int type)
   int zmq_bind(void *s, const char *addr)
   int zmq_recv(void *s, void *buf, size_t len, int flags)
+{% elif sig_type == 'line' %}
+cdef extern from "<alsa/asoundlib.h>":
+  struct _snd_pcm:
+    pass
+  ctypedef _snd_pcm snd_pcm_t
+  ctypedef unsigned long snd_pcm_uframes_t
+  ctypedef long snd_pcm_sframes_t
+  int snd_pcm_prepare(snd_pcm_t* pcm) 
+  snd_pcm_sframes_t snd_pcm_readi (snd_pcm_t *pcm, void *buffer, snd_pcm_uframes_t size)  
+
+cdef extern from "lineUtilities.h":
+  int pcm_init_cap()
+  void pcm_close_cap()
 {% endif %}
 
 cdef extern from "semaphore.h":
@@ -90,6 +102,7 @@ cdef extern from "constants.h":
   enum: MAX_PATH_LEN
   enum: PAGESIZE
   enum: LATENCY
+  enum: BYTES_PER_FRAME
   const char *SMEM0_PATHNAME
 
 #include <stdatomic.h>
@@ -114,13 +127,9 @@ cdef sockaddr_in si_me, si_other
 cdef socklen_t slen = sizeof(si_other) 
 cdef in_addr interface_ip
 {%- elif sig_type == 'line' %}
-cdef snd_pcm_t *capture_handle;
-cdef snd_pcm_uframes_t frames;
-static uint16_t *readBuf;
-static uint16_t *latencyBufR;
-static uint16_t *latencyBufW;
-static uint16_t *latencyBufStart;
-static uint16_t *latencyBufEnd;
+cdef extern snd_pcm_t *cap_handle
+cdef snd_pcm_uframes_t frames
+cdef int ret
 {%- elif sig_type == 'parport' %}
 cdef unsigned char inVal
 readParport = False
@@ -153,12 +162,11 @@ cdef void handle_exit(int exitStatus):
 {%- endfor %}
 {%- if sig_type == 'udp' %}
   close(s)
-{%- elif sig_type == 'zmq'%}
+{%- elif sig_type == 'zmq' %}
   zmq_close(dish)
   zmq_ctx_destroy(context)
 {%- elif sig_type == 'line' %}
-  free(readBuf);
-  free(latencyBufStart);
+  pcm_close_cap()
 {%- endif %}
 {%- if sig_type == 'udp' or sig_type == 'zmq' %}
   printf("Received %d packets over %ld ms. Dropped %lu\n", num_packets, numMS, num_dropped)
@@ -208,27 +216,6 @@ pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by c
 
 open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE)
 
-created_mem = sa.list()
-{% for sig,args in out_signals.iteritems() %}
-if any(['{{sig}}' == x[0] for x in created_mem]):
-  sa.delete("shm://{{sig}}")
-  die("numpy signal already created\n")
-else:
-  out_sig_num_samples = {{args['shape']}} * {{args['history']}}
-{% if in_signal['args']['parser'] -%}
-  out_sigs.append = [sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}), out_sig_num_samples] # TODO, fix dtype stuff
-  sa.mlock(out_sig)
-{%- else %}
-  tmp_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}})
-  print sys.getsizeof(tmp_sig)
-  print tmp_sig.nbytes
-  sigStrtPtr = <{{in_signal['schema']['data']['dtype']}}_t *><long>tmp_sig.__array_interface__['data'][0] # TODO don't hardcode type
-  sigCurPtr = sigStrtPtr
-  sigEndPtr = sigStrtPtr + out_sig_num_samples
-  max_num_samples_in_ms = {{args['shape']}}
-{% endif %}
-{% endfor %}
-
 {% if sig_type == 'udp' -%}
 # create a UDP socket
 s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
@@ -244,18 +231,9 @@ si_me.sin_addr.s_addr = interface_ip.s_addr
 if(bind(s, <sockaddr *>&si_me, sizeof(si_me)) == -1):
   die("bind\n")
 {% elif sig_type == 'line' %}
-  // initiliaze line in 
-  pcm_init();
-  /* Use a buffer large enough to hold one period */
-  frames = pcm_get_period_size();
-  int readBufSize = frames * BYTES_PER_FRAME;
-  readBuf = (uint16_t *) malloc(readBufSize);
-  // store LATENCY_BUF_MULT reads in the latency buffer
-  int latencyBufSize = frames * LATENCY_BUF_MULT * NUM_SAMPLES_PER_MS * BYTES_PER_FRAME;
-  latencyBufStart = (uint16_t*) malloc(latencyBufSize);
-  latencyBufR = latencyBufStart;
-  latencyBufW = latencyBufStart;
-  latencyBufEnd = latencyBufStart + latencyBufSize / 2;
+# initiliaze line in 
+frames = pcm_init_cap()
+recv_len = frames * BYTES_PER_FRAME / 2
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
@@ -270,6 +248,37 @@ if (not dish):
 rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
 assert (rc == 0)
 {%- endif %}
+
+created_mem = sa.list()
+{% for sig,args in out_signals.iteritems() %}
+if any(['{{sig}}' == x[0] for x in created_mem]):
+  sa.delete("shm://{{sig}}")
+  die("numpy signal already created\n")
+else:
+{%- if sig_type == 'line' %}
+  out_sig_num_samples = {{args['history']}} * frames
+  dtype = np.int16
+{% else %}
+  out_sig_num_samples = {{args['shape']}} * {{args['history']}}
+  dtype = np.{{args['dtype']}}
+{% endif %}
+{% if in_signal['args']['parser'] -%}
+  out_sigs.append = [sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}), out_sig_num_samples] # TODO, fix dtype stuff
+  sa.mlock(out_sig)
+{%- else %}
+  tmp_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
+  sigStrtPtr = <{{in_signal['schema']['data']['dtype']}}_t *><long>tmp_sig.__array_interface__['data'][0] # TODO don't hardcode type
+  sigCurPtr = sigStrtPtr
+  sigEndPtr = sigStrtPtr + out_sig_num_samples
+{%- if sig_type == 'line' %}
+  max_num_samples_in_ms = recv_len
+  pLocalSignalMem[3] = sigEndPtr - sigStrtPtr
+  pLocalSignalMem[0] = pLocalSignalMem[3]
+{%- else %}
+  max_num_samples_in_ms = {{args['shape']}}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
 
 make_realtime()
 
@@ -298,20 +307,18 @@ while(True):
 {%- endif %}
 {% elif sig_type == 'line' %}
   #read from line in
-  int ret;
-  ret = snd_pcm_readi(capture_handle,(char *)readBuf, frames);
-  if (ret == -EPIPE) {
-    /* EPIPE means overrun */
-    die("pcm overrun");
-    //fprintf(stderr, "overrun occurred\n");
-    snd_pcm_prepare(capture_handle);
-  } else if (ret < 0) {
-    die("pcm read error");
-    //fprintf(stderr, "error from read: %s\n", snd_strerror(ret));
-  } else if (ret != (int)frames) {
-    die("pcm short error");
-    //fprintf(stderr, "short read, read %d frames\n", ret);
-  }
+  ret = snd_pcm_readi(cap_handle, <char *>sigCurPtr, frames)
+  for i in range(640):
+    pass
+    # printf("%u\n", sigCurPtr[i])
+  if (ret == -EPIPE):
+    # EPIPE means overrun
+    die("pcm overrun")
+    snd_pcm_prepare(cap_handle)
+  elif (ret < 0):
+    die("pcm read error")
+  elif (ret != <int>frames):
+    die("pcm short error")
 {%- elif sig_type == 'parport' %}
   # recv_len always 1 for parport
   if (readParport):
@@ -341,12 +348,14 @@ while(True):
 {%- endif %}
   
   sem_wait(pSem)
-  # printf("source: %d\n", sigCurPtr[0])
-  # printf("source: %d\n", sigCurPtr - sigStrtPtr)
   sigCurPtr += recv_len
   if ((sigCurPtr + max_num_samples_in_ms) > sigEndPtr):
+{%- if sig_type != 'line' %}
     pLocalSignalMem[3] = sigCurPtr - sigStrtPtr
+{%- endif %}
     sigCurPtr = sigStrtPtr
+{%- if sig_type != 'line' %}
   pLocalSignalMem[2] = sigCurPtr - sigStrtPtr
+{%- endif %}
   sem_post(pSem)
 
