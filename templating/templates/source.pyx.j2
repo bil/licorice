@@ -107,7 +107,7 @@ cdef uint32_t out_sig_num_samples
 cdef int num_packets = 0
 cdef void *dish
 cdef void *context
-{%- if sig_type == 'udp' %}
+{%- elif sig_type == 'udp' %}
 cdef int num_packets = 0
 cdef int s
 cdef sockaddr_in si_me, si_other
@@ -339,16 +339,6 @@ while(True):
   # int outlen = {{parser}}(buf, recv_len, &outbuf)
   # memcpy
 {%- endif %}
-
-{% if sig_type == 'line' %}
-    memcpy(latencyBufW, readBuf, readBufSize);
-    latencyBufW += readBufSize/2;
-    # CAREFUL NEED TO DEAL WITH OVERFLOW OR MAKE SURE LATENCY BUF IS SIZED PERFECTLY. I THINK 
-    # IT IS SIZED PERFECTLY BUT SHOULD CHECK AGAIN.
-    if (latencyBufW == latencyBufEnd) {
-      latencyBufW = latencyBufStart;
-    }    
-{% endif %}
   
   sem_wait(pSem)
   # printf("source: %d\n", sigCurPtr[0])
