@@ -4,10 +4,6 @@
 /************************************
 * Basic user configurable constants *
 *************************************/
-/* 
-* Non-zero if using line-level rather than cerebus input
-*/
-#define LINE 0
 /*
 * The offset from which to run the child processes, zero-indexed. Usually 
 * the first (CPU 0) is for the parent timer process itself, the second
@@ -32,10 +28,6 @@
 * process. To specify the number of children and which executables are run, use runOrder.csv
 */
 #define NUM_CHILDREN {{num_children}}
-/*
-* The number of Cerebus channels that data is being read in on.
-*/
-#define NUM_CHANNELS (LINE ? 2 : 96)
 
 /*
 * The number of minutes of group data that is stored in shared memory at any given time.
@@ -114,7 +106,7 @@
 * Can be thought of as system latency. Using 50 for line since sound card has 20ms 
 * buffer period.
 */
-#define LATENCY (LINE ? 50 : 1)
+#define LATENCY ({{line}} ? 50 : 1)
 
 /*******************
 * Global constants *
@@ -159,6 +151,9 @@
 
 //Number of bytes in a gigabyte
 #define BYTES_IN_GB (1 << 30)
+
+// Number of bytes in alsa frame
+#define BYTES_PER_FRAME 4 /* 2 bytes/sample, 2 channels */
 
 //Memory required for group packet data in THOUSANDS of bytes
 //We add 2 to NUM_CHANNELS to store 4 byte timetamps (requires 2 channels worth of memory)

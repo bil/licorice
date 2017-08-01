@@ -1,15 +1,17 @@
 from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit
-from libc.stdint cimport uint8_t, uint16_t, uint32_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int16_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
 from posix.unistd cimport getppid, pause, close, getpid
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.fcntl cimport O_RDWR
 from posix.types cimport pid_t
-from libc.errno cimport errno, EINTR
+from libc.errno cimport errno, EINTR, EPIPE
 from libc.string cimport memset
 from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
+from libcpp cimport bool
+DEF SIG_BLOCK = 1
 
 import SharedArray as sa
 import numpy as np
@@ -20,6 +22,16 @@ import portio
 {% if out_signal['args']['parser'] -%}
 import {{parser}}
 {%- endif %}
+
+cdef extern from "utilityFunctions.h" nogil:
+  enum: __GNU_SOURCE
+  void die(char *errorStr)
+  void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags)
+  void set_sighandler(int signum, void *psh, sigset_t *block_mask)
+  void make_realtime()
+
+cdef extern from "utilityFunctions.h":
+  void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
 
 {% set sig_type = out_signal['args']['type'] -%}
 {% if sig_type == 'parport' -%}
@@ -53,7 +65,7 @@ cdef extern from "<sys/socket.h>":
   int socket(int domain, int type, int protocol)
   ssize_t sendto(int socket, const void *message, size_t length,
        int flags, const sockaddr *dest_addr,
-       socklen_t dest_len);
+       socklen_t dest_len)
 {% elif sig_type == 'zmq' -%}
 cdef extern from "zmq.h":
   int zmq_close(void *s)
@@ -62,6 +74,58 @@ cdef extern from "zmq.h":
   void *zmq_socket(void *, int type)
   int zmq_bind(void *s, const char *addr)
   int zmq_recv(void *s, void *buf, size_t len, int flags)
+{% elif sig_type == 'line' %}
+cdef extern from "<alsa/asoundlib.h>" nogil:
+  struct _snd_pcm:
+    pass
+  ctypedef _snd_pcm snd_pcm_t
+  ctypedef unsigned long snd_pcm_uframes_t
+  ctypedef long snd_pcm_sframes_t
+  int snd_pcm_prepare(snd_pcm_t* pcm) 
+  snd_pcm_sframes_t snd_pcm_writei(snd_pcm_t *pcm, const void *buffer, snd_pcm_uframes_t size) 
+
+cdef extern from "lineUtilities.h":
+  int pcm_init_play()
+  void pcm_close_play()
+
+cdef extern from "<sched.h>":
+  enum: SCHED_FIFO
+  ctypedef struct cpu_set_t:
+    pass
+  void CPU_ZERO(cpu_set_t *set)
+  void CPU_SET(int cpu, cpu_set_t *set)
+
+cdef extern from "<sys/types.h>":
+  ctypedef unsigned int pthread_t
+  ctypedef struct pthread_attr_t:
+    pass
+  ctypedef struct pthread_mutex_t:
+    pass
+  ctypedef struct pthread_cond_t:
+    pass
+  ctypedef struct pthread_mutexattr_t:
+    pass
+  ctypedef struct pthread_condattr_t:
+    pass
+
+cdef extern from "<pthread.h>" nogil:
+  struct sched_param:
+    int sched_priority
+  int pthread_create(pthread_t *thread, pthread_attr_t *attr,
+                          void *(*start_routine) (void *), void *arg)
+  void pthread_exit(void *retval)
+  int pthread_cond_signal(pthread_cond_t *cond)
+  int pthread_mutex_lock(pthread_mutex_t *mutex)
+  int pthread_mutex_unlock(pthread_mutex_t *mutex)
+  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
+  int pthread_join(pthread_t thread, void **retval)
+  int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
+  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
+  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
+  int pthread_mutex_init(pthread_mutex_t *mutex, pthread_mutexattr_t *attr)
+  int pthread_cond_init(pthread_cond_t *cond, pthread_condattr_t *attr)
+  pthread_t pthread_self()
+
 {% endif %}
 
 cdef extern from "semaphore.h":
@@ -74,13 +138,6 @@ cdef extern from "semaphore.h":
   int sem_wait(sem_t *)
   int sem_getvalue(sem_t *restrict, int *restrict)
   int sem_post(sem_t *)
-
-cdef extern from "utilityFunctions.h":
-  void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
-  void die(char *errorStr)
-  void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags)
-  void set_sighandler(int signum, void *psh, sigset_t *block_mask)
-  void make_realtime()
 
 cdef extern from "constants.h":
   enum: NUM_CHANNELS
@@ -106,6 +163,21 @@ cdef socklen_t recv_len
 {% elif sig_type == 'zmq' -%}
 cdef void *radio
 cdef void *context
+{%- elif sig_type == 'line' %}
+cdef extern snd_pcm_t *play_handle
+cdef snd_pcm_uframes_t frames
+cdef int ret
+cdef int rc
+# threading variables
+cdef pthread_t tid
+cdef pthread_cond_t cv
+cdef pthread_mutex_t mutex
+cdef bool shouldDie = False
+# worker thread vars
+cdef char *zErrMsg
+cdef void * retVal
+cdef uint32_t lineWriteOffset = 0;
+cdef bool lineWrapped
 {%- endif %}
 
 cdef sem_t *pSignalSems
@@ -125,18 +197,26 @@ lastVal = 1
 in_sigs = []
 {%- else %}
 cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigStrtPtr
-# cdef {{in_signals['dtype']}}_t *sigEndPtr
+cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigEndPtr
 # cdef {{in_signals['dtype']}}_t *curPtr
 {%- endif %}
 
 in_sig = None
 
 cdef void handle_exit(int exitStatus):
+  global cv, mutex, retVal, tid, radio, context, s
 {%- if sig_type == 'udp' %}
   close(s)
 {%- elif sig_type == 'zmq' %}
   zmq_close(radio)
   zmq_ctx_destroy(context)
+{%- elif sig_type == 'line' %}
+  pthread_mutex_lock(&mutex)
+  shouldDie = True
+  pthread_cond_signal(&cv) 
+  pthread_mutex_unlock(&mutex)
+  pthread_join(tid, &retVal)
+  pcm_close_play()
 {%- endif %}
   exit(exitStatus)
 
@@ -154,8 +234,52 @@ cdef void segv_handler(int signum):
 cdef void usr2_handler(int signum):
   pass
 
+{% if sig_type == 'line' -%}
+cdef void* processRequests(void *arg) nogil:
+  global mutex, cv, retVal, ret, frames, play_handle, sigStrtPtr, sigEndPtr, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, z
+  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  # int trc
+  zErrMsg = <char *>0
+  while (True):
+    pthread_mutex_lock(&mutex)
+    pthread_cond_wait(&cv, &mutex) 
+
+    if (shouldDie):
+      retVal = NULL  
+      pthread_exit(retVal)
+
+    if (pLocalSignalMem[1] < lineWriteOffset):
+      lineWrapped = True
+
+    while (lineWrapped or ((lineWriteOffset + frames * 2) < pLocalSignalMem[1])):
+      ret = snd_pcm_writei(play_handle, <void *>(sigStrtPtr + lineWriteOffset), frames)
+      if (ret == -EPIPE):
+        # EPIPE means underrun
+        printf("underrun occurred\n")
+        snd_pcm_prepare(play_handle)
+      elif (ret < 0):
+       die("writei failed")
+      elif (ret != <int>frames):
+        die("short write")
+
+      # z = 0
+      # while (z < frames * 2):
+      #   printf("%d ", (sigStrtPtr)[lineWriteOffset + z])
+      #   z += 1
+      # printf("\n\n")
+      lineWriteOffset += (frames * 2)
+      if (lineWriteOffset >= (sigEndPtr - sigStrtPtr)):
+        lineWriteOffset = 0
+        lineWrapped = False
+
+    # why is this all the way down here?  won't the mutex be locked until it gets here (or its unlocking twice,
+    # which isn't good either)? 
+    pthread_mutex_unlock(&mutex)
+{%- endif %}
+
 # main
-sigfillset(&exitMask)
+sigemptyset(&exitMask)
+sigaddset(&exitMask, SIGALRM)
 init_utils(&handle_exit, &exitMask)
 
 ppid = getppid()
@@ -164,6 +288,29 @@ set_sighandler(SIGINT, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
+
+{% if sig_type == 'line' -%}
+# init mutex and condition variable
+rc = pthread_mutex_init(&mutex, NULL)
+if (rc): die("pthread_mutex_init failed")
+rc = pthread_cond_init(&cv, NULL)
+if (rc): die("pthread_cond_init failed")
+# create background thread
+rc = pthread_create(&tid, NULL, &processRequests, NULL)
+if (rc): die("pthread_create failed")
+
+cdef sched_param param
+param.sched_priority = 48
+pthread_setschedparam(tid, SCHED_FIFO, &param)
+cdef cpu_set_t mask
+# cdef pthread_t maint = pthread_self()
+# CPU_ZERO(&mask)
+# CPU_SET(3, &mask)
+# pthread_setaffinity_np(maint, sizeof(cpu_set_t), &mask)
+CPU_ZERO(&mask)
+CPU_SET(0, &mask)
+pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
+{%- endif %}
 
 # open and map shared parent memory
 open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
@@ -185,6 +332,7 @@ else:
   die("numpy signal not created\n")
 {% endfor %}
 sigStrtPtr = <{{in_signals[in_signals.keys()[0]]['dtype']}}_t *><long>in_sig.__array_interface__['data'][0] # TODO don't hardcode type
+sigEndPtr = sigStrtPtr + len(in_sig)
 
 {% if sig_type == 'udp' -%}
 # create a UDP socket
@@ -197,20 +345,27 @@ si_other.sin_family = AF_INET
 si_other.sin_port = htons(51004)
 if (inet_aton("{{out_signal['args']['addr']}}", &si_other.sin_addr)==0):
   die("inet_aton() failed\n")
+{% elif sig_type == 'line' %}
+# initiliaze line in 
+frames = pcm_init_play()
+print "FRMAES"
+print frames
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{out_signal['args']['addr']}}, 1, 1)):
   die("io permission denied\n")
 {% elif sig_type == 'zmq' -%}
-context = zmq_ctx_new()
+context = zmq_ctx_new() 
 if (not context):
   die("Could not create ZMQ context.\n")
 radio = zmq_socket(context, ZMQ_RADIO)
 if (not radio):
   die("Could not create ZMQ socket.\n")
-rc = zmq_connect(radio, "udp://192.168.1.1:5555");
+rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
 {%- endif %}
+
+cdef uint32_t y
 
 make_realtime()
 
@@ -223,32 +378,15 @@ while(True):
   if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
     die("sendto() failed")
 {%- elif sig_type == 'parport' %}
-  # if (lastVal == sigStrtPtr[0]):
-  #   printf("numMS: %d\n", numMS)
-  #   printf("%d\n", pLocalSignalMem[0])
-  #   printf("%d\n", pLocalSignalMem[1])
-  #   printf("%d\n", pLocalSignalMem[2])
-  #   printf("%d\n", pLocalSignalMem[3])
-  # lastVal = sigStrtPtr[0]
-  # printf("%d\n", sigStrtPtr[0])
-  # printf("%d\n", sigStrtPtr[1])
-  
-  # printf("sink: %d\n", sigStrtPtr[pLocalSignalMem[0]])
-  # printf("sink: %d\n", pLocalSignalMem[0])
   portio.outb(<unsigned char>sigStrtPtr[pLocalSignalMem[0]],0x{{out_signal['args']['addr']}})
-
-  # clock_gettime(CLOCK_MONOTONIC_RAW, &timer)
-  # printf("%lu\n", (<unsigned long *>pSignalMem)[100])
-  # printf("%ld\n", (<long *>pSignalMem)[101])
-  # printf("%lu\n", (<unsigned long *>pSignalMem)[102])
-  # printf("%ld\n", (<long *>pSignalMem)[103])
-  # printf("%lu\n", timer.tv_sec)
-  # printf("%ld\n", timer.tv_nsec)
-  # printf("\n");
-  # diff = timer.tv_nsec - (<long *>pSignalMem)[101]
-  # if (timer.tv_sec != (<unsigned long *>pSignalMem)[100]):
-  #   diff += 1000000000
-
+{%- elif sig_type == 'line' %}
+  # y = pLocalSignalMem[0]
+  # printf("%d\n", pLocalSignalMem[0])
+  # printf("%d\n", pLocalSignalMem[1])
+  # while(y < pLocalSignalMem[1]):
+  #   printf("%d ", (sigStrtPtr + y)[0])
+  #   y += 1
+  # printf("\n\n");
 {%- endif %}
 {%- endfor %}
 
@@ -258,6 +396,14 @@ while(True):
   # TODO handle non-integer shapes
   # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
 {%- endfor %}
+
+{%- if sig_type == 'line' %}
+
+  if (numMS % 25 == 0):
+    pthread_mutex_lock(&mutex)
+    pthread_cond_signal(&cv)
+    pthread_mutex_unlock(&mutex)
+{%- endif %}
 
   pFinish[NUM_CHILDREN] = 0x0
   sigalrm_recv -= 1
