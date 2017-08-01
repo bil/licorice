@@ -128,7 +128,6 @@ static void check_children() {
   outVal = ~outVal;
   outb(outVal,0x{{parport_tick_addr}});
   
-  // INSERTED
   clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
   curTime = record_timer.tv_nsec;
   curSec = record_timer.tv_sec;
@@ -362,7 +361,9 @@ int main(int argc, char* argv[]) {
   for (i = 0; i < CHILD_HEIGHT; i++) {
     for (int j = 0; j < childLens[i]; j++) {
       int childNum = childTopoOrder[i][j];
-      printf("%d\n", childNum);
+      if (childNum == -1) { // source or sink
+        continue;
+      }
       if ((ch_pids[childNum] = fork()) == -1) {
         die("fork failed\n");
       }
