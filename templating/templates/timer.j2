@@ -193,6 +193,7 @@ static void check_children() {
     // printf("%d\n", *(pCurSignalMem + 3));
     // printf("\n");
 
+    // NON-LATENCY-DEPENDENT UPDATE
     if (*(pCurSignalMem + 1) == *(pCurSignalMem + 3)) 
       *(pCurSignalMem + 0) = 0;
     else 
@@ -201,6 +202,16 @@ static void check_children() {
       *(pCurSignalMem + 1) = *(pCurSignalMem + 3);
     else 
       *(pCurSignalMem + 1) = *(pCurSignalMem + 2);
+
+    // LATENCY-DEPENDENT UPDATE
+    // if (*(pCurSignalMem + 0) == *(pCurSignalMem + 3)) 
+    //   *(pCurSignalMem + 0) = 0;
+    // else 
+    //   *(pCurSignalMem + 0) += (32 * 2);
+    // if (*(pCurSignalMem + 1) == *(pCurSignalMem + 3))
+    //   *(pCurSignalMem + 1) = 32 * 2;
+    // else 
+    //   *(pCurSignalMem + 1) += (32 * 2);
 
     // printf("%d\n", *(pCurSignalMem + 0));
     // printf("%d\n", *(pCurSignalMem + 1));
