@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <signal.h>
 
+#define __GNU_SOURCE
+
 #ifndef _UTILITY_FUNCTIONS_
 #define _UTILITY_FUNCTIONS_ 
 
