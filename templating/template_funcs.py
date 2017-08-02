@@ -1,6 +1,8 @@
 import os, shutil
 import jinja2
 import sys
+import pwd
+import grp
 from toposort import toposort
 
 # some constants
@@ -71,6 +73,9 @@ def generate(config, confirm):
     print "Removed old output directory.\n"
 
   os.mkdir(MODULE_DIR)
+  # uid = pwd.getpwnam("a").pw_uid
+  # gid = grp.getgrnam("a").gr_gid
+  # os.chown(MODULE_DIR, uid, gid)
 
   print "Generated modules:"
   modules = config['modules']

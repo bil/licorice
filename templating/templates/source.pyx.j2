@@ -210,8 +210,6 @@ cdef void usr2_handler(int signum):
   pass
 
 # main
-{{construct_code}}
-
 sigfillset(&exitMask)
 init_utils(&handle_exit, &exitMask)
 
@@ -303,6 +301,8 @@ else:
 {%- endif %}
 {%- endif %}
 {%- endfor %}
+
+{{construct_code}}
 
 make_realtime()
 
