@@ -57,10 +57,17 @@ def generate(config):
 
   print "Generated modules:"
   modules = config['modules']
+  signals = config['signals']
+  external_signals = []
+  for signal_name, signal_args in signals.iteritems():
+    if signal_args.has_key('args'):
+      external_signals.append(signal_name)
+
   for module_name, module_args in modules.iteritems():
-    if module_name in ['logger', 'network']:
+    if all(map(lambda x: x in external_signals, module_args['in'])) or \
+       all(map(lambda x: x in external_signals, module_args['out'])): 
       continue
-    
+      
     # load user code template
     template_f = open(os.path.join(GENERATE_DIR, GENERATE_MODULE_PY), 'r')
     # setup user code template
@@ -123,8 +130,11 @@ def parse(config):
   sink_names = []
   source_outputs = {}
   dependency_graph = {}
+  independent_modules = []
   in_signals = {}
   out_signals = {}
+  line_source_exists = 0
+  print internal_signals
   for module_name, module_args in modules.iteritems():
     if all(map(lambda x: x in external_signals, module_args['in'])):
       source_names.append(module_name)
@@ -160,6 +170,8 @@ def parse(config):
   assert (len(all_names) == len(set(all_names)))
 
   print "Modules: "
+  print all_names
+  print module_names
 
   for name in all_names:
       # get module info
@@ -186,6 +198,11 @@ def parse(config):
         so_in_sig = so_in_sig[so_in_sig.keys()[0]]
         if not so_in_sig['parser']:
           assert len(out_signals) == 1
+        if so_in_sig['args']['type'] == 'line':
+          line_source_exists = 1
+          so_in_sig['schema'] = {}
+          so_in_sig['schema']['data'] = {}
+          so_in_sig['schema']['data']['dtype'] = 'uint16'
         mod_out_f.write(module_template.render(
           name=name, 
           config=config, 
@@ -270,16 +287,16 @@ def parse(config):
                   dependencies[in_sig] += 1
                 else:
                   dependencies[in_sig] = 1
+                if all_names[child_index] not in sink_names: # take this out to include sinks in dependency graph
+                  dg_cidx = module_names.index(all_names[child_index])
+                  dg_pidx = module_names.index(name)
+                else:
+                  independent_modules.append(module_names.index(name))
+                  continue
                 if dependency_graph.has_key(child_index):
-                  if all_names[child_index] not in sink_names: # take this out to include sinks in dependency graph
-                    dg_cidx = module_names.index(all_names[child_index])
-                    dg_pidx = module_names.index(name)
-                    dependency_graph[dg_cidx] = dependency_graph[dg_cidx].union({dg_pidx})
+                  dependency_graph[dg_cidx] = dependency_graph[dg_cidx].union({dg_pidx})
                 else: 
-                  if all_names[child_index] not in sink_names:
-                    dg_cidx = module_names.index(all_names[child_index])
-                    dg_pidx = module_names.index(name)
-                    dependency_graph[dg_cidx] = {dg_pidx}
+                  dependency_graph[dg_cidx] = {dg_pidx}
         for dependency in dependencies:
           #store num dependencies in 0 and location of sem in 1
           dependencies[dependency] = (dependencies[dependency], sem_dict[dependency])
@@ -357,11 +374,17 @@ def parse(config):
   ))
   mod_out_f.close()
 
+  print dependency_graph
+  print module_names
   # parse timer parent
   template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_TIMER), 'r')
   module_template = jinja2.Template(template_f.read())
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_TIMER), 'w')
   topo_children = map(list, list(toposort(dependency_graph)))
+  if len(topo_children) == 0:
+    topo_children.append(independent_modules)
+  else:
+    topo_children[0] += independent_modules
   topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
   num_children = len(module_names)
@@ -370,6 +393,7 @@ def parse(config):
   parport_tick_addr = config['config']['parport_tick_addr'] if config['config'].has_key('parport_tick_addr') else None
   print parport_tick_addr
   mod_out_f.write(module_template.render(
+    config = config,
     topo_order=topo_children,
     topo_lens=topo_lens,
     topo_height=len(topo_children),
@@ -392,7 +416,8 @@ def parse(config):
   module_template = jinja2.Template(template_f.read())
   mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_CONSTANTS), 'w')
   mod_out_f.write(module_template.render(
-    num_children=num_children
+    num_children=num_children,
+    line=line_source_exists
   ))
   mod_out_f.close()
 
