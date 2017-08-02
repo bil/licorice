@@ -1,0 +1,15 @@
+{% if verbose_comments %}'''
+
+{{name}} module:
+
+input signals:{% for i in in_sig %}
+- {{i}}{
+{% endfor %}
+output signals{% for o in out_sig %}
+- {{o}}
+{% endfor %} 
+'''
+{% endif %}
+def {{name}}(in_signals, out_signals):
+  # write user code here
+

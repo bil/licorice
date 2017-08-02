@@ -26,10 +26,6 @@ import pygame
 import sys, random, time, math, os.path
 {%- endif %}
 
-{% if out_signal['args']['parser'] -%}
-import {{parser}}
-{%- endif %}
-
 cdef extern from "utilityFunctions.h" nogil:
   enum: __GNU_SOURCE
   void die(char *errorStr)
@@ -214,7 +210,7 @@ cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
 lastVal = 1
 
-{% if out_signal['args']['parser'] -%}
+{% if parser -%}
 in_sigs = []
 {%- else %}
 cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigStrtPtr
@@ -226,6 +222,7 @@ in_sig = None
 
 cdef void handle_exit(int exitStatus):
   global cv, mutex, retVal, tid, radio, context, s
+  {{destruct_code}}
 {%- if sig_type == 'udp' %}
   close(s)
 {%- elif sig_type == 'zmq' %}
@@ -369,6 +366,9 @@ cdef void* processRequests(void *arg) nogil:
 {%- endif %}
 
 # main
+
+{{construct_code}}
+
 sigemptyset(&exitMask)
 sigaddset(&exitMask, SIGALRM)
 init_utils(&handle_exit, &exitMask)
@@ -531,6 +531,8 @@ while(True):
   # TODO handle non-integer shapes
   # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
 {%- endfor %}
+
+  {{parser}}
 
 {%- if sig_type == 'line' %}
 
