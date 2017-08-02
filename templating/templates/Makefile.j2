@@ -42,5 +42,5 @@ logger: logger.c sqlHelpers.c shmHelpers.c utilityFunctions.c sqlite3async.c #ne
 {%- endfor %}
 
 clean:
-	rm -f timer network logger *.db {% for c in child_names %}{{c}} {{c}}.c {{c}}.h{% endfor %}
+	rm -f timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si} {% endfor %}{% for c in child_names %}{{c}} {% endfor %}
 
