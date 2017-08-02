@@ -26,6 +26,8 @@
 #define NUM_SINKS {{sink_names|length}}
 #define NSECS 600000
 
+{% set test_start_time = (config['config'].has_key('test_start_time') and config['config']['test_start_time']) %}
+{% set test_tick_time = (config['config'].has_key('test_tick_time') and config['config']['test_tick_time']) %}
 // process IDs for each child numbered according to the index of the child's name
 // in childProcNames
 static pid_t ch_pids[NUM_CHILDREN];
@@ -63,7 +65,19 @@ static int sigchld_recv;
 static int num_cores;
 static int ex_i, al_i, de_i;
 
-static struct itimerval timer;
+static struct itimerval rtTimer;
+{%- if test_start_time %}
+static struct timespec startTimer;
+static time_t startStartSec;
+static long startStartNSec;
+{%- endif %}
+{%- if test_tick_time %}
+static struct timespec tickTimer;
+static time_t tickStartSec;
+static long tickStartNSec;
+static unsigned long long tickTimeSum = 0;
+static unsigned long numTicksMeasured = 0;
+{%- endif %}
 
 // INSERTED
 static struct timespec record_timer;
@@ -72,12 +86,16 @@ static time_t curSec;
 static FILE *f;
 
 void handle_exit(int exitStatus) {
+{%- if test_tick_time %}
+  printf("%llu time over %lu ticks\n", tickTimeSum, numTicksMeasured);
+  printf("%f ns\n", ((float)tickTimeSum) / numTicksMeasured); 
+{%- endif %}
   printf("exiting...\n");
-  timer.it_value.tv_sec = 0;
-  timer.it_value.tv_usec = 0;
-  timer.it_interval.tv_sec = 0;
-  timer.it_interval.tv_usec = 0;
-  setitimer(ITIMER_REAL, &timer, NULL);
+  rtTimer.it_value.tv_sec = 0;
+  rtTimer.it_value.tv_usec = 0;
+  rtTimer.it_interval.tv_sec = 0;
+  rtTimer.it_interval.tv_usec = 0;
+  setitimer(ITIMER_REAL, &rtTimer, NULL);
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
   for (ex_i = 0; ex_i < NUM_CHILDREN; ex_i++) {
@@ -120,20 +138,28 @@ void set_sched_prior(int priority) {
 }
 
 static void check_children() {
-  // printf("ms start\n");
+{%- if test_tick_time %}
+  clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
+{% endif %}
+  
   if (sigalrm_recv > 1)
     die("Timer missed a tick.");
 {% if parport_tick_addr -%}
   // flip bits and output to parallel port
-  outVal = ~outVal;
   outb(outVal,0x{{parport_tick_addr}});
-  
+  outVal = ~outVal;
+
   clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
   curTime = record_timer.tv_nsec;
   curSec = record_timer.tv_sec;
   fprintf(f, "%ld %ld\n", curTime, curSec);
 {%- endif %}
 
+{%- if test_tick_time %}
+  tickStartNSec = tickTimer.tv_nsec;
+  tickStartSec = tickTimer.tv_sec;
+{%- endif %}
+  
   // increment SIGALRM counter
   alrmNum++;
 
@@ -154,7 +180,7 @@ static void check_children() {
       } 
       pFinish[chNum] = 0xff;
     }
-    // check if logger has finished execution in allotted time
+    // check if sinks have finished execution in allotted time
     if (pFinish[NUM_CHILDREN]) {
       printf("Logger timing violation on ms: %lu \n", alrmNum);
       //usleep(5000);
@@ -171,7 +197,10 @@ static void check_children() {
     *pMSStart = *pMSEnd;
     *pMSEnd = *pDataEnd;
     // TODO make this generic for N signals
+
     pCurSignalMem = pSignalMem + 0;
+
+    // NON-LATENCY-DEPENDENT UPDATE
     if (*(pCurSignalMem + 1) == *(pCurSignalMem + 3)) 
       *(pCurSignalMem + 0) = 0;
     else 
@@ -181,10 +210,16 @@ static void check_children() {
     else 
       *(pCurSignalMem + 1) = *(pCurSignalMem + 2);
 
-    // printf("%d\n", *(pCurSignalMem + 0));
-    // printf("%d\n", *(pCurSignalMem + 1));
-    // printf("%d\n", *(pCurSignalMem + 2));
-    // printf("%d\n", *(pCurSignalMem + 3));
+    // LATENCY-DEPENDENT UPDATE
+    // if (*(pCurSignalMem + 0) == *(pCurSignalMem + 3)) 
+    //   *(pCurSignalMem + 0) = 0;
+    // else 
+    //   *(pCurSignalMem + 0) += (32 * 2);
+    // if (*(pCurSignalMem + 1) == *(pCurSignalMem + 3))
+    //   *(pCurSignalMem + 1) = 32 * 2;
+    // else 
+    //   *(pCurSignalMem + 1) += (32 * 2);
+
     atomic_thread_fence(memory_order_release);
     sem_post(pSem);
     
@@ -195,9 +230,6 @@ static void check_children() {
 
     // trigger first round of child processes. block if network is updating spike wave data
     // sem_wait(pSem);
-    for (al_i = 0; al_i < NUM_SINKS; al_i++) {
-      kill(si_pids[al_i], SIGALRM);
-    }
 {%-for sem_pair in source_sems %}
   for (al_i = 0; al_i < {{sem_pair[1]}}; al_i++) {
     sem_post(&pSignalSems[{{sem_pair[0]}}]);
@@ -205,6 +237,16 @@ static void check_children() {
 {%-endfor%}
     // sem_post(pSem);
   }
+
+{%- if test_tick_time %}
+  clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
+  numTicksMeasured++;
+  tickTimeSum += ((tickTimer.tv_sec - tickStartSec) * 1000000000 + (tickTimer.tv_nsec - tickStartNSec));
+  if (numTicksMeasured >= 1000 * 60 * 60) {
+    handle_exit(0);
+  }
+{%- endif %}
+
   sigalrm_recv--;
 }
 
@@ -260,6 +302,18 @@ void stack_prefault() {
 }
 
 int main(int argc, char* argv[]) {
+{%- if test_start_time %}
+  clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
+  startStartSec = startTimer.tv_sec;
+  startStartNSec = startTimer.tv_nsec;
+{% endif %}
+
+  f = fopen("/home/a/output_filename","w");
+  if (f == NULL) {
+    printf("Error opening file!\n");
+    handle_exit(1);
+  }
+
   // set signal masks
   sigemptyset(&exitMask);
   sigaddset(&exitMask, SIGALRM);  
@@ -429,20 +483,21 @@ int main(int argc, char* argv[]) {
   }
   pause(); // TODO fix pause here to wait for all network processes
   printf("Network process ready.\n");
+
+{%- if test_start_time %}
+  clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
+  printf("Start Time: %ld\n", (startTimer.tv_sec - startStartSec) * 1000000000 + startTimer.tv_nsec - startStartNSec);
+  handle_exit(0);
+{% endif %}
+
   // set up timer
   printf("Setting up timer...\n");
-  timer.it_value.tv_sec = SECREQ;
-  timer.it_value.tv_usec = USECREQ;
-  timer.it_interval.tv_sec = SECREQ;
-  timer.it_interval.tv_usec = USECREQ;
-  //tell network to start gathering data.  First ms is therefore slightly longer than the rest.
-  setitimer(ITIMER_REAL, &timer, NULL);
 
-  f = fopen("/home/a/output_filename","w");
-  if (f == NULL) {
-    printf("Error opening file!\n");
-    handle_exit(1);
-  }
+  rtTimer.it_value.tv_sec = SECREQ;
+  rtTimer.it_value.tv_usec = USECREQ;
+  rtTimer.it_interval.tv_sec = SECREQ;
+  rtTimer.it_interval.tv_usec = USECREQ;
+  setitimer(ITIMER_REAL, &rtTimer, NULL);
 
   while(1) {
     if (sigexit_recv)
