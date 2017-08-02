@@ -22,6 +22,7 @@ import portio
 
 {% set sig_type = out_signal['args']['type'] -%}
 {% if sig_type == 'vis' -%}
+# Init (CONSTRUCTOR/IMPORT)
 import pygame
 import sys, random, time, math, os.path
 {%- endif %}
@@ -171,23 +172,26 @@ cdef socklen_t recv_len
 cdef void *radio
 cdef void *context
 {% elif sig_type == 'vis' -%}
+# Init (CONSTRUCTOR)
 cdef:
     int width = 600
     int height = 600
     tuple black = (0,0,0)
-    tuple white = (255,255,255)
-    tuple green = (92,244,6)
-    int ball_size = 20
-    char *audio_path = '/home/a/rigaudio'
-    char *success = 'EC_go.wav'
-    char *failure = 'C#C_failure.wav'
-    int n_trials = 0
-    int n_success = 0
-    list cursor_pos = [300, 300]
-    int inTrial = 1
-    int trial_time = 0
-    int rest_time = 0
-    int time_on_target = 0 
+
+# TASK LOGIC
+    # tuple white = (255,255,255)
+    # tuple green = (92,244,6)
+    # int ball_size = 20
+    # char *audio_path = '/home/a/rigaudio'
+    # char *success = 'EC_go.wav'
+    # char *failure = 'C#C_failure.wav'
+    # int n_trials = 0
+    # int n_success = 0
+    # list cursor_pos = [300, 300]
+    # int inTrial = 1
+    # int trial_time = 0
+    # int rest_time = 0
+    # int time_on_target = 0 
 {%- elif sig_type == 'line' %}
 cdef extern snd_pcm_t *play_handle
 cdef snd_pcm_uframes_t frames
@@ -232,6 +236,7 @@ cdef void handle_exit(int exitStatus):
   zmq_close(radio)
   zmq_ctx_destroy(context)
 {%- elif sig_type == 'vis' %}
+  # DESTRUCTOR
   pygame.quit()
 {%- elif sig_type == 'line' %}
   pthread_mutex_lock(&mutex)
@@ -258,68 +263,82 @@ cdef void usr2_handler(int signum):
   pass
 
 {% if sig_type == 'vis' -%}
-class Cursor(pygame.sprite.Sprite):
+# class Cursor(pygame.sprite.Sprite):
 
-    def __init__(self, color, radius, pos):
-       pygame.sprite.Sprite.__init__(self)
+#     def __init__(self, color, radius, pos):
+#        pygame.sprite.Sprite.__init__(self)
+#        self.radius = radius
+#        self.color = color
 
-       self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
-       self.image.fill((0,0,0,0))
+#        self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
+#        self.draw()
 
-       self.rect = self.image.get_rect()
-       pygame.draw.circle(self.image, color, (radius, radius), radius)     
-       self.rect.x, self.rect.y = pos
+#        self.rect = self.image.get_rect()   
+#        self.rect.x, self.rect.y = pos
     
-    def update(self, offset):
-        # Do not move out of the screen
-        if self.rect.left < 0 and offset[0] < 0:
-          offset[0] = 0
-        if self.rect.top < 0 and offset[1] < 0: 
-          offset[1] = 0 
-        if self.rect.bottom > height and offset[1] > 0: 
-          offset[1] = 0
-        if self.rect.right > width and offset[0] > 0: 
-          offset[0] = 0
+#     def update(self, offset):
+#         # Do not move out of the screen
+#         if self.rect.left < 0 and offset[0] < 0:
+#           offset[0] = 0
+#         if self.rect.top < 0 and offset[1] < 0: 
+#           offset[1] = 0 
+#         if self.rect.bottom > height and offset[1] > 0: 
+#           offset[1] = 0
+#         if self.rect.right > width and offset[0] > 0: 
+#           offset[0] = 0
 
-        self.rect = self.rect.move(offset)
+#         self.rect = self.rect.move(offset)
 
-        # self.rect.x = offset[0]
-        # self.rect.y = offset[1]
+#     def set_color(self, color):
+#       self.color = color
+#       self.draw()
+      
+#     def set_pos(self, pos):
+#       self.rect.x, self.rect.y = pos
 
-class Target(pygame.sprite.Sprite):
+#     def set_size(self, radius):
+#       self.radius = radius
+#       self.image = pygame.Surface([self.radius * 2, self.radius * 2]).convert_alpha()
+#       self.draw()
 
-    def __init__(self, color, radius, positions, width, height):
-       pygame.sprite.Sprite.__init__(self)
-       self.positions = positions
+#     def draw(self):
+#       self.image.fill((0,0,0,0))
+#       pygame.draw.circle(self.image, self.color, (self.radius, self.radius), self.radius)
+
+# class Target(pygame.sprite.Sprite):
+
+#     def __init__(self, color, radius, positions, width, height):
+#        pygame.sprite.Sprite.__init__(self)
+#        self.positions = positions
        
-       self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
-       self.image.fill((0,0,0,0))
+#        self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
+#        self.image.fill((0,0,0,0))
 
-       self.rect = self.image.get_rect()
-       pygame.draw.circle(self.image, color, (radius, radius), radius)
-       self.new_pos(False)
+#        self.rect = self.image.get_rect()
+#        pygame.draw.circle(self.image, color, (radius, radius), radius)
+#        self.new_pos(False)
 
-    def new_pos(self, center):
-      if center:
-        self.rect.x, self.rect.y = width/2, height/2
-      else:
-        self.rect.x, self.rect.y = random.choice(self.positions)
+#     def new_pos(self, center):
+#       if center:
+#         self.rect.x, self.rect.y = width/2, height/2
+#       else:
+#         self.rect.x, self.rect.y = random.choice(self.positions)
 
-def get_circle_pos(radius, center):
-  d = int(math.sqrt(radius ** 2 / 2))
-  positions = [
-    (center[0], center[1] + radius),
-    (center[0], center[1] - radius),
-    (center[0] + radius, center[1]),
-    (center[0] - radius, center[1]),
-    (center[0] - d, center[1] - d),
-    (center[0] + d, center[1] - d),
-    (center[0] - d, center[1] + d),
-    (center[0] + d, center[1] + d) 
-  ]
-  return positions
+# def get_circle_pos(radius, center):
+#   d = int(math.sqrt(radius ** 2 / 2))
+#   positions = [
+#     (center[0], center[1] + radius),
+#     (center[0], center[1] - radius),
+#     (center[0] + radius, center[1]),
+#     (center[0] - radius, center[1]),
+#     (center[0] - d, center[1] - d),
+#     (center[0] + d, center[1] - d),
+#     (center[0] - d, center[1] + d),
+#     (center[0] + d, center[1] + d) 
+#   ]
+#   return positions
 
-# def play_sound(success):
+# # def play_sound(success):
 #   if success:
 #     success_sound.play()
 #   else:
@@ -439,7 +458,7 @@ if (inet_aton("{{out_signal['args']['addr']}}", &si_other.sin_addr)==0):
 {% elif sig_type == 'line' %}
 # initiliaze line in 
 frames = pcm_init_play()
-print "FRMAES"
+print "FRAMES"
 print frames
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
@@ -454,9 +473,11 @@ if (not radio):
   die("Could not create ZMQ socket.\n")
 rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
+# USER CONSTRUCTOR CODE
 {% elif sig_type == 'vis' -%}
+# Initialization (CONSTRUCTOR)
 pygame.init()
-# pygame.mixer.init(11025)
+pygame.mixer.init(11025)
 
 # success_sound = pygame.mixer.Sound(os.path.join(audio_path, success))
 # failure_sound = pygame.mixer.Sound(os.path.join(audio_path, failure))
@@ -464,12 +485,13 @@ pygame.init()
 screen = pygame.display.set_mode((width, height))
 pygame.display.flip()
 
-target_positions = get_circle_pos(150, (width/2, height/2))
-cursor = Cursor(white, ball_size, cursor_pos)
-target = Target(green, ball_size, target_positions, width, height)
-sprites = pygame.sprite.Group(cursor, target)
-sprites.draw(screen)
-pygame.display.flip()
+# target_positions = get_circle_pos(150, (width/2, height/2))
+# cursor = Cursor(white, ball_size, cursor_pos)
+# target = Target(green, ball_size, target_positions, width, height)
+# sprites = pygame.sprite.Group(cursor, target)
+
+# sprites.draw(screen)
+# pygame.display.flip()
 {%- endif %}
 
 cdef uint32_t y
@@ -489,38 +511,46 @@ while(True):
 {%- elif sig_type == 'parport' %}
   portio.outb(<unsigned char>sigStrtPtr[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'vis' %}
-  offset = [<int32_t>sigStrtPtr[0], <int32_t>sigStrtPtr[1]]
-  if inTrial:
-    if time_on_target >= 500 or trial_time >=3000:
-        #play_sound(time_on_target >= 500)
-        time_on_target = 0
-        trial_time = 0
-        inTrial = 0
-        screen.fill(black)
-        n_trials += 1
-    else:
-      trial_time += 1
-      if pygame.sprite.collide_rect(target, cursor):
-        time_on_target += 1
-      else:
-        time_on_target = 0
+  # offset = [<int32_t>sigStrtPtr[0], <int32_t>sigStrtPtr[1]]
+  # if inTrial:
+  #   if time_on_target >= 500 or trial_time >=3000:
+  #       #play_sound(time_on_target >= 500)
+  #       time_on_target = 0
+  #       trial_time = 0
+  #       inTrial = 0
+  #       screen.fill(black)
+  #       n_trials += 1
+  #   else:
+  #     trial_time += 1
+  #     if pygame.sprite.collide_rect(target, cursor):
+  #       time_on_target += 1
+  #     else:
+  #       time_on_target = 0
 
-      if numMS % 15 == 0: # Control fps?
-        sprites.update(offset)
-        screen.fill(black)
-        sprites.draw(screen)
-        pygame.display.flip()
-  else:
-    if rest_time >= 40:
-      inTrial = 1
-      rest_time = 0
-      target.new_pos(n_trials % 2)
-      sprites.add(target)
+  #     if numMS % 15 == 0: # Control fps
+  #       sprites.update(offset)
+  #       screen.fill(black)
+  #       sprites.draw(screen)
+  #       pygame.display.flip()
+  # else:
+  #   if rest_time >= 40:
+  #     inTrial = 1
+  #     rest_time = 0
+  #     target.new_pos(n_trials % 2)
+  #     sprites.draw(screen)
+  #     pygame.display.flip()
+
+  #   else:
+  #     rest_time += 1
+
+  # EVERY MS (parser)
+    task_updates = sigStrtPtr[0] # { sprites: sprites/None, sound: sound/None }
+    screen.fill(black)
+    if task_updates[sprites]:
       sprites.draw(screen)
       pygame.display.flip()
-
-    else:
-      rest_time += 1
+    if task_updates[sound]:
+      task_updates[sound].play()
 {%- elif sig_type == 'line' %}
   # Output handled in async thread
 {%- endif %}
