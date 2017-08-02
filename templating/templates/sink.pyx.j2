@@ -338,11 +338,6 @@ cdef void usr2_handler(int signum):
 #   ]
 #   return positions
 
-# # def play_sound(success):
-#   if success:
-#     success_sound.play()
-#   else:
-#     failure_sound.play()
 {%- endif %}
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
@@ -473,7 +468,6 @@ if (not radio):
   die("Could not create ZMQ socket.\n")
 rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
-# USER CONSTRUCTOR CODE
 {% elif sig_type == 'vis' -%}
 # Initialization (CONSTRUCTOR)
 pygame.init()
@@ -547,7 +541,7 @@ while(True):
     task_updates = sigStrtPtr[0] # { sprites: sprites/None, sound: sound/None }
     screen.fill(black)
     if task_updates[sprites]:
-      sprites.draw(screen)
+      task_updates[sprites].draw(screen)
       pygame.display.flip()
     if task_updates[sound]:
       task_updates[sound].play()

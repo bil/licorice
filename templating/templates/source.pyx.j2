@@ -200,10 +200,7 @@ cdef void alrm_handler(int signum):
   if (parentSetup):
     parentSetup = False
   numMS += 1
-{%- if sig_type == 'parport' %}
-  global readInput
-  readInput = True
-{%- elif sig_type == 'joystick' %}
+{%- if sig_type == 'parport' or sig_type == 'joystick' %}
   global readInput
   readInput = True
 {%- endif %}
@@ -268,9 +265,6 @@ if pygame.joystick.get_count() < 1:
 
 joystick = pygame.joystick.Joystick(0)
 joystick.init()
-# c = 300
-# r = 150
-# theta = math.pi / 2
 {%- endif %}
 
 created_mem = sa.list()
@@ -363,7 +357,7 @@ while(True):
     # y = c - r * math.sin(theta)
 
     pygame.event.pump()
-    for axis in range(recv_len): #(use recv_len to be safe?)
+    for axis in range(recv_len):
       sigCurPtr[axis] = int(joystick.get_axis(axis) * 5)
 
     # sigCurPtr[0] = int(x)
