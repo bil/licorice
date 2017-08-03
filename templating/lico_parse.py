@@ -7,10 +7,11 @@ arg_parser = argparse.ArgumentParser(description='LiCoRICE config parser.')
 arg_parser.add_argument('-c', '--config', type=file, help='config file to parse')
 arg_parser.add_argument('-g', '--generate', action='store_true', help='generate user code templates')
 arg_parser.add_argument('-e', '--export', action='store_true', help='export current project')
+arg_parser.add_argument('-Q', '--confirm', action='store_true', help='ask for user confirmation on action')
 args = arg_parser.parse_args()
 
 if args.export == True:
-  export()
+  export(args.confirm)
   exit()
 
 args = arg_parser.parse_args()
@@ -32,6 +33,6 @@ if (set(top_level) != set(config.keys())):
   exit()
 
 if args.generate == True:
-  generate(config)
+  generate(config, args.confirm)
 else: 
-  parse(config)
+  parse(config, args.confirm)

@@ -1,6 +1,8 @@
 import os, shutil
 import jinja2
 import sys
+import pwd
+import grp
 from toposort import toposort
 
 # some constants
@@ -24,7 +26,16 @@ TEMPLATE_MAKEFILE='Makefile.j2'
 TEMPLATE_TIMER='timer.j2'
 TEMPLATE_CONSTANTS='constants.j2'
 
-GENERATE_MODULE_PY='user_code_py.j2'
+G_TEMPLATE_MODULE_CODE_PY='module_code_py.j2'
+G_TEMPLATE_SOURCE_PARSER_PY='source_parser_py.j2'
+G_TEMPLATE_SINK_PARSER_PY='sink_parser_py.j2'
+G_TEMPLATE_CONSTRUCTOR_PY='constructor_py.j2'
+G_TEMPLATE_DESTRUCTOR_PY='destructor_py.j2'
+G_TEMPLATE_MODULE_CODE_C='module_code_c.j2'
+G_TEMPLATE_SOURCE_PARSER_C='source_parser_c.j2'
+G_TEMPLATE_SINK_PARSER_C='sink_parser_c.j2'
+G_TEMPLATE_CONSTRUCTOR_C='constructor_c.j2'
+G_TEMPLATE_DESTRUCTOR_C='destructor_c.j2'
 
 OUTPUT_MAKEFILE='Makefile'
 OUTPUT_TIMER='timer.c'
@@ -32,20 +43,28 @@ OUTPUT_CONSTANTS='constants.h'
 
 MAX_NUM_CORES = 4
 
-def generate(config):
+# load, setup, and write template
+def do_jinja(template_path, out_path, **data):
+  template = jinja2.Template(open(template_path, 'r').read())
+  out_f = open(out_path, 'w')
+  out_f.write(template.render(data))
+  out_f.close()
+
+def generate(config, confirm):
   print "Generating modules...\n"
 
   if os.path.exists(MODULE_DIR):
-    while True:
-      sys.stdout.write("Ok to remove old module directory? ")
-      choice = raw_input().lower()
-      if choice == 'y':
-        break
-      elif choice == 'n':
-        print "Could not complete generation. Backup old modules if necessary and try again."
-        exit()
-      else:
-        print "Please respond with 'y' or 'n'."
+    if confirm:
+      while True:
+        sys.stdout.write("Ok to remove old module directory? ")
+        choice = raw_input().lower()
+        if choice == 'y':
+          break
+        elif choice == 'n':
+          print "Could not complete generation. Backup old modules if necessary and try again."
+          exit()
+        else:
+          print "Please respond with 'y' or 'n'."
     if os.path.exists(TMP_MODULE_DIR):
       shutil.rmtree(TMP_MODULE_DIR) 
     shutil.move(MODULE_DIR, TMP_MODULE_DIR)
@@ -54,6 +73,9 @@ def generate(config):
     print "Removed old output directory.\n"
 
   os.mkdir(MODULE_DIR)
+  # uid = pwd.getpwnam("a").pw_uid
+  # gid = grp.getgrnam("a").gr_gid
+  # os.chown(MODULE_DIR, uid, gid)
 
   print "Generated modules:"
   modules = config['modules']
@@ -64,26 +86,108 @@ def generate(config):
       external_signals.append(signal_name)
 
   for module_name, module_args in modules.iteritems():
-    if all(map(lambda x: x in external_signals, module_args['in'])) or \
-       all(map(lambda x: x in external_signals, module_args['out'])): 
-      continue
-      
-    # load user code template
-    template_f = open(os.path.join(GENERATE_DIR, GENERATE_MODULE_PY), 'r')
-    # setup user code template
-    user_code_template = jinja2.Template(template_f.read())
-    # write to user code file
-    user_code_out_f = open(os.path.join(MODULE_DIR, module_name + '.py'), 'w')
-    user_code_out_f.write(user_code_template.render( 
-      name=module_name, 
-      verbose_comments=config['config']['verbose_comments'],
-      in_sig=module_args['in'], 
-      out_sig=module_args['out']
-    ))
-    user_code_out_f.close()
-    print " -" + module_name
+    if all(map(lambda x: x in external_signals, module_args['in'])):
+      # source
+      print " - " + module_name + " (source)"
 
-def parse(config):
+      if module_args['language'] == 'python':
+        parse_template = G_TEMPLATE_SOURCE_PARSER_PY
+        construct_template = G_TEMPLATE_CONSTRUCTOR_PY
+        destruct_template = G_TEMPLATE_DESTRUCTOR_PY
+        extension = ".py"
+      else: 
+        parse_template = G_TEMPLATE_SOURCE_PARSER_C
+        construct_template = G_TEMPLATE_CONSTRUCTOR_C
+        destruct_template = G_TEMPLATE_DESTRUCTOR_C
+        extension = ".c"
+
+      # generate source parser template
+      if module_args.has_key('parser') and module_args['parser']:
+        if module_args['parser'] == True:
+          module_args['parser'] = module_name + "_parser"
+        print "   - " + module_args['parser']  + " (parser)"
+        do_jinja( os.path.join(GENERATE_DIR, parse_template), 
+                  os.path.join(MODULE_DIR, module_args['parser'] + extension))
+
+      # generate source constructor template
+      if module_args.has_key('constructor') and module_args['constructor']:
+        if module_args['constructor'] == True:
+          module_args['constructor'] = module_name + "_constructor"
+        print "   - " + module_args['constructor']  + " (constructor)"
+        do_jinja( os.path.join(GENERATE_DIR, construct_template), 
+                  os.path.join(MODULE_DIR, module_args['constructor'] + extension))
+
+      # generate source destructor template
+      if module_args.has_key('destructor') and module_args['destructor']:
+        if module_args['destructor'] == True:
+          module_args['destructor'] = module_name + "_destructor"
+        print "   - " + module_args['destructor']  + " (destructor)"
+        do_jinja( os.path.join(GENERATE_DIR, destruct_template), 
+                  os.path.join(MODULE_DIR, module_args['destructor'] + extension))
+
+    elif all(map(lambda x: x in external_signals, module_args['out'])): 
+      # sink
+      print " - " + module_name + " (sink)"
+
+      if module_args['language'] == 'python':
+        parse_template = G_TEMPLATE_SOURCE_PARSER_PY
+        construct_template = G_TEMPLATE_CONSTRUCTOR_PY
+        destruct_template = G_TEMPLATE_DESTRUCTOR_PY
+        extension = ".py"
+      else: 
+        parse_template = G_TEMPLATE_SOURCE_PARSER_C
+        construct_template = G_TEMPLATE_CONSTRUCTOR_C
+        destruct_template = G_TEMPLATE_DESTRUCTOR_C
+        extension = ".c"
+
+      if module_args.has_key('parser') and module_args['parser']:
+        if module_args['parser'] == True:
+          module_args['parser'] = module_name + "_parser"
+        print "   - " + module_args['parser']  + " (parser)"
+        do_jinja( os.path.join(GENERATE_DIR, parse_template), 
+                  os.path.join(MODULE_DIR, module_args['parser'] + extension))
+
+      if module_args.has_key('constructor') and module_args['constructor']:
+        if module_args['constructor'] == True:
+          module_args['constructor'] = module_name + "_constructor"
+        print "   - " + module_args['constructor']  + " (constructor)"
+        do_jinja( os.path.join(GENERATE_DIR, construct_template), 
+                  os.path.join(MODULE_DIR, module_args['constructor'] + extension))
+
+      if module_args.has_key('destructor') and module_args['destructor']:
+        if module_args['destructor'] == True:
+          module_args['destructor'] = module_name + "_destructor"
+        print "   - " + module_args['destructor']  + " (destructor)"
+        do_jinja( os.path.join(GENERATE_DIR, destruct_template), 
+                  os.path.join(MODULE_DIR, module_args['destructor'] + extension))
+
+    else: 
+      # module
+      print " - " + module_name
+      do_jinja( os.path.join(GENERATE_DIR, G_TEMPLATE_MODULE_CODE_PY),
+                os.path.join(MODULE_DIR, module_name + '.py'),
+                name=module_name, 
+                verbose_comments=config['config']['verbose_comments'],
+                in_sig=module_args['in'], 
+                out_sig=module_args['out'] )
+
+      if module_args.has_key('constructor') and module_args['constructor']:
+        if module_args['constructor'] == True:
+          module_args['constructor'] = module_name + "_constructor"
+        print "   - " + module_args['constructor']  + " (constructor)"
+        do_jinja( os.path.join(GENERATE_DIR, construct_template), 
+                  os.path.join(MODULE_DIR, module_args['constructor'] + extension))
+
+
+      if module_args.has_key('destructor') and module_args['destructor']:
+        if module_args['destructor'] == True:
+          module_args['destructor'] = module_name + "_destructor"
+        print "   - " + module_args['destructor']  + " (destructor)"
+        do_jinja( os.path.join(GENERATE_DIR, destruct_template), 
+                  os.path.join(MODULE_DIR, module_args['destructor'] + extension))
+
+
+def parse(config, confirm):
   print "Parsing"
   # load yaml config
   signals = config['signals']
@@ -92,17 +196,18 @@ def parse(config):
 
   # set up output directory
   if os.path.exists(OUTPUT_DIR):
-    # while True:
-    #   sys.stdout.write("Ok to remove old output directory? ")
-    #   choice = raw_input().lower()
-    #   if choice == 'y':
-    #     break
-    #   elif choice == 'n':
-    #     print "Could not complete parsing. Backup old output directory if necessary and try again."
-    #     exit()
-    #   else:
-    #     print "Please respond with 'y' or 'n'."
-    # print 
+    if confirm:
+      while True:
+        sys.stdout.write("Ok to remove old output directory? ")
+        choice = raw_input().lower()
+        if choice == 'y':
+          break
+        elif choice == 'n':
+          print "Could not complete parsing. Backup old output directory if necessary and try again."
+          exit()
+        else:
+          print "Please respond with 'y' or 'n'."
+      print 
     if os.path.exists(TMP_OUTPUT_DIR):
       shutil.rmtree(TMP_OUTPUT_DIR) 
     shutil.move(OUTPUT_DIR, TMP_OUTPUT_DIR)
@@ -170,8 +275,6 @@ def parse(config):
   assert (len(all_names) == len(set(all_names)))
 
   print "Modules: "
-  print all_names
-  print module_names
 
   for name in all_names:
       # get module info
@@ -181,54 +284,75 @@ def parse(config):
       # parse source
       if name in source_names:
         print " - " + name + " (source)"
-        # load network module template
+
         if module_language == 'python':
           template = TEMPLATE_SOURCE_PY
-          extension = '.pyx'
+          in_extension = '.py'
+          out_extension = '.pyx'
         else:
           template = TEMPLATE_SOURCE_C
-          extension = '.c'
-        template_f = open(os.path.join(TEMPLATE_DIR, template), 'r')
-        # setup network module template
-        module_template = jinja2.Template(template_f.read())
-        # write to network module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, name + extension), 'w')
+          in_extension = '.c'
+          out_extension = '.c'
+
         so_in_sig = { x: signals[x] for x in (sigkeys & set(module_args['in'])) }
         assert len(so_in_sig) == 1
         so_in_sig = so_in_sig[so_in_sig.keys()[0]]
-        if not so_in_sig['parser']:
+        out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
+        if (not module_args.has_key('parser') or not module_args['parser']):
           assert len(out_signals) == 1
         if so_in_sig['args']['type'] == 'line':
           line_source_exists = 1
           so_in_sig['schema'] = {}
           so_in_sig['schema']['data'] = {}
           so_in_sig['schema']['data']['dtype'] = 'uint16'
-        mod_out_f.write(module_template.render(
-          name=name, 
-          config=config, 
-          signals=signals, 
-          out_signals={x: signals[x] for x in (sigkeys & set(module_args['out']))},
-          max_buf_size=3750, # TODO, don't hardcode this
-          in_signal=so_in_sig
-        ))
-        mod_out_f.close()
+
+        parser_code = ""
+        if module_args.has_key('parser') and module_args['parser']:
+          if module_args['parser'] == True:
+            module_args['parser'] = name + "_parser"
+          with open(os.path.join(MODULE_DIR, module_args['parser'] + in_extension), 'r') as f:
+            construct_code = f.read()
+
+        construct_code = ""
+        if module_args.has_key('constructor') and module_args['constructor']:
+          if module_args['constructor'] == True:
+            module_args['constructor'] = name + "_constructor"
+          with open(os.path.join(MODULE_DIR, module_args['constructor'] + in_extension), 'r') as f:
+            construct_code = f.read()
+
+        destruct_code = ""
+        if module_args.has_key('destructor') and module_args['destructor']:
+          if module_args['destructor'] == True:
+            module_args['destructor'] = name + "_destructor"
+          with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
+            destruct_code = f.read()
+
+        do_jinja( os.path.join(TEMPLATE_DIR, template), 
+                  os.path.join(OUTPUT_DIR, name + out_extension),
+                  name=name, 
+                  config=config,
+                  parser_code=parser_code,
+                  construct_code=construct_code,
+                  destruct_code=destruct_code, 
+                  signals=signals, 
+                  out_signals=out_signals,
+                  max_buf_size=3750, # TODO, don't hardcode this
+                  in_signal=so_in_sig
+                )
       
       # parse sink
       elif name in sink_names:
         print " - " + name + " (sink)"
-        # load logger module template
+
         if module_language == 'python':
           template = TEMPLATE_SINK_PY
-          extension = '.pyx'
+          in_extension = '.py'
+          out_extension = '.pyx'
         else:
           template = TEMPLATE_SINK_C
-          extension = '.c'
-        template_f = open(os.path.join(TEMPLATE_DIR, template), 'r')
-        # setup logger module template
-        module_template = jinja2.Template(template_f.read())
-        # write to logger module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, name + extension), 'w')
- 
+          in_extension = '.c'
+          out_extension = '.c'
+
         module_depends_on = []
         source_depends_on = []
         for in_sig in module_args['in']:
@@ -243,36 +367,60 @@ def parse(config):
         si_out_sig = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         assert len(si_out_sig) == 1
         si_out_sig = si_out_sig[si_out_sig.keys()[0]]
-        if not si_out_sig['parser']:
-          assert len(out_signals) == 1
-        mod_out_f.write(module_template.render(
-          name=name, 
-          config=config, 
-          cerebus=False, 
-          line=False,
-          num_sigs=num_sem_sigs,
-          s_dep_on=source_depends_on,
-          m_dep_on=module_depends_on,
-          logged_signals=logged_signals,
-          num_logged_signals=len(logged_signals),
-          in_signals={x: signals[x] for x in (sigkeys & set(module_args['in']))},
-          out_signal=si_out_sig
-        ))
-        mod_out_f.close()
+        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
+        if (not module_args.has_key('parser') or not module_args['parser']):
+          assert len(in_signals) == 1
 
-      # parse cython module type
-      elif module_language == 'python':
-        print " - " + name + " (py)"
-        # load Python module template 
-        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_MODULE_PY), 'r')
+        parser_code = ""
+        if module_args.has_key('parser') and module_args['parser']:
+          if module_args['parser'] == True:
+            module_args['parser'] = name + "_parser"
+          with open(os.path.join(MODULE_DIR, module_args['parser'] + in_extension), 'r') as f:
+            construct_code = f.read()
 
-        # open user Python module code
-        mod_user_f = open(os.path.join(MODULE_DIR, name + '.py'), 'r')
+        construct_code = ""
+        if module_args.has_key('constructor') and module_args['constructor']:
+          if module_args['constructor'] == True:
+            module_args['constructor'] = name + "_constructor"
+          with open(os.path.join(MODULE_DIR, module_args['constructor'] + in_extension), 'r') as f:
+            construct_code = f.read()
 
-        # setup module template
-        module_template = jinja2.Template(template_f.read())
-        mod_user_code = mod_user_f.read()
-        mod_user_code = mod_user_code.replace("def ", "cpdef ")
+        destruct_code = ""
+        if module_args.has_key('destructor') and module_args['destructor']:
+          if module_args['destructor'] == True:
+            module_args['destructor'] = name + "_destructor"
+          with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
+            destruct_code = f.read()
+
+        do_jinja( os.path.join(TEMPLATE_DIR, template),
+                  os.path.join(OUTPUT_DIR, name + out_extension),
+                  name=name, 
+                  config=config, 
+                  parser_code=parser_code,
+                  construct_code=construct_code,
+                  destruct_code=destruct_code, 
+                  num_sigs=num_sem_sigs,
+                  s_dep_on=source_depends_on,
+                  m_dep_on=module_depends_on,
+                  logged_signals=logged_signals,
+                  num_logged_signals=len(logged_signals),
+                  in_signals=in_signals,
+                  out_signal=si_out_sig,
+                )
+
+      # parse module type
+      else:
+        if module_language == 'python':
+          print " - " + name + " (py)"
+          template = TEMPLATE_MODULE_PY
+          in_extension = '.py'
+          out_extension = '.pyx'
+        else:
+          raise NotImplementedError()
+          print " - " + name + " (c)"
+          template = TEMPLATE_MODULE_C
+          in_extension = '.c'
+          out_extension = '.c'
 
         # prepare module parameters
         dependencies = {}
@@ -308,78 +456,52 @@ def parse(config):
           #store the signal name in 0 and location of sem in 1
           depends_on.append((in_sig, sem_dict[in_sig]))
 
-        special_cerebus = []
-        # if cerebus:
-        #   special_cerebus.append(['spike_ms_timestamps', 'get_spike_ms_timestamps'])
-        #   special_cerebus.append(['channel_ms_timestamps', 'get_channel_ms_timestamps'])
-        #   special_cerebus.append(['ms_spikes', 'get_ms_spikes'])
-        #   special_cerebus.append(['spike_raster', 'get_spike_raster'])
-        #   special_cerebus.append(['ms_data', 'get_ms_data'])
-        #   special_cerebus.append(['channel_data', 'get_channel_data'])
-        #   special_cerebus.append(['all_channel_data', 'get_all_channel_data'])
+        user_code = ""
+        with open(os.path.join(MODULE_DIR, name + in_extension), 'r') as f:
+          user_code = f.read()
+          if module_language == 'python':
+            user_code = user_code.replace("def ", "cpdef")
 
-        special_line = []
-        # if line:
-        #   pass # TODO must put in methods for getting line data
-        # write to Python module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.pyx'), 'w')
-        mod_out_f.write(module_template.render(
-          name=name, 
-          args=module_args,
-          config=config, 
-          user_code=mod_user_code, 
-          dependencies=dependencies, 
-          depends_on=depends_on,
-          out_signals = { x: signals[x] for x in (sigkeys & set(module_args['out'])) },
-          in_signals = { x: signals[x] for x in (sigkeys & set(module_args['in'])) },
-          special_signals=special_cerebus + special_line,
-          num_sigs = num_sem_sigs
-        ))
-        mod_out_f.close()
+        construct_code = ""
+        if module_args.has_key('constructor') and module_args['constructor']:
+          if module_args['constructor'] == True:
+            module_args['constructor'] = name + "_constructor"
+          with open(os.path.join(MODULE_DIR, module_args['constructor'] + in_extension), 'r') as f:
+            construct_code = f.read()
 
-      # handle C module type
-      elif module_language == 'C':
-        raise NotImplementedError()
-        print " - " + name + "(C)"
+        destruct_code = ""
+        if module_args.has_key('destructor') and module_args['destructor']:
+          if module_args['destructor'] == True:
+            module_args['destructor'] = name + "_destructor"
+          with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
+            destruct_code = f.read()
 
-        # load C module template 
-        template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_MODULE_C), 'r')
-
-        # open user C module code
-        mod_user_f = open(os.path.join(MODULE_DIR, name + '.c'), 'r')
-
-        # setup module template
-        module_template = jinja2.Template(template_f.read())
-        mod_user_code = mod_user_f.read()
-
-        # write to to C module file
-        mod_out_f = open(os.path.join(OUTPUT_DIR, name + '.c'), 'w')
-        mod_out_f.write(module_template.render(
-          name=name, 
-          config=config, 
-          user_code=mod_user_code
-        ))
-        mod_out_f.close()
+        do_jinja( os.path.join(TEMPLATE_DIR, template),
+                  os.path.join(OUTPUT_DIR, name + out_extension),
+                  name=name, 
+                  args=module_args,
+                  config=config, 
+                  user_code=user_code,
+                  construct_code=construct_code,
+                  destruct_code=destruct_code,
+                  dependencies=dependencies, 
+                  depends_on=depends_on,
+                  out_signals={ x: signals[x] for x in (sigkeys & set(module_args['out'])) },
+                  in_signals={ x: signals[x] for x in (sigkeys & set(module_args['in'])) },
+                  num_sigs=num_sem_sigs
+                )
 
   # parse Makefile
-  template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_MAKEFILE), 'r')
-  module_template = jinja2.Template(template_f.read())
-  mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE), 'w')
-  mod_out_f.write(module_template.render(
-    child_names=module_names,
-    logger_needed=(len(logged_signals)!=0),
-    source_names=source_names,
-    sink_names=sink_names,
-    source_types=map(lambda x: modules[x]['language'], source_names)
-  ))
-  mod_out_f.close()
+  do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_MAKEFILE),
+            os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE),
+            child_names=module_names,
+            logger_needed=(len(logged_signals)!=0),
+            source_names=source_names,
+            sink_names=sink_names,
+            source_types=map(lambda x: modules[x]['language'], source_names)
+          )
 
-  print dependency_graph
-  print module_names
   # parse timer parent
-  template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_TIMER), 'r')
-  module_template = jinja2.Template(template_f.read())
-  mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_TIMER), 'w')
   topo_children = map(list, list(toposort(dependency_graph)))
   if len(topo_children) == 0:
     topo_children.append(independent_modules)
@@ -391,39 +513,35 @@ def parse(config):
   assert(num_cores < MAX_NUM_CORES)
   source_sems = map(lambda x: [sem_dict[x], source_outputs[x]] , source_outputs.keys())
   parport_tick_addr = config['config']['parport_tick_addr'] if config['config'].has_key('parport_tick_addr') else None
-  print parport_tick_addr
-  mod_out_f.write(module_template.render(
-    config = config,
-    topo_order=topo_children,
-    topo_lens=topo_lens,
-    topo_height=len(topo_children),
-    child_names=module_names, 
-    num_cores=num_cores,
-    num_children=num_children,
-    source_names=source_names,
-    num_sources=len(source_names),
-    sink_names=sink_names,
-    num_sinks=len(sink_names),
-    num_sigs=num_sem_sigs,
-    source_sems=source_sems,
-    internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
-    parport_tick_addr=parport_tick_addr
-  ))
-  mod_out_f.close()
+  do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_TIMER), 
+            os.path.join(OUTPUT_DIR, OUTPUT_TIMER),
+            config = config,
+            topo_order=topo_children,
+            topo_lens=topo_lens,
+            topo_height=len(topo_children),
+            child_names=module_names, 
+            num_cores=num_cores,
+            num_children=num_children,
+            source_names=source_names,
+            num_sources=len(source_names),
+            sink_names=sink_names,
+            num_sinks=len(sink_names),
+            num_sigs=num_sem_sigs,
+            source_sems=source_sems,
+            internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
+            parport_tick_addr=parport_tick_addr
+          )
 
   # parse constants.h
-  template_f = open(os.path.join(TEMPLATE_DIR, TEMPLATE_CONSTANTS), 'r')
-  module_template = jinja2.Template(template_f.read())
-  mod_out_f = open(os.path.join(OUTPUT_DIR, OUTPUT_CONSTANTS), 'w')
-  mod_out_f.write(module_template.render(
-    num_children=num_children,
-    line=line_source_exists
-  ))
-  mod_out_f.close()
+  do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_CONSTANTS),
+            os.path.join(OUTPUT_DIR, OUTPUT_CONSTANTS),
+            num_children=num_children,
+            line=line_source_exists
+          )
 
   print
 
-def export():
+def export(confirm):
   os.mkdir(EXPORT_DIR)
   if os.path.exists(MODULE_DIR):
       shutil.copytree(MODULE_DIR, EXPORT_DIR + "/modules")
