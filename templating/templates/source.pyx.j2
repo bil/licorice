@@ -20,9 +20,6 @@ import numpy as np
 cimport numpy as np
 cimport cython
 import portio
-{% if in_signal['args']['parser'] -%}
-import {{parser}}
-{%- endif %}
 
 {% set testing = (config['config'].has_key('testing') and config['config']['testing']) %}
 {% set sig_type = in_signal['args']['type'] -%}
@@ -164,6 +161,7 @@ cdef uint32_t max_num_samples_in_ms
 {%- endif %}
 
 cdef void handle_exit(int exitStatus):
+  {{destruct_code}}
   created_mem = sa.list()
 {%- for sig,args in out_signals.iteritems() %}
   if any(['{{sig}}' == x[0] for x in created_mem]):
@@ -298,6 +296,8 @@ else:
 {%- endif %}
 {%- endfor %}
 
+{{construct_code}}
+
 make_realtime()
 
 fflush(stdout)
@@ -377,8 +377,7 @@ while(True):
 {%- if in_signal['args']['parser'] %}
 
   # use user parser
-  # int outlen = {{parser}}(buf, recv_len, &outbuf)
-  # memcpy
+  {{parser}}
 {%- endif %}
   
   sem_wait(pSem)
