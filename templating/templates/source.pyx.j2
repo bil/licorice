@@ -152,11 +152,17 @@ cdef unsigned long packet_num
 cdef unsigned long num_dropped = 0
 
 {% if in_signal['args']['parser'] -%}
-out_sigs = []
+out_sigs = {}
 {% else -%}
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigStrtPtr
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigEndPtr
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigCurPtr
+{% set dtype = in_signal['schema']['data']['dtype'] -%}
+{% if dtype != 'object' -%}
+{% set dtype = dtype + '_t' -%}
+{% else -%}
+{% set dtype = 'void' -%}
+{% endif %}
+cdef {{dtype}} *sigStrtPtr
+cdef {{dtype}} *sigEndPtr
+cdef {{dtype}} *sigCurPtr
 cdef uint32_t max_num_samples_in_ms
 {%- endif %}
 
@@ -172,8 +178,6 @@ cdef void handle_exit(int exitStatus):
 {%- elif sig_type == 'zmq' %}
   zmq_close(dish)
   zmq_ctx_destroy(context)
-{%- elif sig_type == 'joystick'%}
-  pygame.quit()
 {%- elif sig_type == 'line' %}
   pcm_close_cap()
 {%- endif %}
@@ -278,12 +282,13 @@ else:
   out_sig_num_samples = {{args['shape']}} * {{args['history']}}
   dtype = np.{{args['dtype']}}
 {% endif %}
-{% if in_signal['args']['parser'] -%}
-  out_sigs.append = [sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}), out_sig_num_samples] # TODO, fix dtype stuff
-  sa.mlock(out_sig)
+{%- if in_signal['args']['parser'] %}
+  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}) # TODO, fix dtype stuff
+  print type(out_sigs['{{sig}}'])
+  sa.mlock(out_sigs['{{sig}}'])
 {%- else %}
-  tmp_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
-  sigStrtPtr = <{{in_signal['schema']['data']['dtype']}}_t *><long>tmp_sig.__array_interface__['data'][0] # TODO don't hardcode type
+  py_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
+  sigStrtPtr = <{{dtype}} *><long>py_sig.__array_interface__['data'][0] # TODO don't hardcode type
   sigCurPtr = sigStrtPtr
   sigEndPtr = sigStrtPtr + out_sig_num_samples
 {%- if sig_type == 'line' %}
@@ -296,7 +301,15 @@ else:
 {%- endif %}
 {%- endfor %}
 
+print 'test1'
+{% if default_params -%}
+print 'test2'
+{{in_sig_name}} = {{default_params}}
+print 'test3'
+{%- endif %}
+print 'test4'
 {{construct_code}}
+print 'test5'
 
 make_realtime()
 
@@ -306,6 +319,7 @@ pause()
 kill(ppid, SIGUSR2)
 
 while(True):
+  print 'test6'
 {%- if sig_type == 'udp' %}
   recv_len = recvfrom(s, sigCurPtr, {{max_buf_size}}, 0, <sockaddr *> &si_other, &slen)
   if (recv_len == -1 and errno != EINTR):
@@ -375,11 +389,13 @@ while(True):
     continue
 
 {%- if in_signal['args']['parser'] %}
-
+  print 'test7'
   # use user parser
-  {{parser}}
+  {{parser_code}}
+  print 'test8'
 {%- endif %}
-  
+
+{%- if not in_signal['args']['parser'] %}
   sem_wait(pSem)
   sigCurPtr += recv_len
   if ((sigCurPtr + max_num_samples_in_ms) > sigEndPtr):
@@ -391,4 +407,5 @@ while(True):
   pLocalSignalMem[2] = sigCurPtr - sigStrtPtr
 {%- endif %}
   sem_post(pSem)
+{%- endif %}
 

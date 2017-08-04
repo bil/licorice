@@ -1,8 +1,6 @@
 import os, shutil
 import jinja2
 import sys
-import pwd
-import grp
 from toposort import toposort
 
 # some constants
@@ -73,9 +71,6 @@ def generate(config, confirm):
     print "Removed old output directory.\n"
 
   os.mkdir(MODULE_DIR)
-  # uid = pwd.getpwnam("a").pw_uid
-  # gid = grp.getgrnam("a").gr_gid
-  # os.chown(MODULE_DIR, uid, gid)
 
   print "Generated modules:"
   modules = config['modules']
@@ -86,7 +81,7 @@ def generate(config, confirm):
       external_signals.append(signal_name)
 
   for module_name, module_args in modules.iteritems():
-    if all(map(lambda x: x in external_signals, module_args['in'])):
+    if all(map(lambda x: x in external_signals, module_args.get('in', []))):
       # source
       print " - " + module_name + " (source)"
 
@@ -168,7 +163,7 @@ def generate(config, confirm):
                 os.path.join(MODULE_DIR, module_name + '.py'),
                 name=module_name, 
                 verbose_comments=config['config']['verbose_comments'],
-                in_sig=module_args['in'], 
+                in_sig=module_args.get('in', []), 
                 out_sig=module_args['out'] )
 
       if module_args.has_key('constructor') and module_args['constructor']:
@@ -245,19 +240,19 @@ def parse(config, confirm):
       source_names.append(module_name)
       for sig in module_args['out']:
         source_outputs[sig] = 0
-      for sig in module_args['in']:
+      for sig in module_args.get('in', []):
         assert signals[sig]['args'].has_key('type')
         in_signals[sig] = signals[sig]['args']['type']
-    if all(map(lambda x: x in external_signals, module_args['out'])):
+    elif all(map(lambda x: x in external_signals, module_args['out'])):
       sink_names.append(module_name)
       for sig in module_args['out']:
         assert signals[sig]['args'].has_key('type')
         out_signals[sig] = signals[sig]['args']['type']
-    if all(map(lambda x: x in internal_signals, module_args['in'] + module_args['out'])):
+    else:
       module_names.append(module_name)
 
     # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
-    for sig_name in module_args['in']:
+    for sig_name in module_args.get('in', []):
       if not sem_dict.has_key(sig_name):
         sem_dict[sig_name] = sem_location
         sem_location += 1
@@ -272,6 +267,7 @@ def parse(config, confirm):
     print " - " + sig_name + ": " + sig_type 
 
   all_names = source_names + sink_names + module_names
+  print all_names
   assert (len(all_names) == len(set(all_names)))
 
   print "Modules: "
@@ -296,6 +292,7 @@ def parse(config, confirm):
 
         so_in_sig = { x: signals[x] for x in (sigkeys & set(module_args['in'])) }
         assert len(so_in_sig) == 1
+        assert len(module_args['in']) == 1
         so_in_sig = so_in_sig[so_in_sig.keys()[0]]
         out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         if (not module_args.has_key('parser') or not module_args['parser']):
@@ -305,13 +302,17 @@ def parse(config, confirm):
           so_in_sig['schema'] = {}
           so_in_sig['schema']['data'] = {}
           so_in_sig['schema']['data']['dtype'] = 'uint16'
+        default_params = None
+        if so_in_sig['args']['type'] == 'default':
+          default_params = so_in_sig['schema']['default']
+          print default_params
 
         parser_code = ""
         if module_args.has_key('parser') and module_args['parser']:
           if module_args['parser'] == True:
             module_args['parser'] = name + "_parser"
           with open(os.path.join(MODULE_DIR, module_args['parser'] + in_extension), 'r') as f:
-            construct_code = f.read()
+            parser_code = f.read()
 
         construct_code = ""
         if module_args.has_key('constructor') and module_args['constructor']:
@@ -326,6 +327,7 @@ def parse(config, confirm):
             module_args['destructor'] = name + "_destructor"
           with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
+            destruct_code = destruct_code.replace("\n", "\n  ")
 
         do_jinja( os.path.join(TEMPLATE_DIR, template), 
                   os.path.join(OUTPUT_DIR, name + out_extension),
@@ -337,7 +339,9 @@ def parse(config, confirm):
                   signals=signals, 
                   out_signals=out_signals,
                   max_buf_size=3750, # TODO, don't hardcode this
-                  in_signal=so_in_sig
+                  in_signal=so_in_sig,
+                  in_sig_name=module_args['in'][0],
+                  default_params=default_params
                 )
       
       # parse sink
@@ -355,19 +359,24 @@ def parse(config, confirm):
 
         module_depends_on = []
         source_depends_on = []
+        default_sig_name = ''
+        default_params = None
         for in_sig in module_args['in']:
-          if in_sig in source_outputs.keys():
+          if (in_sig in external_signals) and (signals[in_sig]['args']['type'] == 'default'):
+            default_sig_name = in_sig
+            default_params = signals[in_sig]['schema']['default']
+          elif in_sig in source_outputs.keys():
             #store the signal name in 0 and location of sem in 1
             source_outputs[in_sig] += 1
             source_depends_on.append((in_sig, sem_dict[in_sig]))
           else:
             module_depends_on.append((in_sig, sem_dict[in_sig]))  
         if (name == 'logger'): # TODO make this more generic
-          logged_signals = { sig_name: signals[sig_name] for sig_name in module_args['in'] }
+          logged_signals = { sig_name: signals[sig_name] for sig_name in module_args.get('in', []) }
         si_out_sig = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         assert len(si_out_sig) == 1
         si_out_sig = si_out_sig[si_out_sig.keys()[0]]
-        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
+        in_signals = {x: signals[x] for x in (sigkeys & set(module_args.get('in', [])))}
         if (not module_args.has_key('parser') or not module_args['parser']):
           assert len(in_signals) == 1
 
@@ -391,6 +400,7 @@ def parse(config, confirm):
             module_args['destructor'] = name + "_destructor"
           with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
+            destruct_code = destruct_code.replace("\n", "\n  ")
 
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
@@ -406,6 +416,8 @@ def parse(config, confirm):
                   num_logged_signals=len(logged_signals),
                   in_signals=in_signals,
                   out_signal=si_out_sig,
+                  default_sig_name=default_sig_name,
+                  default_params=default_params
                 )
 
       # parse module type
@@ -450,7 +462,12 @@ def parse(config, confirm):
           dependencies[dependency] = (dependencies[dependency], sem_dict[dependency])
 
         depends_on = []
+        default_sig_name = ''
+        default_params = None
         for in_sig in module_args['in']:
+          if (in_sig in external_signals) and (signals[in_sig]['args']['type'] == 'default'):
+            default_sig_name = in_sig
+            default_params = signals[in_sig]['schema']['default']
           if in_sig in source_outputs.keys():
             source_outputs[in_sig] += 1
           #store the signal name in 0 and location of sem in 1
@@ -460,7 +477,7 @@ def parse(config, confirm):
         with open(os.path.join(MODULE_DIR, name + in_extension), 'r') as f:
           user_code = f.read()
           if module_language == 'python':
-            user_code = user_code.replace("def ", "cpdef")
+            user_code = user_code.replace("def ", "cpdef ")
 
         construct_code = ""
         if module_args.has_key('constructor') and module_args['constructor']:
@@ -475,7 +492,8 @@ def parse(config, confirm):
             module_args['destructor'] = name + "_destructor"
           with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
-
+            destruct_code = destruct_code.replace("\n", "\n  ")
+            
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -488,7 +506,9 @@ def parse(config, confirm):
                   depends_on=depends_on,
                   out_signals={ x: signals[x] for x in (sigkeys & set(module_args['out'])) },
                   in_signals={ x: signals[x] for x in (sigkeys & set(module_args['in'])) },
-                  num_sigs=num_sem_sigs
+                  num_sigs=num_sem_sigs,
+                  default_sig_name=default_sig_name,
+                  default_params=default_params
                 )
 
   # parse Makefile
@@ -507,6 +527,8 @@ def parse(config, confirm):
     topo_children.append(independent_modules)
   else:
     topo_children[0] += independent_modules
+  print topo_children
+  print module_names
   topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
   num_children = len(module_names)
