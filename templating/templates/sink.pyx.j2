@@ -13,6 +13,7 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
+import pygame # CHANGE LATER
 import SharedArray as sa
 import numpy as np
 cimport numpy as np
@@ -21,12 +22,6 @@ import ctypes
 import portio
 
 {% set sig_type = out_signal['args']['type'] -%}
-{% if sig_type == 'vis' -%}
-# Init (CONSTRUCTOR/IMPORT)
-import pygame
-import sys, random, time, math, os.path
-{%- endif %}
-
 cdef extern from "utilityFunctions.h" nogil:
   enum: __GNU_SOURCE
   void die(char *errorStr)
@@ -200,15 +195,18 @@ cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
 lastVal = 1
 
-{% if parser -%}
-in_sigs = []
-{%- else %}
-cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigStrtPtr
-cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigEndPtr
-# cdef {{in_signals['dtype']}}_t *curPtr
-{%- endif %}
-
-in_sig = None
+in_signals = {}
+{%- for sig, args in in_signals.iteritems() %}
+{% set dtype = in_signals[sig]['dtype'] -%}
+{% if dtype != 'object' -%}
+{% set dtype = dtype + '_t' -%}
+{% else -%}
+{% set dtype = 'void' -%}
+{% endif -%}
+in_signals['{{sig}}'] = None
+cdef {{dtype}} *{{sig}}StrtPtr
+cdef {{dtype}} *{{sig}}EndPtr
+{% endfor %}
 
 cdef void handle_exit(int exitStatus):
   global cv, mutex, retVal, tid, radio, context, s
@@ -242,92 +240,17 @@ cdef void segv_handler(int signum):
 cdef void usr2_handler(int signum):
   pass
 
-<<<<<<< HEAD
-{% if sig_type == 'vis' -%}
-# class Cursor(pygame.sprite.Sprite):
-
-#     def __init__(self, color, radius, pos):
-#        pygame.sprite.Sprite.__init__(self)
-#        self.radius = radius
-#        self.color = color
-
-#        self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
-#        self.draw()
-
-#        self.rect = self.image.get_rect()   
-#        self.rect.x, self.rect.y = pos
-    
-#     def update(self, offset):
-#         # Do not move out of the screen
-#         if self.rect.left < 0 and offset[0] < 0:
-#           offset[0] = 0
-#         if self.rect.top < 0 and offset[1] < 0: 
-#           offset[1] = 0 
-#         if self.rect.bottom > height and offset[1] > 0: 
-#           offset[1] = 0
-#         if self.rect.right > width and offset[0] > 0: 
-#           offset[0] = 0
-
-#         self.rect = self.rect.move(offset)
-
-#     def set_color(self, color):
-#       self.color = color
-#       self.draw()
-      
-#     def set_pos(self, pos):
-#       self.rect.x, self.rect.y = pos
-
-#     def set_size(self, radius):
-#       self.radius = radius
-#       self.image = pygame.Surface([self.radius * 2, self.radius * 2]).convert_alpha()
-#       self.draw()
-
-#     def draw(self):
-#       self.image.fill((0,0,0,0))
-#       pygame.draw.circle(self.image, self.color, (self.radius, self.radius), self.radius)
-
-# class Target(pygame.sprite.Sprite):
-
-#     def __init__(self, color, radius, positions, width, height):
-#        pygame.sprite.Sprite.__init__(self)
-#        self.positions = positions
-       
-#        self.image = pygame.Surface([radius * 2, radius * 2]).convert_alpha()
-#        self.image.fill((0,0,0,0))
-
-#        self.rect = self.image.get_rect()
-#        pygame.draw.circle(self.image, color, (radius, radius), radius)
-#        self.new_pos(False)
-
-#     def new_pos(self, center):
-#       if center:
-#         self.rect.x, self.rect.y = width/2, height/2
-#       else:
-#         self.rect.x, self.rect.y = random.choice(self.positions)
-
-# def get_circle_pos(radius, center):
-#   d = int(math.sqrt(radius ** 2 / 2))
-#   positions = [
-#     (center[0], center[1] + radius),
-#     (center[0], center[1] - radius),
-#     (center[0] + radius, center[1]),
-#     (center[0] - radius, center[1]),
-#     (center[0] - d, center[1] - d),
-#     (center[0] + d, center[1] - d),
-#     (center[0] - d, center[1] + d),
-#     (center[0] + d, center[1] + d) 
-#   ]
-#   return positions
-
-{%- endif %}
-=======
->>>>>>> f14c50b45fd5a600d506ce62dab565046f48554c
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, retVal, ret, frames, play_handle, sigStrtPtr, sigEndPtr, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, z
-  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  global mutex, cv, retVal, ret, frames, play_handle, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, {% for sig in in_signals %}{{sig}}StrtPtr, {{sig}}EndPtr{{"," if not loop.last}} {% endfor %}
+  thread_sigmask(SIG_BLOCK, &exitMask, NULL)
   # int trc
   zErrMsg = <char *>0
+  {%- for s, args in in_signals.iteritems() %}
+    {%- if args['args']['type'] == 'line' %}
+      {%- set sig = s %}
+    {%- endif %}
+  {% endfor %}
   while (True):
     pthread_mutex_lock(&mutex)
     pthread_cond_wait(&cv, &mutex) 
@@ -340,7 +263,7 @@ cdef void* processRequests(void *arg) nogil:
       lineWrapped = True
 
     while (lineWrapped or ((lineWriteOffset + frames * 2) < pLocalSignalMem[1])):
-      ret = snd_pcm_writei(play_handle, <void *>(sigStrtPtr + lineWriteOffset), frames)
+      ret = snd_pcm_writei(play_handle, <void *>({{sig}}StrtPtr + lineWriteOffset), frames)
       if (ret == -EPIPE):
         # EPIPE means underrun
         printf("underrun occurred\n")
@@ -356,7 +279,7 @@ cdef void* processRequests(void *arg) nogil:
       #   z += 1
       # printf("\n\n")
       lineWriteOffset += (frames * 2)
-      if (lineWriteOffset >= (sigEndPtr - sigStrtPtr)):
+      if (lineWriteOffset >= ({{sig}}EndPtr - {{sig}}StrtPtr)):
         lineWriteOffset = 0
         lineWrapped = False
 
@@ -366,9 +289,6 @@ cdef void* processRequests(void *arg) nogil:
 {%- endif %}
 
 # main
-
-{{construct_code}}
-
 sigemptyset(&exitMask)
 sigaddset(&exitMask, SIGALRM)
 init_utils(&handle_exit, &exitMask)
@@ -415,15 +335,28 @@ open_shared_mem(<uint8_t **>&pSignalSems, SMEMSIG_PATHNAME, 1
     + ({{num_sigs}} * sizeof(sem_t) - 1), O_RDWR,  PROT_READ | PROT_WRITE)
 
 created_mem = sa.list()
+print created_mem
 {% for sig,args in in_signals.iteritems() %}
+print '{{sig}}'
 if any(['{{sig}}' == x[0] for x in created_mem]):
-  in_sig = sa.attach("shm://{{sig}}") # TODO, fix dtype stuff
-  sa.mlock(in_sig)
+  print 'test'
+  in_signals['{{sig}}'] = sa.attach("shm://{{sig}}") # TODO, fix dtype stuff
+  if '{{sig}}' == 'task_params':
+    print dict(in_signals['{{sig}}'][0])
+  print 'tast '
+  sa.mlock(in_signals['{{sig}}'])
 else:
   die("numpy signal not created\n")
+{% set dtype = in_signals[sig]['dtype'] -%}
+{% if dtype != 'object' -%}
+{% set dtype = dtype + '_t' -%}
+{% else -%}
+{% set dtype = 'void' -%}
+{% endif -%}
+# print in_signals
+{{sig}}StrtPtr = <{{dtype}} *><long>in_signals['{{sig}}'].__array_interface__['data'][0] # TODO don't hardcode type
+{{sig}}EndPtr = {{sig}}StrtPtr + len(in_signals['{{sig}}'])
 {% endfor %}
-sigStrtPtr = <{{in_signals[in_signals.keys()[0]]['dtype']}}_t *><long>in_sig.__array_interface__['data'][0] # TODO don't hardcode type
-sigEndPtr = sigStrtPtr + len(in_sig)
 
 {% if sig_type == 'udp' -%}
 # create a UDP socket
@@ -455,12 +388,19 @@ if (not radio):
 rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
 {%- endif %}
-
+print "SINK STURT"
+{% if default_params -%}
+{{default_sig_name}} = {{default_params}}
+{%- endif %}
+print "GONCONSTRUCTNOW"
+{{construct_code}}
+print "GOT PAST CONSTRUCT CODE WOOOOO"
 make_realtime()
 
 kill(ppid,SIGUSR1)
 move_count = 0
 while(True):
+  print "LOOOOOOPIIINNGNGNGNLSNGLK GLS"
   numMS += 1
 {%- for dep_on in s_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
@@ -476,10 +416,20 @@ while(True):
   {{parser}}
 
 {%- if sig_type == 'udp' %}
-  if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
+  {%- for s, args in in_signals.iteritems() %} # assumes 1 output of each type
+    {%- if args['args']['type'] == 'udp' %}
+      {%- set sig = s %}
+    {%- endif %}
+  {% endfor %}
+  if (sendto(s, {{sig}}StrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
     die("sendto() failed")
 {%- elif sig_type == 'parport' %}
-  portio.outb(<unsigned char>sigStrtPtr[0],0x{{out_signal['args']['addr']}})
+  {%- for s, args in in_signals.iteritems() %} # assumes 1 output of each type
+    {%- if args['args']['type'] == 'parport' %}
+      {%- set sig = s %}
+    {%- endif %}
+  {% endfor %}
+  portio.outb(<unsigned char>{{sig}}StrtPtr[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'line' %}
   # Output handled in async thread
 {%- endif %}
