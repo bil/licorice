@@ -13,7 +13,7 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
-import pygame # CHANGE LATER
+import pygame # TODO CHANGE LATER
 import SharedArray as sa
 import numpy as np
 cimport numpy as np
@@ -196,17 +196,16 @@ cdef uint32_t *pLocalSignalMem
 lastVal = 1
 
 in_signals = {}
-{%- for sig, args in in_signals.iteritems() %}
-{% set dtype = in_signals[sig]['dtype'] -%}
-{% if dtype != 'object' -%}
-{% set dtype = dtype + '_t' -%}
-{% else -%}
-{% set dtype = 'void' -%}
-{% endif -%}
-in_signals['{{sig}}'] = None
-cdef {{dtype}} *{{sig}}StrtPtr
-cdef {{dtype}} *{{sig}}EndPtr
+{%- if sig_types|length == 1 %}
+{%- set sig = sig_types[0][0] %}
+{%- endif %}
+{%- for sig_type in sig_types %}
+in_signals['{{sig_type[0]}}'] = None
+cdef {{sig_type[1]}} *{{sig_type[0]}}StrtPtr
+cdef {{sig_type[1]}} *{{sig_type[0]}}EndPtr
 {% endfor %}
+
+cdef {{out_dtype}} *outBuf
 
 cdef void handle_exit(int exitStatus):
   global cv, mutex, retVal, tid, radio, context, s
@@ -242,15 +241,14 @@ cdef void usr2_handler(int signum):
 
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, retVal, ret, frames, play_handle, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, {% for sig in in_signals %}{{sig}}StrtPtr, {{sig}}EndPtr{{"," if not loop.last}} {% endfor %}
+  global mutex, cv, retVal, ret, frames, play_handle, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
   thread_sigmask(SIG_BLOCK, &exitMask, NULL)
   # int trc
   zErrMsg = <char *>0
-  {%- for s, args in in_signals.iteritems() %}
-    {%- if args['args']['type'] == 'line' %}
-      {%- set sig = s %}
-    {%- endif %}
-  {% endfor %}
+  {%- if parser_buffers %}
+  # TODO figure outBuf stuff for this
+  # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
+  {%- endif %}
   while (True):
     pthread_mutex_lock(&mutex)
     pthread_cond_wait(&cv, &mutex) 
@@ -336,27 +334,23 @@ open_shared_mem(<uint8_t **>&pSignalSems, SMEMSIG_PATHNAME, 1
 
 created_mem = sa.list()
 print created_mem
-{% for sig,args in in_signals.iteritems() %}
-print '{{sig}}'
-if any(['{{sig}}' == x[0] for x in created_mem]):
+{% for sig_type in sig_types %}
+print '{{sig_type[0]}}'
+if any(['{{sig_type[0]}}' == x[0] for x in created_mem]):
   print 'test'
-  in_signals['{{sig}}'] = sa.attach("shm://{{sig}}") # TODO, fix dtype stuff
-  if '{{sig}}' == 'task_params':
-    print dict(in_signals['{{sig}}'][0])
-  print 'tast '
-  sa.mlock(in_signals['{{sig}}'])
+  in_signals['{{sig_type[0]}}'] = sa.attach("shm://{{sig_type[0]}}") # TODO, fix dtype stuff  print 'tast '
+  sa.mlock(in_signals['{{sig_type[0]}}'])
 else:
   die("numpy signal not created\n")
-{% set dtype = in_signals[sig]['dtype'] -%}
-{% if dtype != 'object' -%}
-{% set dtype = dtype + '_t' -%}
-{% else -%}
-{% set dtype = 'void' -%}
-{% endif -%}
 # print in_signals
-{{sig}}StrtPtr = <{{dtype}} *><long>in_signals['{{sig}}'].__array_interface__['data'][0] # TODO don't hardcode type
-{{sig}}EndPtr = {{sig}}StrtPtr + len(in_signals['{{sig}}'])
+{{sig_type[0]}}StrtPtr = <{{sig_type[1]}} *><long>in_signals['{{sig_type[0]}}'].__array_interface__['data'][0] # TODO don't hardcode type
+{{sig_type[0]}}EndPtr = {{sig_type[0]}}StrtPtr + len(in_signals['{{sig_type[0]}}'])
 {% endfor %}
+
+{% if parser_buffers -%}
+# TODO malloc outBuf according to yaml config 
+# set outBufLen accordingly
+{%- endif %}
 
 {% if sig_type == 'udp' -%}
 # create a UDP socket
@@ -388,19 +382,18 @@ if (not radio):
 rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
 {%- endif %}
-print "SINK STURT"
+
 {% if default_params -%}
 {{default_sig_name}} = {{default_params}}
 {%- endif %}
-print "GONCONSTRUCTNOW"
+
 {{construct_code}}
-print "GOT PAST CONSTRUCT CODE WOOOOO"
+
 make_realtime()
 
 kill(ppid,SIGUSR1)
 move_count = 0
 while(True):
-  print "LOOOOOOPIIINNGNGNGNLSNGLK GLS"
   numMS += 1
 {%- for dep_on in s_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
@@ -408,28 +401,22 @@ while(True):
 
 {%- for dep_on in m_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
-  {% set sig = logged_signals[dep_on[0]] -%}
+  # {% set sig = logged_signals[dep_on[0]] -%}
   # TODO handle non-integer shapes
   # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
 {%- endfor %}
 
-  {{parser}}
+  {{parser_code}} 
 
+{%- if not parser_buffers %}
+  outBuf = {{sig}}StrtPtr + pLocalSignalMem[0]
+  outBufLen = pLocalSignalMem[1] - pLocalSignalMem[0] 
+{%- endif %}
 {%- if sig_type == 'udp' %}
-  {%- for s, args in in_signals.iteritems() %} # assumes 1 output of each type
-    {%- if args['args']['type'] == 'udp' %}
-      {%- set sig = s %}
-    {%- endif %}
-  {% endfor %}
-  if (sendto(s, {{sig}}StrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
+  if (sendto(s, outBuf, outBufLen, 0, <sockaddr *>&si_other, slen)==-1):
     die("sendto() failed")
 {%- elif sig_type == 'parport' %}
-  {%- for s, args in in_signals.iteritems() %} # assumes 1 output of each type
-    {%- if args['args']['type'] == 'parport' %}
-      {%- set sig = s %}
-    {%- endif %}
-  {% endfor %}
-  portio.outb(<unsigned char>{{sig}}StrtPtr[0],0x{{out_signal['args']['addr']}})
+  portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'line' %}
   # Output handled in async thread
 {%- endif %}
