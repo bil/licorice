@@ -223,7 +223,7 @@ def parse(config, confirm):
   sem_location = 0
   sem_dict = {}
   num_sem_sigs = 0
-  logged_signals = {}
+  # logged_signals = {}
 
   module_names = []
   source_names = []
@@ -341,7 +341,9 @@ def parse(config, confirm):
                   max_buf_size=3750, # TODO, don't hardcode this
                   in_signal=so_in_sig,
                   in_sig_name=module_args['in'][0],
-                  default_params=default_params
+                  default_params=default_params,
+                  num_sigs=num_sem_sigs,
+                  source_num=source_names.index(name)
                 )
       
       # parse sink
@@ -364,28 +366,46 @@ def parse(config, confirm):
         for in_sig in module_args['in']:
           if (in_sig in external_signals) and (signals[in_sig]['args']['type'] == 'default'):
             default_sig_name = in_sig
-            default_params = signals[in_sig]['schema']['default']
+            default_params = signals[in_sig]['schema']['default'].keys()
           elif in_sig in source_outputs.keys():
             #store the signal name in 0 and location of sem in 1
             source_outputs[in_sig] += 1
             source_depends_on.append((in_sig, sem_dict[in_sig]))
           else:
             module_depends_on.append((in_sig, sem_dict[in_sig]))  
-        if (name == 'logger'): # TODO make this more generic
-          logged_signals = { sig_name: signals[sig_name] for sig_name in module_args.get('in', []) }
+        # if (name == 'logger'): # TODO make this more generic
+        #   logged_signals = { sig_name: signals[sig_name] for sig_name in module_args.get('in', []) }
         si_out_sig = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         assert len(si_out_sig) == 1
         si_out_sig = si_out_sig[si_out_sig.keys()[0]]
         in_signals = {x: signals[x] for x in (sigkeys & set(module_args.get('in', [])))}
         if (not module_args.has_key('parser') or not module_args['parser']):
           assert len(in_signals) == 1
+        
+        sig_types = []
+        for sig, args in in_signals.iteritems():
+          dtype = in_signals[sig]['dtype']
+          if dtype != 'object':
+            dtype = dtype + '_t'
+          else: 
+            dtype = 'void'
+          sig_types.append([sig, dtype])
+
+        out_dtype = dtype
+        if module_args.has_key('parser') and module_args['parser'] and si_out_sig['args']['type'] != 'vis':
+          out_dtype = si_out_sig['dtype']
+          if out_dtype != 'object':
+            out_dtype = out_dtype + '_t'
+          else: 
+            out_dtype = 'void'
 
         parser_code = ""
         if module_args.has_key('parser') and module_args['parser']:
           if module_args['parser'] == True:
             module_args['parser'] = name + "_parser"
           with open(os.path.join(MODULE_DIR, module_args['parser'] + in_extension), 'r') as f:
-            construct_code = f.read()
+            parser_code = f.read()
+            parser_code = parser_code.replace("\n", "\n  ")
 
         construct_code = ""
         if module_args.has_key('constructor') and module_args['constructor']:
@@ -402,6 +422,7 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
 
+        print sig_types
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -412,12 +433,15 @@ def parse(config, confirm):
                   num_sigs=num_sem_sigs,
                   s_dep_on=source_depends_on,
                   m_dep_on=module_depends_on,
-                  logged_signals=logged_signals,
-                  num_logged_signals=len(logged_signals),
+                  # logged_signals=logged_signals,
+                  # num_logged_signals=len(logged_signals),
                   in_signals=in_signals,
                   out_signal=si_out_sig,
                   default_sig_name=default_sig_name,
-                  default_params=default_params
+                  default_params=default_params,
+                  parser_buffers=(module_args.has_key('parser') and module_args['parser']),
+                  sig_types=sig_types,
+                  out_dtype=out_dtype
                 )
 
       # parse module type
@@ -515,7 +539,7 @@ def parse(config, confirm):
   do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_MAKEFILE),
             os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE),
             child_names=module_names,
-            logger_needed=(len(logged_signals)!=0),
+            # logger_needed=(len(logged_signals)!=0),
             source_names=source_names,
             sink_names=sink_names,
             source_types=map(lambda x: modules[x]['language'], source_names)
@@ -558,7 +582,8 @@ def parse(config, confirm):
   do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_CONSTANTS),
             os.path.join(OUTPUT_DIR, OUTPUT_CONSTANTS),
             num_children=num_children,
-            line=line_source_exists
+            line=line_source_exists,
+            num_sigs=num_sem_sigs
           )
 
   print

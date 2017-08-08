@@ -16,6 +16,7 @@ from libcpp cimport bool
 
 import sys
 import SharedArray as sa
+import sharedict as sd
 import numpy as np
 cimport numpy as np
 cimport cython
@@ -146,6 +147,7 @@ cdef int64_t numMS= -1 * LATENCY
 parentSetup = True
 
 cdef uint32_t *pSignalMem
+cdef sem_t *pSourceSemStart
 cdef uint32_t *pLocalSignalMem
 cdef sem_t *pSem
 cdef unsigned long packet_num
@@ -224,9 +226,9 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
 open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
 pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
+pSourceSemStart = <sem_t *>(pSignalMem + {{num_sigs}} * 4)
 
 open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE)
-
 {% if sig_type == 'udp' -%}
 # create a UDP socket
 s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
@@ -284,7 +286,6 @@ else:
 {% endif %}
 {%- if in_signal['args']['parser'] %}
   out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}) # TODO, fix dtype stuff
-  print type(out_sigs['{{sig}}'])
   sa.mlock(out_sigs['{{sig}}'])
 {%- else %}
   py_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
@@ -300,26 +301,22 @@ else:
 {%- endif %}
 {%- endif %}
 {%- endfor %}
-
-print 'test1'
 {% if default_params -%}
-print 'test2'
 {{in_sig_name}} = {{default_params}}
-print 'test3'
 {%- endif %}
-print 'test4'
 {{construct_code}}
-print 'test5'
 
 make_realtime()
 
 fflush(stdout)
-kill(ppid, SIGUSR2) # TODO these kills should probably be semaphores
-pause()
-kill(ppid, SIGUSR2)
+kill(ppid, SIGUSR2) # this source is initialized
+printf("source wait: %d\n", {{source_num}})
+sem_wait(pSourceSemStart +  {{source_num}}) # wait for parent go signal
+printf("source post: %d\n", {{source_num}})
+sem_post(pSourceSemStart + {{source_num}}) # respond
+
 
 while(True):
-  print 'test6'
 {%- if sig_type == 'udp' %}
   recv_len = recvfrom(s, sigCurPtr, {{max_buf_size}}, 0, <sockaddr *> &si_other, &slen)
   if (recv_len == -1 and errno != EINTR):
@@ -367,35 +364,23 @@ while(True):
 {%- elif sig_type == 'joystick' %}
   if (readInput):
     readInput = False
-    # x = c + r * math.cos(theta)
-    # y = c - r * math.sin(theta)
-
     pygame.event.pump()
     for axis in range(recv_len):
       sigCurPtr[axis] = int(joystick.get_axis(axis) * 5)
-
-    # sigCurPtr[0] = int(x)
-    # sigCurPtr[1] = int(y)
-
-    # theta += 0.0015
   else:
     pause()
     continue
-
-
+{%- else %}
+  pause()
 {%- endif %}
 
   if (parentSetup):
     continue
 
 {%- if in_signal['args']['parser'] %}
-  print 'test7'
   # use user parser
   {{parser_code}}
-  print 'test8'
-{%- endif %}
-
-{%- if not in_signal['args']['parser'] %}
+{%- else %}
   sem_wait(pSem)
   sigCurPtr += recv_len
   if ((sigCurPtr + max_num_samples_in_ms) > sigEndPtr):
