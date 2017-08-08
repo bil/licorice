@@ -16,6 +16,7 @@ from libcpp cimport bool
 
 import sys
 import SharedArray as sa
+import sharedict as sd
 import numpy as np
 cimport numpy as np
 cimport cython
@@ -146,17 +147,24 @@ cdef int64_t numMS= -1 * LATENCY
 parentSetup = True
 
 cdef uint32_t *pSignalMem
+cdef sem_t *pSourceSemStart
 cdef uint32_t *pLocalSignalMem
 cdef sem_t *pSem
 cdef unsigned long packet_num
 cdef unsigned long num_dropped = 0
 
 {% if in_signal['args']['parser'] -%}
-out_sigs = []
+out_sigs = {}
 {% else -%}
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigStrtPtr
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigEndPtr
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigCurPtr
+{% set dtype = in_signal['schema']['data']['dtype'] -%}
+{% if dtype != 'object' -%}
+{% set dtype = dtype + '_t' -%}
+{% else -%}
+{% set dtype = 'void' -%}
+{% endif %}
+cdef {{dtype}} *sigStrtPtr
+cdef {{dtype}} *sigEndPtr
+cdef {{dtype}} *sigCurPtr
 cdef uint32_t max_num_samples_in_ms
 {%- endif %}
 
@@ -172,8 +180,6 @@ cdef void handle_exit(int exitStatus):
 {%- elif sig_type == 'zmq' %}
   zmq_close(dish)
   zmq_ctx_destroy(context)
-{%- elif sig_type == 'joystick'%}
-  pygame.quit()
 {%- elif sig_type == 'line' %}
   pcm_close_cap()
 {%- endif %}
@@ -198,10 +204,7 @@ cdef void alrm_handler(int signum):
   if (parentSetup):
     parentSetup = False
   numMS += 1
-{%- if sig_type == 'parport' %}
-  global readInput
-  readInput = True
-{%- elif sig_type == 'joystick' %}
+{%- if sig_type == 'parport' or sig_type == 'joystick' %}
   global readInput
   readInput = True
 {%- endif %}
@@ -223,9 +226,9 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
 open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
 pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
+pSourceSemStart = <sem_t *>(pSignalMem + {{num_sigs}} * 4)
 
 open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE)
-
 {% if sig_type == 'udp' -%}
 # create a UDP socket
 s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
@@ -266,9 +269,6 @@ if pygame.joystick.get_count() < 1:
 
 joystick = pygame.joystick.Joystick(0)
 joystick.init()
-# c = 300
-# r = 150
-# theta = math.pi / 2
 {%- endif %}
 
 created_mem = sa.list()
@@ -284,12 +284,12 @@ else:
   out_sig_num_samples = {{args['shape']}} * {{args['history']}}
   dtype = np.{{args['dtype']}}
 {% endif %}
-{% if in_signal['args']['parser'] -%}
-  out_sigs.append = [sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}), out_sig_num_samples] # TODO, fix dtype stuff
-  sa.mlock(out_sig)
+{%- if in_signal['args']['parser'] %}
+  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}) # TODO, fix dtype stuff
+  sa.mlock(out_sigs['{{sig}}'])
 {%- else %}
-  tmp_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
-  sigStrtPtr = <{{in_signal['schema']['data']['dtype']}}_t *><long>tmp_sig.__array_interface__['data'][0] # TODO don't hardcode type
+  py_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
+  sigStrtPtr = <{{dtype}} *><long>py_sig.__array_interface__['data'][0] # TODO don't hardcode type
   sigCurPtr = sigStrtPtr
   sigEndPtr = sigStrtPtr + out_sig_num_samples
 {%- if sig_type == 'line' %}
@@ -301,15 +301,20 @@ else:
 {%- endif %}
 {%- endif %}
 {%- endfor %}
-
+{% if default_params -%}
+{{in_sig_name}} = {{default_params}}
+{%- endif %}
 {{construct_code}}
 
 make_realtime()
 
 fflush(stdout)
-kill(ppid, SIGUSR2) # TODO these kills should probably be semaphores
-pause()
-kill(ppid, SIGUSR2)
+kill(ppid, SIGUSR2) # this source is initialized
+printf("source wait: %d\n", {{source_num}})
+sem_wait(pSourceSemStart +  {{source_num}}) # wait for parent go signal
+printf("source post: %d\n", {{source_num}})
+sem_post(pSourceSemStart + {{source_num}}) # respond
+
 
 while(True):
 {%- if sig_type == 'udp' %}
@@ -359,33 +364,23 @@ while(True):
 {%- elif sig_type == 'joystick' %}
   if (readInput):
     readInput = False
-    # x = c + r * math.cos(theta)
-    # y = c - r * math.sin(theta)
-
     pygame.event.pump()
-    for axis in range(recv_len): #(use recv_len to be safe?)
+    for axis in range(recv_len):
       sigCurPtr[axis] = int(joystick.get_axis(axis) * 5)
-
-    # sigCurPtr[0] = int(x)
-    # sigCurPtr[1] = int(y)
-
-    # theta += 0.0015
   else:
     pause()
     continue
-
-
+{%- else %}
+  pause()
 {%- endif %}
 
   if (parentSetup):
     continue
 
 {%- if in_signal['args']['parser'] %}
-
   # use user parser
-  {{parser}}
-{%- endif %}
-  
+  {{parser_code}}
+{%- else %}
   sem_wait(pSem)
   sigCurPtr += recv_len
   if ((sigCurPtr + max_num_samples_in_ms) > sigEndPtr):
@@ -397,4 +392,5 @@ while(True):
   pLocalSignalMem[2] = sigCurPtr - sigStrtPtr
 {%- endif %}
   sem_post(pSem)
+{%- endif %}
 

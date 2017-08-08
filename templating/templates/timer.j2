@@ -57,6 +57,7 @@ static uint32_t *pDataStart;
 static uint32_t *pDataEnd;
 static sem_t *pSem;
 static sem_t *pSignalSems;
+static sem_t *pSourceSemStart;
 
 static int sigalrm_recv;
 static int sigexit_recv;
@@ -342,6 +343,7 @@ int main(int argc, char* argv[]) {
   printf("Mapping memory...\n");
 
   open_shared_mem((uint8_t **)&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
+  pSourceSemStart = (sem_t *)(pSignalMem + {{num_sigs}} * 4);
 
   open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
   // set pmem header variables
@@ -351,15 +353,18 @@ int main(int argc, char* argv[]) {
   pDataStart = (uint32_t*)pmem + SMEM0_DATA_START_OFFSET;
   pDataEnd = (uint32_t*)pmem + SMEM0_DATA_END_OFFSET;
   pFinish = pmem + SMEM0_HEADER_LEN;
-  //Might need to change name of jinja variable
   open_shared_mem((uint8_t **)&pSignalSems, SMEMSIG_PATHNAME,
-    1 + ({{num_sigs}} * sizeof (sem_t) - 1), O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
-
+    1 + (({{num_sigs}} + NUM_SOURCES) * sizeof (sem_t) - 1), O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
   sem_t *curSem = pSignalSems;
-  //initialize signal passing semaphores
+
+  // initialize signal passing semaphores
   int i;
-  for (i = 0; i < {{num_sigs}}; i++, curSem++) {
+  for (i = 0; i < ({{num_sigs}} + NUM_SOURCES); i++, curSem++) {
     sem_init(curSem, true, 0);
+  }
+  // initialize source semaphores
+  for (i = 0; i < NUM_SOURCES; i++) {
+    sem_init(pSourceSemStart + i, true, 0);
   }
   printf("Memory mapped.\nForking children...\n");
   // zero'd out byte in shared memory corresponding to child in child process
@@ -402,7 +407,10 @@ int main(int argc, char* argv[]) {
   pause();
 {%- endfor %}
   printf("Sources ready.\n");
-  printf("source pid: %d\n", so_pids[0]);
+{% for name in source_names -%}
+  printf("{{name}}: %d\n", so_pids[{{loop.index0}}]);
+{% endfor %}
+
 
 {% if child_names|length != 0 -%}
   // fork and exec child processes
@@ -445,6 +453,9 @@ int main(int argc, char* argv[]) {
     }
   }
   printf("Internal modules ready.\n");
+for (i = 0; i < CHILD_HEIGHT; i++) {
+  printf("%s: %d\n", childProcnames[i] ch_pids[i]);
+}
 {%- endif %}
 
 {% for name in sink_names -%}  // TODO write this loop in C
@@ -474,14 +485,19 @@ int main(int argc, char* argv[]) {
   pause();
 {%- endfor %}
   printf("Sinks ready.\n");
-  printf("sink pid: %d\n", si_pids[0]);
-
+{% for name in sink_names -%}
+  printf("{{name}}: %d\n", si_pids[{{loop.index0}}]);
+{% endfor %}
   make_realtime();
 
-  for (i = 0; i < NUM_SOURCES; i++) { 
-    kill(so_pids[i], SIGUSR2);
+  for (i = 0; i < NUM_SOURCES; i++) {
+    printf("timer post: %d\n", i);
+    sem_post(pSourceSemStart + i); // start network immediately before setting timer
   }
-  pause(); // TODO fix pause here to wait for all network processes
+  for (i = 0; i < NUM_SOURCES; i++) {
+    printf("timer wait: %d\n", i);
+    sem_wait(pSourceSemStart + i);
+  }
   printf("Network process ready.\n");
 
 {%- if test_start_time %}
