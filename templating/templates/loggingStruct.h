@@ -1,14 +1,19 @@
+#ifndef _LOGGING_STRUCT_
+#define _LOGGING_STRUCT_
+
 typedef struct {
-    char colName[32];
-    char type[16];
+    char *colName; // max 32
+    char *type; // max 16
     short number;
-    char unit[16];
+    char *unit; // max 16
     void *data;
-    char SQLtype[32];
+    char *SQLtype; // max 32
 } SQLTableElement;
 
 typedef struct {
-  char tableName[32];
+  char *tableName; // max 32
   short numCol;
   SQLTableElement *columns;
 } SQLTable;
+
+#endif
