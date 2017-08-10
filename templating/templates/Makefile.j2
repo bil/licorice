@@ -6,7 +6,7 @@ CFLAGS+ = -g -O2 $(DEFAULTFLAGS)
 CYFLAGS = -Os -I /usr/include/python2.7
 LDFLAGS = -levent -lhiredis -lrt -pthread -lsqlite3  #-lasound 
 LDTESTFLAGS = -lsqlite3 -pthread
-CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt #-lasound  -lzmq
+CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt -lsqlite3 #-lasound  -lzmq
 
 all: timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in child_names %}{{c}} {% endfor %}
 
@@ -25,9 +25,9 @@ timer: timer.c utilityFunctions.c
 {%- endfor %}
 
 {% for sink in sink_names %}
-{{sink}}:  {{sink}}.pyx utilityFunctions.c #networkUtilities.c
+{{sink}}:  {{sink}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c #networkUtilities.c
 	cython --embed -o {{sink}}.c {{sink}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c -o {{sink}} $(CYLDFLAGS)
+	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c -o {{sink}} $(CYLDFLAGS)
 {% endfor %}
 
 {% for child in child_names -%}

@@ -1,6 +1,6 @@
 from libc.stdio cimport printf, stdout, fflush
-from libc.stdlib cimport exit
-from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int16_t, int32_t
+from libc.stdlib cimport exit, malloc, free
+from libc.stdint cimport uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
 from posix.unistd cimport getppid, pause, close, getpid
@@ -8,7 +8,7 @@ from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARE
 from posix.fcntl cimport O_RDWR
 from posix.types cimport pid_t
 from libc.errno cimport errno, EINTR, EPIPE
-from libc.string cimport memset
+from libc.string cimport memset, strcpy, strcat, strlen
 from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
@@ -88,6 +88,100 @@ cdef extern from "lineUtilities.h":
   int pcm_init_play()
   void pcm_close_play()
 
+{% elif sig_type == 'disk' %}
+cdef extern from "<msgpack.h>" nogil:
+  ctypedef int (*msgpack_packer_write)(void* data, const char* buf, size_t len)
+  ctypedef struct msgpack_sbuffer:
+    size_t size
+    char* data
+    size_t alloc
+  ctypedef struct msgpack_packer:
+    void* data
+    msgpack_packer_write callback
+  void msgpack_sbuffer_destroy(msgpack_sbuffer* sbuf)
+  void msgpack_sbuffer_clear(msgpack_sbuffer* sbuf)
+  int msgpack_sbuffer_write(void* data, const char* buf, size_t len)
+  void msgpack_sbuffer_init(msgpack_sbuffer* sbuf)
+  int msgpack_pack_array(msgpack_packer* pk, size_t n)
+  void msgpack_packer_init(msgpack_packer* pk, void* data, msgpack_packer_write callback)
+  int msgpack_pack_uint8(msgpack_packer* pk, uint8_t d)
+  int msgpack_pack_uint16(msgpack_packer* pk, uint16_t d)
+  int msgpack_pack_uint32(msgpack_packer* pk, uint32_t d)
+  int msgpack_pack_uint64(msgpack_packer* pk, uint64_t d)
+  int msgpack_pack_int8(msgpack_packer* pk, int8_t d)
+  int msgpack_pack_int16(msgpack_packer* pk, int16_t d)
+  int msgpack_pack_int32(msgpack_packer* pk, int32_t d)
+  int msgpack_pack_int64(msgpack_packer* pk, int64_t d)
+
+
+cdef extern from "loggingStruct.h" nogil:
+  ctypedef struct SQLTableElement:
+    char *colName
+    char *type
+    short number
+    char *unit
+    void *data
+    char *SQLtype
+  cdef const char *INSERT_STR
+  cdef const char *VALUES_STR
+  cdef const char *OPEN_BRACE
+  cdef const char *QUESTION
+  cdef const char *CLOSE_BRACE_SEMI
+
+  ctypedef struct SQLTable:
+    char* tableName
+    short numCol
+    SQLTableElement *columns
+
+cdef extern from "<sqlite3.h>" nogil:
+  ctypedef struct sqlite3:
+    pass
+  ctypedef struct sqlite3_stmt:
+    pass
+  ctypedef struct sqlite3_blob:
+    pass
+  int sqlite3_close(sqlite3 *)
+  int sqlite3_exec(
+    sqlite3*,                                  
+    const char *sql,                           
+    int (*callback)(void*,int,char**,char**),  
+    void *,                                    
+    char **errmsg                              
+  )
+  void sqlite3_free(void*)
+  enum: SQLITE_OK
+  ctypedef void (*destructor)(void*)
+  destructor SQLITE_STATIC
+  enum: SQLITE_OPEN_READWRITE
+  int sqlite3_open_v2(
+    const char *filename,   
+    sqlite3 **ppDb,         
+    int flags,              
+    const char *zVfs        
+  )
+
+cdef extern from "sqlite3async.h" nogil:
+  void sqlite3async_shutdown()
+  void sqlite3async_run()
+  int sqlite3async_initialize(const char *zParent, int isDefault)
+  int sqlite3async_control(int op, ...)
+  enum: SQLITEASYNC_HALT
+  enum: SQLITEASYNC_HALT_IDLE
+
+cdef extern from "sqlHelpers.h" nogil:
+  void sql_bind_int(sqlite3_stmt *stmt, int index, int value)
+  void sql_bind_double(sqlite3_stmt *stmt, int index, double value)
+  void sql_bind_blob(sqlite3_stmt *stmt, int index, const void* value, int numBytes, destructor destruct)
+  void sql_prepare(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
+  void sql_step(sqlite3_stmt *stmt)
+  void sql_finalize(sqlite3_stmt *stmt)
+  void openDatabase(sqlite3 **db, char *startName, char* newNameLocation)
+  void createTables(sqlite3 *db, SQLTable* databaseArr)
+  enum: NUM_BUF_S
+  enum: NUM_MS_IN_S
+{%- endif %}
+
+{% if sig_type == 'disk' or sig_type == 'line' -%}
 cdef extern from "<sched.h>":
   enum: SCHED_FIFO
   ctypedef struct cpu_set_t:
@@ -146,6 +240,9 @@ cdef extern from "constants.h":
   enum: SMEM0_HEADER_LEN
   cdef const char *SMEM0_PATHNAME
   cdef const char *SMEMSIG_PATHNAME
+  cdef const char *DATALOGGER_SIGNALS_TABLE_NAME
+  cdef const char *DATALOGGER_FILENAME
+  enum: NUM_TABLES
 
 #include <stdatomic.h>
 
@@ -182,8 +279,54 @@ cdef bool shouldDie = False
 # worker thread vars
 cdef char *zErrMsg
 cdef void * retVal
-cdef uint32_t lineWriteOffset = 0;
+cdef uint32_t lineWriteOffset = 0
 cdef bool lineWrapped
+{%- elif sig_type == 'disk' %}
+cdef int ret
+cdef int rc
+# threading variables
+cdef pthread_t tid
+cdef pthread_cond_t cv
+cdef pthread_mutex_t mutex
+cdef bool shouldDie = False
+cdef char currDbName[32]
+# worker thread vars
+cdef char *zErrMsg
+cdef void * retVal
+# numpy signal data structs to hold one millisecond of data 
+ctypedef struct signalsMsData: 
+{% for sig_type in sig_types -%}
+# TODO need to check for compatibility between numpy/C types
+  {{sig_type[1]}} {{sig_type[0]}}[{{in_signals[sig_type[0]]['shape']}}]
+{%- endfor %}
+cdef signalsMsData *pSignalsStructCur
+cdef signalsMsData *pSignalsStructFlushStart
+cdef signalsMsData *pSignalsStructFlushEnd
+
+# sqlite variables
+cdef sqlite3 *db
+cdef sqlite3_stmt *contStmt
+{%- for sig in in_signals %}
+cdef sqlite3_stmt *signals{{sig|capitalize}}Stmt
+{%- endfor %}
+cdef SQLTable databaseArray[NUM_TABLES]
+cdef SQLTableElement signalsTableArr[{{in_signals|length}}]
+
+# sqlite helper variables
+{%- for sig in in_signals %}
+cdef char *signals{{sig|capitalize}}Query
+{%- endfor %}
+
+# message pack
+{%- for sig in in_signals %}
+cdef msgpack_sbuffer mpSignals{{sig|capitalize}}Buf
+cdef msgpack_packer mpSignals{{sig|capitalize}}Pk
+{%- endfor %}
+
+# data buffer
+cdef uint8_t *pSignalsBufStart
+cdef uint8_t *pSignalsBufEnd
+cdef int signalsBufSize
 {%- endif %}
 
 cdef sem_t *pSignalSems
@@ -208,7 +351,7 @@ cdef {{sig_type[1]}} *{{sig_type[0]}}EndPtr
 cdef {{out_dtype}} *outBuf
 
 cdef void handle_exit(int exitStatus):
-  global cv, mutex, retVal, tid, radio, context, s
+  global cv, mutex, retVal, tid, radio, context, s, pSignalsBufStart
   {{destruct_code}}
 {%- if sig_type == 'udp' %}
   close(s)
@@ -222,6 +365,19 @@ cdef void handle_exit(int exitStatus):
   pthread_mutex_unlock(&mutex)
   pthread_join(tid, &retVal)
   pcm_close_play()
+{%- elif sig_type == 'disk' %}
+  pthread_mutex_lock(&mutex)
+  shouldDie = True
+  pthread_cond_signal(&cv) 
+  pthread_mutex_unlock(&mutex)
+  pthread_join(tid, &retVal)
+{% for sig in in_signals %}
+  msgpack_sbuffer_destroy(&mpSignals{{sig|capitalize}}Buf)
+
+  sqlite3_close(db)
+  sqlite3async_shutdown()
+  free(pSignalsBufStart)
+{%- endfor %}
 {%- endif %}
   exit(exitStatus)
 
@@ -239,11 +395,61 @@ cdef void segv_handler(int signum):
 cdef void usr2_handler(int signum):
   pass
 
+{% if sig_type == 'disk' -%}
+cdef void* processRequests(void *arg) nogil:
+  global mutex, cv, shouldDie, zErrMsg, db, exitMask, {% for sig in in_signals %}mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}
+  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+
+  while (True):
+    pthread_mutex_lock(&mutex)
+    pthread_cond_wait(&cv, &mutex) 
+
+    if (shouldDie):
+      retVal = NULL  
+      pthread_exit(retVal)
+
+    ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
+    if (ret != SQLITE_OK):
+      # print sql error msg
+      sqlite3_free(zErrMsg)
+      die("SQL error")
+
+    # log numpy signals
+{%- for sig, args in in_signals.iteritems() %}
+    pSignalsStructFlushEnd = pSignalsStructCur
+    while (pSignalsStructFlushStart != pSignalsStructFlushEnd):
+      sql_prepare(db, signals{{sig|capitalize}}Query, -1, &signals{{sig|capitalize}}Stmt, NULL)
+
+      # TODO figure out how to do this for arbitrary numpy shapes/dtypes
+      msgpack_sbuffer_clear(&mpSignals{{sig|capitalize}}Buf)
+      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['shape']}})
+      for i in range({{args['shape']}}):
+        msgpack_pack_int64(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
+      sql_bind_blob(signals{{sig|capitalize}}Stmt, 4, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
+
+      sql_step(signals{{sig|capitalize}}Stmt)
+      sql_finalize(signals{{sig|capitalize}}Stmt)
+
+      pSignalsStructFlushStart += 1
+      if (<uint8_t*>pSignalsStructFlushStart == pSignalsBufEnd):
+        pSignalsStructFlushStart = <signalsMsData*>pSignalsBufStart
+{%- endfor %}
+
+    ret = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &zErrMsg)
+    if (ret != SQLITE_OK):
+      # print sql error msg
+      sqlite3_free(zErrMsg)
+      die("SQL error")
+
+    sqlite3async_run()
+
+    pthread_mutex_unlock(&mutex)
+{%- endif %}
+
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, retVal, ret, frames, play_handle, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
+  global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, pLocalSignalMem, pLocalSignalMem, zErrMsg, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
   thread_sigmask(SIG_BLOCK, &exitMask, NULL)
-  # int trc
   zErrMsg = <char *>0
   {%- if parser_buffers %}
   # TODO figure outBuf stuff for this
@@ -291,6 +497,7 @@ sigemptyset(&exitMask)
 sigaddset(&exitMask, SIGALRM)
 init_utils(&handle_exit, &exitMask)
 
+cdef int pid = getpid()
 ppid = getppid()
 
 set_sighandler(SIGINT, &exit_handler, &exitMask)
@@ -319,6 +526,68 @@ cdef cpu_set_t mask
 CPU_ZERO(&mask)
 CPU_SET(0, &mask)
 pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
+{% elif sig_type == 'disk' %}
+
+# SQLITE INIT
+# initialize sqlite3async
+rc = sqlite3async_initialize(NULL, 1)
+if (rc != SQLITE_OK):
+  die("sqlite3async init failed\n")
+# control sqlite3async: set attributes
+cdef int eNewHalt = SQLITEASYNC_HALT_IDLE
+rc = sqlite3async_control(SQLITEASYNC_HALT, eNewHalt)
+if (rc != SQLITE_OK):
+  die("sqlite3async control failed\n")
+
+
+# create numpy signals table sql insert queries
+{%- for sig in in_signals %}
+queryLen = strlen(INSERT_STR) + strlen(DATALOGGER_SIGNALS_TABLE_NAME) + strlen(VALUES_STR) \
+  + strlen(OPEN_BRACE) + strlen(QUESTION) + strlen(CLOSE_BRACE_SEMI)
+signals{{sig|capitalize}}Query = <char *> malloc(queryLen + 1)
+strcpy(signals{{sig|capitalize}}Query, INSERT_STR)
+strcat(signals{{sig|capitalize}}Query, INSERT_STR)
+strcat(signals{{sig|capitalize}}Query, DATALOGGER_SIGNALS_TABLE_NAME)
+strcat(signals{{sig|capitalize}}Query, VALUES_STR)
+strcat(signals{{sig|capitalize}}Query, OPEN_BRACE)
+strcat(signals{{sig|capitalize}}Query, QUESTION)
+strcat(signals{{sig|capitalize}}Query, CLOSE_BRACE_SEMI)
+{%- endfor %}
+# signals buffer
+signalsBufSize = NUM_BUF_S * NUM_MS_IN_S * sizeof(signalsMsData)
+pSignalsBufStart = <uint8_t *>malloc(signalsBufSize)
+pSignalsBufEnd = pSignalsBufStart + signalsBufSize
+pSignalsStructCur = <signalsMsData *>pSignalsBufStart
+pSignalsStructFlushStart = pSignalsStructCur
+openDatabase(&db, DATALOGGER_FILENAME, currDbName)
+sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
+# TODO {{num_logged_signals}} includes cerebus. make source signals more generic
+{%- for sig,args in in_signals.iteritems() %}
+signalsTableArr[{{loop.index0}}].colName = "{{sig}}"
+signalsTableArr[{{loop.index0}}].type = "uint64_t"
+signalsTableArr[{{loop.index0}}].number = {{args['shape']}}
+signalsTableArr[{{loop.index0}}].unit = "TODO"
+signalsTableArr[{{loop.index0}}].data = NULL
+signalsTableArr[{{loop.index0}}].SQLtype = "BLOB"
+  # TODO fix dtype..make generic.
+{%- endfor %} 
+databaseArray[0].tableName = DATALOGGER_SIGNALS_TABLE_NAME
+databaseArray[0].numCol = {{in_signals|length}}
+databaseArray[0].columns = signalsTableArr
+createTables(db, databaseArray)
+# flush sqlite buffer before execution start
+sqlite3async_run()
+
+
+# initialize message pack for numpy signals
+{% for sig, args in in_signals.iteritems() %}
+msgpack_sbuffer_init(&mpSignals{{sig|capitalize}}Buf)
+msgpack_packer_init(&mpSignals{{sig|capitalize}}Pk, &mpSignals{{sig|capitalize}}Buf, msgpack_sbuffer_write)
+# enlarge buffer before main execution
+msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['shape']}})
+for i in range({{args['shape']}}):
+  msgpack_pack_int16(&mpSignals{{sig|capitalize}}Pk, 0)
+{% endfor %}
 {%- endif %}
 
 # open and map shared parent memory
@@ -395,18 +664,18 @@ kill(ppid,SIGUSR1)
 move_count = 0
 while(True):
   numMS += 1
+
 {%- for dep_on in s_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
 {%- endfor %}
 
 {%- for dep_on in m_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
-  # {% set sig = logged_signals[dep_on[0]] -%}
-  # TODO handle non-integer shapes
-  # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
 {%- endfor %}
 
   {{parser_code}} 
+
+  # printf("execute parser %d\n", pid)
 
 {%- if not parser_buffers %}
   outBuf = {{sig}}StrtPtr + pLocalSignalMem[0]
@@ -419,6 +688,8 @@ while(True):
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'line' %}
   # Output handled in async thread
+{%- elif sig_type == 'disk' %}
+  # printf("disk\n")
 {%- endif %}
 
 {%- if sig_type == 'line' %}

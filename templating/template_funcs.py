@@ -234,7 +234,6 @@ def parse(config, confirm):
   in_signals = {}
   out_signals = {}
   line_source_exists = 0
-  print internal_signals
   for module_name, module_args in modules.iteritems():
     if all(map(lambda x: x in external_signals, module_args['in'])):
       source_names.append(module_name)
@@ -267,7 +266,6 @@ def parse(config, confirm):
     print " - " + sig_name + ": " + sig_type 
 
   all_names = source_names + sink_names + module_names
-  print all_names
   assert (len(all_names) == len(set(all_names)))
 
   print "Modules: "
@@ -305,7 +303,6 @@ def parse(config, confirm):
         default_params = None
         if so_in_sig['args']['type'] == 'default':
           default_params = so_in_sig['schema']['default']
-          print default_params
 
         parser_code = ""
         if module_args.has_key('parser') and module_args['parser']:
@@ -422,7 +419,6 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
 
-        print sig_types
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -551,8 +547,6 @@ def parse(config, confirm):
     topo_children.append(independent_modules)
   else:
     topo_children[0] += independent_modules
-  print topo_children
-  print module_names
   topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
   num_children = len(module_names)

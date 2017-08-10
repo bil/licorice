@@ -16,7 +16,6 @@ from libcpp cimport bool
 
 import sys
 import SharedArray as sa
-import sharedict as sd
 import numpy as np
 cimport numpy as np
 cimport cython
@@ -216,6 +215,7 @@ cdef void usr2_handler(int signum):
 sigfillset(&exitMask)
 init_utils(&handle_exit, &exitMask)
 
+cdef int pid = getpid()
 ppid = getppid()
 
 set_sighandler(SIGALRM, &alrm_handler, NULL)
@@ -310,10 +310,7 @@ make_realtime()
 
 fflush(stdout)
 kill(ppid, SIGUSR2) # this source is initialized
-printf("source wait: %d\n", {{source_num}})
 sem_wait(pSourceSemStart +  {{source_num}}) # wait for parent go signal
-printf("source post: %d\n", {{source_num}})
-sem_post(pSourceSemStart + {{source_num}}) # respond
 
 
 while(True):

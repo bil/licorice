@@ -491,12 +491,7 @@ for (i = 0; i < CHILD_HEIGHT; i++) {
   make_realtime();
 
   for (i = 0; i < NUM_SOURCES; i++) {
-    printf("timer post: %d\n", i);
     sem_post(pSourceSemStart + i); // start network immediately before setting timer
-  }
-  for (i = 0; i < NUM_SOURCES; i++) {
-    printf("timer wait: %d\n", i);
-    sem_wait(pSourceSemStart + i);
   }
   printf("Network process ready.\n");
 
