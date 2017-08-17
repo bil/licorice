@@ -56,7 +56,7 @@ static uint32_t *pMSEnd;
 static uint32_t *pDataStart;
 static uint32_t *pDataEnd;
 static sem_t *pSem;
-static sem_t *pSignalSems;
+static sem_t *pGlobalSems;
 static sem_t *pSourceSemStart;
 
 static int sigalrm_recv;
@@ -122,7 +122,7 @@ void handle_exit(int exitStatus) {
   // close shared memory
   munmap(pSignalMem, PAGESIZE);
   munmap(pmem, PAGESIZE);
-  munmap(pSignalSems, 1 + ({{num_sigs}} * sizeof (sem_t) - 1));
+  munmap(pGlobalSems, {{num_non_sources + num_sem_sigs}} * sizeof (sem_t));
   shm_unlink(SMEM0_PATHNAME);
   shm_unlink("/smem_sig_offsets");
   shm_unlink(SMEMSIG_PATHNAME);
@@ -229,14 +229,11 @@ static void check_children() {
       kill(so_pids[al_i], SIGALRM);
     }
 
-    // trigger first round of child processes. block if network is updating spike wave data
-    // sem_wait(pSem);
-{%-for sem_pair in source_sems %}
-  for (al_i = 0; al_i < {{sem_pair[1]}}; al_i++) {
-    sem_post(&pSignalSems[{{sem_pair[0]}}]);
-  }
-{%-endfor%}
-    // sem_post(pSem);
+    // release global tick locks for all modules and sinks
+    // TODO Might need to have lock here for network processes that have to do tick-level updates (like cerebus spike)
+    for (al_i = 0; al_i < {{num_non_sources}}; al_i++) {
+      sem_post(pGlobalSems + al_i);
+    }
   }
 
 {%- if test_tick_time %}
@@ -343,7 +340,7 @@ int main(int argc, char* argv[]) {
   printf("Mapping memory...\n");
 
   open_shared_mem((uint8_t **)&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
-  pSourceSemStart = (sem_t *)(pSignalMem + {{num_sigs}} * 4);
+  pSourceSemStart = (sem_t *)(pSignalMem + {{num_internal_sigs}} * 4);
 
   open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
   // set pmem header variables
@@ -353,18 +350,13 @@ int main(int argc, char* argv[]) {
   pDataStart = (uint32_t*)pmem + SMEM0_DATA_START_OFFSET;
   pDataEnd = (uint32_t*)pmem + SMEM0_DATA_END_OFFSET;
   pFinish = pmem + SMEM0_HEADER_LEN;
-  open_shared_mem((uint8_t **)&pSignalSems, SMEMSIG_PATHNAME,
-    1 + (({{num_sigs}} + NUM_SOURCES) * sizeof (sem_t) - 1), O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
-  sem_t *curSem = pSignalSems;
+  open_shared_mem((uint8_t **)&pGlobalSems, SMEMSIG_PATHNAME, ({{num_non_sources + num_sem_sigs}}) * sizeof (sem_t), O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
 
-  // initialize signal passing semaphores
+
+  // initialize non-source semaphores and signal semaphores
   int i;
-  for (i = 0; i < ({{num_sigs}} + NUM_SOURCES); i++, curSem++) {
-    sem_init(curSem, true, 0);
-  }
-  // initialize source semaphores
-  for (i = 0; i < NUM_SOURCES; i++) {
-    sem_init(pSourceSemStart + i, true, 0);
+  for (i = 0; i < {{num_non_sources + num_sem_sigs}}; i++) {
+    sem_init(pGlobalSems + i, true, 0);
   }
   printf("Memory mapped.\nForking children...\n");
   // zero'd out byte in shared memory corresponding to child in child process
@@ -454,7 +446,7 @@ int main(int argc, char* argv[]) {
   }
   printf("Internal modules ready.\n");
 for (i = 0; i < CHILD_HEIGHT; i++) {
-  printf("%s: %d\n", childProcnames[i] ch_pids[i]);
+  printf("%s: %d\n", childProcnames[i], ch_pids[i]);
 }
 {%- endif %}
 

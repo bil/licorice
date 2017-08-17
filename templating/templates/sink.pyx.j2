@@ -8,7 +8,7 @@ from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARE
 from posix.fcntl cimport O_RDWR
 from posix.types cimport pid_t
 from libc.errno cimport errno, EINTR, EPIPE
-from libc.string cimport memset, strcpy, strcat, strlen
+from libc.string cimport memset, strcpy, strcat, strlen, memcpy
 from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
@@ -112,6 +112,7 @@ cdef extern from "<msgpack.h>" nogil:
   int msgpack_pack_int16(msgpack_packer* pk, int16_t d)
   int msgpack_pack_int32(msgpack_packer* pk, int32_t d)
   int msgpack_pack_int64(msgpack_packer* pk, int64_t d)
+  int msgpack_pack_float(msgpack_packer* pk, float d)
 
 
 cdef extern from "loggingStruct.h" nogil:
@@ -127,6 +128,8 @@ cdef extern from "loggingStruct.h" nogil:
   cdef const char *OPEN_BRACE
   cdef const char *QUESTION
   cdef const char *CLOSE_BRACE_SEMI
+  cdef const char *CLOSE_BRACE
+  cdef const char *COMMA
 
   ctypedef struct SQLTable:
     char* tableName
@@ -259,13 +262,6 @@ cdef socklen_t recv_len
 {% elif sig_type == 'zmq' -%}
 cdef void *radio
 cdef void *context
-{% elif sig_type == 'vis' -%}
-# Init (CONSTRUCTOR)
-cdef:
-    int width = 600
-    int height = 600
-    tuple black = (0,0,0)
-
 {%- elif sig_type == 'line' %}
 cdef extern snd_pcm_t *play_handle
 cdef snd_pcm_uframes_t frames
@@ -306,16 +302,12 @@ cdef signalsMsData *pSignalsStructFlushEnd
 # sqlite variables
 cdef sqlite3 *db
 cdef sqlite3_stmt *contStmt
-{%- for sig in in_signals %}
-cdef sqlite3_stmt *signals{{sig|capitalize}}Stmt
-{%- endfor %}
+cdef sqlite3_stmt *signalsStmt
 cdef SQLTable databaseArray[NUM_TABLES]
 cdef SQLTableElement signalsTableArr[{{in_signals|length}}]
 
 # sqlite helper variables
-{%- for sig in in_signals %}
-cdef char *signals{{sig|capitalize}}Query
-{%- endfor %}
+cdef char *signalsQuery
 
 # message pack
 {%- for sig in in_signals %}
@@ -329,7 +321,8 @@ cdef uint8_t *pSignalsBufEnd
 cdef int signalsBufSize
 {%- endif %}
 
-cdef sem_t *pSignalSems
+cdef sem_t *pGlobalSems
+cdef sem_t *pSignalSemStart
 cdef int sigalrm_recv = 0
 cdef uint8_t *pFinish
 cdef uint8_t *pmem
@@ -397,12 +390,12 @@ cdef void usr2_handler(int signum):
 
 {% if sig_type == 'disk' -%}
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, shouldDie, zErrMsg, db, exitMask, {% for sig in in_signals %}mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}
+  global mutex, cv, shouldDie, zErrMsg, db, exitMask, signalsQuery, signalsStmt, {% for sig in in_signals %}mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}, pSignalsStructFlushStart, pSignalsStructFlushEnd, pSignalsStructCur
   pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
 
   while (True):
     pthread_mutex_lock(&mutex)
-    pthread_cond_wait(&cv, &mutex) 
+    pthread_cond_wait(&cv, &mutex)
 
     if (shouldDie):
       retVal = NULL  
@@ -415,25 +408,26 @@ cdef void* processRequests(void *arg) nogil:
       die("SQL error")
 
     # log numpy signals
-{%- for sig, args in in_signals.iteritems() %}
     pSignalsStructFlushEnd = pSignalsStructCur
     while (pSignalsStructFlushStart != pSignalsStructFlushEnd):
-      sql_prepare(db, signals{{sig|capitalize}}Query, -1, &signals{{sig|capitalize}}Stmt, NULL)
+      sql_prepare(db, signalsQuery, -1, &signalsStmt, NULL)
 
       # TODO figure out how to do this for arbitrary numpy shapes/dtypes
+    {%- for sig, args in in_signals.iteritems() %}
       msgpack_sbuffer_clear(&mpSignals{{sig|capitalize}}Buf)
       msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['shape']}})
       for i in range({{args['shape']}}):
-        msgpack_pack_int64(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
-      sql_bind_blob(signals{{sig|capitalize}}Stmt, 4, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
+        msgpack_pack_{{args['dtype']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
+      sql_bind_blob(signalsStmt, {{loop.index}}, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
+    {%- endfor %}
 
-      sql_step(signals{{sig|capitalize}}Stmt)
-      sql_finalize(signals{{sig|capitalize}}Stmt)
+      sql_step(signalsStmt)
+      sql_finalize(signalsStmt)
 
       pSignalsStructFlushStart += 1
       if (<uint8_t*>pSignalsStructFlushStart == pSignalsBufEnd):
         pSignalsStructFlushStart = <signalsMsData*>pSignalsBufStart
-{%- endfor %}
+
 
     ret = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &zErrMsg)
     if (ret != SQLITE_OK):
@@ -505,7 +499,7 @@ set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
-{% if sig_type == 'line' -%}
+{% if sig_type == 'line' or sig_type == 'disk' -%}
 # init mutex and condition variable
 rc = pthread_mutex_init(&mutex, NULL)
 if (rc): die("pthread_mutex_init failed")
@@ -516,7 +510,7 @@ rc = pthread_create(&tid, NULL, &processRequests, NULL)
 if (rc): die("pthread_create failed")
 
 cdef sched_param param
-param.sched_priority = 48
+param.sched_priority = 39
 pthread_setschedparam(tid, SCHED_FIFO, &param)
 cdef cpu_set_t mask
 # cdef pthread_t maint = pthread_self()
@@ -524,9 +518,10 @@ cdef cpu_set_t mask
 # CPU_SET(3, &mask)
 # pthread_setaffinity_np(maint, sizeof(cpu_set_t), &mask)
 CPU_ZERO(&mask)
-CPU_SET(0, &mask)
+CPU_SET(4, &mask)
 pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
-{% elif sig_type == 'disk' %}
+{%- endif %}
+{% if sig_type == 'disk' %}
 
 # SQLITE INIT
 # initialize sqlite3async
@@ -541,18 +536,20 @@ if (rc != SQLITE_OK):
 
 
 # create numpy signals table sql insert queries
+queryLen = strlen(INSERT_STR) + strlen(DATALOGGER_SIGNALS_TABLE_NAME) + strlen(VALUES_STR) + strlen(OPEN_BRACE) + \
+ {%for sig in in_signals%}strlen(QUESTION){{" + strlen(COMMA) + " if not loop.last}}{%endfor%} + strlen(CLOSE_BRACE_SEMI)
+signalsQuery = <char *> malloc(queryLen + 1)
+strcpy(signalsQuery, INSERT_STR)
+strcat(signalsQuery, DATALOGGER_SIGNALS_TABLE_NAME)
+strcat(signalsQuery, VALUES_STR)
+strcat(signalsQuery, OPEN_BRACE)
 {%- for sig in in_signals %}
-queryLen = strlen(INSERT_STR) + strlen(DATALOGGER_SIGNALS_TABLE_NAME) + strlen(VALUES_STR) \
-  + strlen(OPEN_BRACE) + strlen(QUESTION) + strlen(CLOSE_BRACE_SEMI)
-signals{{sig|capitalize}}Query = <char *> malloc(queryLen + 1)
-strcpy(signals{{sig|capitalize}}Query, INSERT_STR)
-strcat(signals{{sig|capitalize}}Query, INSERT_STR)
-strcat(signals{{sig|capitalize}}Query, DATALOGGER_SIGNALS_TABLE_NAME)
-strcat(signals{{sig|capitalize}}Query, VALUES_STR)
-strcat(signals{{sig|capitalize}}Query, OPEN_BRACE)
-strcat(signals{{sig|capitalize}}Query, QUESTION)
-strcat(signals{{sig|capitalize}}Query, CLOSE_BRACE_SEMI)
+strcat(signalsQuery, QUESTION)
+{%- if not loop.last %}
+strcat(signalsQuery, COMMA)
+{%- endif %}
 {%- endfor %}
+strcat(signalsQuery, CLOSE_BRACE_SEMI)
 # signals buffer
 signalsBufSize = NUM_BUF_S * NUM_MS_IN_S * sizeof(signalsMsData)
 pSignalsBufStart = <uint8_t *>malloc(signalsBufSize)
@@ -598,25 +595,21 @@ open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE
 pFinish = pmem + SMEM0_HEADER_LEN
 pFinish[NUM_CHILDREN] = 0x0
 
-open_shared_mem(<uint8_t **>&pSignalSems, SMEMSIG_PATHNAME, 1 
-    + ({{num_sigs}} * sizeof(sem_t) - 1), O_RDWR,  PROT_READ | PROT_WRITE)
+open_shared_mem(<uint8_t **>&pGlobalSems, SMEMSIG_PATHNAME, {{num_non_sources + num_sem_sigs}} * sizeof(sem_t), O_RDWR,  PROT_READ | PROT_WRITE)
+pSignalSemStart = pGlobalSems + {{num_non_sources}}
 
 created_mem = sa.list()
-print created_mem
 {% for sig_type in sig_types %}
-print '{{sig_type[0]}}'
 if any(['{{sig_type[0]}}' == x[0] for x in created_mem]):
-  print 'test'
-  in_signals['{{sig_type[0]}}'] = sa.attach("shm://{{sig_type[0]}}") # TODO, fix dtype stuff  print 'tast '
+  in_signals['{{sig_type[0]}}'] = sa.attach("shm://{{sig_type[0]}}")
   sa.mlock(in_signals['{{sig_type[0]}}'])
 else:
   die("numpy signal not created\n")
-# print in_signals
 {{sig_type[0]}}StrtPtr = <{{sig_type[1]}} *><long>in_signals['{{sig_type[0]}}'].__array_interface__['data'][0] # TODO don't hardcode type
 {{sig_type[0]}}EndPtr = {{sig_type[0]}}StrtPtr + len(in_signals['{{sig_type[0]}}'])
 {% endfor %}
 
-{% if parser_buffers -%}
+{% if parser_buffers and not is_logger -%}
 # TODO malloc outBuf according to yaml config 
 # set outBufLen accordingly
 {%- endif %}
@@ -635,8 +628,6 @@ if (inet_aton("{{out_signal['args']['addr']}}", &si_other.sin_addr)==0):
 {% elif sig_type == 'line' %}
 # initiliaze line in 
 frames = pcm_init_play()
-print "FRAMES"
-print frames
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{out_signal['args']['addr']}}, 1, 1)):
@@ -665,19 +656,15 @@ move_count = 0
 while(True):
   numMS += 1
 
-{%- for dep_on in s_dep_on %}
-  sem_wait(&pSignalSems[{{dep_on[1]}}])
-{%- endfor %}
+  sem_wait(&pGlobalSems[{{tick_sem_idx}}])
 
 {%- for dep_on in m_dep_on %}
-  sem_wait(&pSignalSems[{{dep_on[1]}}])
+  sem_wait(&pGlobalSems[{{num_non_sources + dep_on[1]}}])
 {%- endfor %}
 
   {{parser_code}} 
 
-  # printf("execute parser %d\n", pid)
-
-{%- if not parser_buffers %}
+{%- if not parser_buffers and not is_logger %}
   outBuf = {{sig}}StrtPtr + pLocalSignalMem[0]
   outBufLen = pLocalSignalMem[1] - pLocalSignalMem[0] 
 {%- endif %}
@@ -689,12 +676,22 @@ while(True):
 {%- elif sig_type == 'line' %}
   # Output handled in async thread
 {%- elif sig_type == 'disk' %}
-  # printf("disk\n")
+  {%- for sig_type in sig_types %}
+  memcpy(pSignalsStructCur.{{sig_type[0]}}, {{sig_type[0]}}StrtPtr, sizeof((<signalsMsData*>0).{{sig_type[0]}}))
+  {%- endfor %}
+  pSignalsStructCur += 1
+  if (<uint8_t*>pSignalsStructCur == pSignalsBufEnd):
+    pSignalsStructCur = <signalsMsData*>pSignalsBufStart
 {%- endif %}
 
 {%- if sig_type == 'line' %}
 
   if (numMS % 25 == 0):
+    pthread_mutex_lock(&mutex)
+    pthread_cond_signal(&cv)
+    pthread_mutex_unlock(&mutex)
+{%- elif sig_type == 'disk' %}
+  if (numMS % 1000 == 0):
     pthread_mutex_lock(&mutex)
     pthread_cond_signal(&cv)
     pthread_mutex_unlock(&mutex)
