@@ -115,7 +115,7 @@ cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
 cdef socklen_t recv_len
 {% if in_signal['args']['parser'] -%}
-cdef char buf[{{max_buf_size}}]
+cdef char buf[{{in_signal['schema']['data']['shape']}}]
 {%- endif %}
 cdef char *outbuf
 cdef int parse_idx
@@ -156,10 +156,12 @@ cdef unsigned long num_dropped = 0
 out_sigs = {}
 {% else -%}
 {% set dtype = in_signal['schema']['data']['dtype'] -%}
-{% if dtype != 'object' -%}
+{% if 'int' in dtype -%}
 {% set dtype = dtype + '_t' -%}
-{% else -%}
+{% elif dtype == 'object' -%}
 {% set dtype = 'void' -%}
+{% elif dtype == 'float' -%}
+{% set dtype = 'double' -%}
 {% endif %}
 cdef {{dtype}} *sigStrtPtr
 cdef {{dtype}} *sigEndPtr
@@ -226,7 +228,7 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
 open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
 pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
-pSourceSemStart = <sem_t *>(pSignalMem + {{num_sigs}} * 4)
+pSourceSemStart = <sem_t *>(pSignalMem + {{num_internal_sigs}} * 4)
 
 open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE)
 {% if sig_type == 'udp' -%}
@@ -260,15 +262,15 @@ if (not dish):
   die("Could not create ZMQ socket.\n")
 rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
 assert (rc == 0)
-{% elif sig_type == 'joystick' -%}
-pygame.init()
-pygame.joystick.init()
+# {% elif sig_type == 'joystick' -%}
+# pygame.init()
+# pygame.joystick.init()
 
-if pygame.joystick.get_count() < 1:
-  die("No joystick detected.\n")
+# if pygame.joystick.get_count() < 1:
+#   die("No joystick detected.\n")
 
-joystick = pygame.joystick.Joystick(0)
-joystick.init()
+# joystick = pygame.joystick.Joystick(0)
+# joystick.init()
 {%- endif %}
 
 created_mem = sa.list()
@@ -315,7 +317,7 @@ sem_wait(pSourceSemStart +  {{source_num}}) # wait for parent go signal
 
 while(True):
 {%- if sig_type == 'udp' %}
-  recv_len = recvfrom(s, sigCurPtr, {{max_buf_size}}, 0, <sockaddr *> &si_other, &slen)
+  recv_len = recvfrom(s, sigCurPtr, {{in_signal['schema']['data']['shape']}}, 0, <sockaddr *> &si_other, &slen)
   if (recv_len == -1 and errno != EINTR):
     die("NETWORK ERROR: recvfrom()")
   if (recv_len == -1):
@@ -355,18 +357,20 @@ while(True):
     pause()
     continue
 {%- elif sig_type == 'zmq' %}
-  recv_len = zmq_recv(dish, sigCurPtr, {{max_buf_size}}, 0)
+  recv_len = zmq_recv(dish, sigCurPtr, {{in_signal['schema']['data']['shape']}}, 0)
   # TODO handle zmq error
   num_packets += 1
-{%- elif sig_type == 'joystick' %}
-  if (readInput):
-    readInput = False
-    pygame.event.pump()
-    for axis in range(recv_len):
-      sigCurPtr[axis] = int(joystick.get_axis(axis) * 5)
-  else:
-    pause()
-    continue
+# {%- elif sig_type == 'joystick' %}
+#   if (readInput):
+#     readInput = False
+#     pygame.event.pump()
+#     for axis in range(recv_len):
+#       sigCurPtr[axis] = joystick.get_axis(axis)
+#       print joystick.get_axis(axis)
+#       print sigCurPtr[axis]
+#   else:
+#     pause()
+#     continue
 {%- else %}
   pause()
 {%- endif %}
