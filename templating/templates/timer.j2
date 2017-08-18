@@ -431,6 +431,7 @@ int main(int argc, char* argv[]) {
         char buf[4];
         char procBuf[64];
         sprintf(buf, "%d", childNum);
+        printf("TEST HERE %s\n", childProcnames[childNum]);
         sprintf(procBuf, "./%s", childProcnames[childNum]);
         char* argv[3] = {procBuf, buf, NULL};
         
