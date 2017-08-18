@@ -2,6 +2,7 @@ import os, shutil
 import jinja2
 import sys
 from toposort import toposort
+import numpy as np
 
 # some constants
 TEMPLATE_DIR='./templates'
@@ -470,7 +471,8 @@ def parse(config, confirm):
                   dg_cidx = module_names.index(all_names[child_index])
                   dg_pidx = module_names.index(name)
                 else:
-                  independent_modules.append(module_names.index(name))
+                  if module_names.index(name) not in independent_modules:
+                    independent_modules.append(module_names.index(name))
                   continue
                 if dependency_graph.has_key(child_index):
                   dependency_graph[dg_cidx] = dependency_graph[dg_cidx].union({dg_pidx})
@@ -498,6 +500,7 @@ def parse(config, confirm):
           user_code = f.read()
           if module_language == 'python':
             user_code = user_code.replace("def ", "cpdef ")
+          user_code = user_code.replace("\n", "\n  ")
 
         construct_code = ""
         if module_args.has_key('constructor') and module_args['constructor']:
@@ -544,10 +547,16 @@ def parse(config, confirm):
 
   # parse timer parent
   topo_children = map(list, list(toposort(dependency_graph)))
+  print dependency_graph
+  print module_names
   if len(topo_children) == 0:
+    print 'independent_modules ', independent_modules
     topo_children.append(independent_modules)
   else:
-    topo_children[0] += independent_modules
+    for module in independent_modules:
+      if module not in np.array(topo_children).flatten():
+        topo_children[0].append(module)
+  print topo_children
   topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
   num_children = len(module_names)
@@ -580,7 +589,6 @@ def parse(config, confirm):
             line=line_source_exists
           )
 
-  print
 
 def export(confirm):
   os.mkdir(EXPORT_DIR)
