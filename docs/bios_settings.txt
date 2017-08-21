@@ -1,0 +1,26 @@
+HP EliteDesk Computers
+
+Advanced -> System Options:
+  Turn off:
+    allow pcie/pci serr# interrupt?
+
+Advanced -> Build-in Device Options
+  Turn off: 
+    Internal Speakers?
+
+Advanced -> Port Options:
+  Turn off:
+    Front USB Ports
+    Rear USB Ports
+    USB Charging Port Function
+    Media Card Reader/SD_RDR USB
+  Change:
+    Restrict USB Devices -> Allow only keyboard and mouse
+
+Advanced -> Power Management Options:
+  Turn off all
+
+
+Advanced -> Remote Management Options:
+  Turn off:
+    Active Management?

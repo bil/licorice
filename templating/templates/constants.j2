@@ -140,8 +140,8 @@
 //Signal shared memory pathname 
 #define SMEMSIG_PATHNAME "/smemSIGS"
 
-//Spike packet shared memory pathname
-#define SPK_SHM_NAME "/smem_spk"
+// //Spike packet shared memory pathname
+// #define SPK_SHM_NAME "/smem_spk"
 
 //page size in bytes
 #define PAGESIZE 4096
@@ -155,30 +155,30 @@
 // Number of bytes in alsa frame
 #define BYTES_PER_FRAME 4 /* 2 bytes/sample, 2 channels */
 
-//Memory required for group packet data in THOUSANDS of bytes
-//We add 2 to NUM_CHANNELS to store 4 byte timetamps (requires 2 channels worth of memory)
-#define GRP_MEM_REQ ((NUM_CHANNELS + 2UL) * SAMPLING_RATE / 100 * RECORDED_HISTORY * 12) 
+// //Memory required for group packet data in THOUSANDS of bytes
+// //We add 2 to NUM_CHANNELS to store 4 byte timetamps (requires 2 channels worth of memory)
+// #define GRP_MEM_REQ ((NUM_CHANNELS + 2UL) * SAMPLING_RATE / 100 * RECORDED_HISTORY * 12) 
 
-//Number of 1GB memory segments allocated for group packet data 
-//hacky stuff here for integer overflow prevention
-#define NUM_GRP_SEGS (((GRP_MEM_REQ * 125) % (BYTES_IN_GB/8)) ? (GRP_MEM_REQ * 125 / (BYTES_IN_GB / 8) + 1) : (GRP_MEM_REQ * 125 / (BYTES_IN_GB/8)))
+// //Number of 1GB memory segments allocated for group packet data 
+// //hacky stuff here for integer overflow prevention
+// #define NUM_GRP_SEGS (((GRP_MEM_REQ * 125) % (BYTES_IN_GB/8)) ? (GRP_MEM_REQ * 125 / (BYTES_IN_GB / 8) + 1) : (GRP_MEM_REQ * 125 / (BYTES_IN_GB/8)))
 
-//Number of bytes for one channel of data at the specified SAMPLING_RATE for RECORDED_HISTORY minutes 
-#define CHANNEL_BLOCKSIZE (120UL * SAMPLING_RATE * RECORDED_HISTORY)
+// //Number of bytes for one channel of data at the specified SAMPLING_RATE for RECORDED_HISTORY minutes 
+// #define CHANNEL_BLOCKSIZE (120UL * SAMPLING_RATE * RECORDED_HISTORY)
 
-//Since exactly one bit is associated with a channel per ms, this tells us how many bytes we need per ms
-#define NUM_BYTES_DIGITAL_RASTER_PER_MS ((NUM_CHANNELS % 8) ? ((NUM_CHANNELS / 8) + 1) : (NUM_CHANNELS / 8))
+// //Since exactly one bit is associated with a channel per ms, this tells us how many bytes we need per ms
+// #define NUM_BYTES_DIGITAL_RASTER_PER_MS ((NUM_CHANNELS % 8) ? ((NUM_CHANNELS / 8) + 1) : (NUM_CHANNELS / 8))
 
-//first 2 is because we need two of these segments and the second is because data is a uint16_t.  The 4 
-#define NUM_BYTES_FOR_SPIKE_FRAMES (2 * (2 * SAMPLES_PER_SPIKE + 4) * NUM_CHANNELS)
+// //first 2 is because we need two of these segments and the second is because data is a uint16_t.  The 4 
+// #define NUM_BYTES_FOR_SPIKE_FRAMES (2 * (2 * SAMPLES_PER_SPIKE + 4) * NUM_CHANNELS)
 
-#define NUM_BYTES_DIGITAL_RASTER (NUM_BYTES_DIGITAL_RASTER_PER_MS * 60 *1000 * RECORDED_HISTORY)
+// #define NUM_BYTES_DIGITAL_RASTER (NUM_BYTES_DIGITAL_RASTER_PER_MS * 60 *1000 * RECORDED_HISTORY)
 
-// number of bytes needed for spike raster
-# define NUM_SPIKE_BYTES (NUM_BYTES_FOR_SPIKE_FRAMES + NUM_BYTES_DIGITAL_RASTER)
+// // number of bytes needed for spike raster
+// # define NUM_SPIKE_BYTES (NUM_BYTES_FOR_SPIKE_FRAMES + NUM_BYTES_DIGITAL_RASTER)
 
-//number of pages we need in a spike raster chunk
-#define NUM_SPIKE_PAGES ((NUM_SPIKE_BYTES % PAGESIZE) ? (NUM_SPIKE_BYTES / PAGESIZE + 1) : (NUM_SPIKE_BYTES / PAGESIZE))
+// //number of pages we need in a spike raster chunk
+// #define NUM_SPIKE_PAGES ((NUM_SPIKE_BYTES % PAGESIZE) ? (NUM_SPIKE_BYTES / PAGESIZE + 1) : (NUM_SPIKE_BYTES / PAGESIZE))
 
 // number of samples in a millisecond 
 #define NUM_SAMPLES_PER_MS (SAMPLING_RATE / 1000)
