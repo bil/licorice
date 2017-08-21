@@ -1,14 +1,14 @@
 CC = gcc
-DEFAULTFLAGS = -Wall
+DEFAULTFLAGS = -Wall 
 CFLAGS = -O2 $(DEFAULTFLAGS)
 CFLAGSUNOPT = -O0 $(DEFAULTFLAGS)
 CFLAGS+ = -g -O2 $(DEFAULTFLAGS)
 CYFLAGS = -Os -I /usr/include/python2.7
-LDFLAGS = -levent -lhiredis -lrt -pthread -lsqlite3 -lasound 
+LDFLAGS = -levent -lhiredis -lrt -pthread -lsqlite3  #-lasound 
 LDTESTFLAGS = -lsqlite3 -pthread
-CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt -lzmq -lasound
+CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt #-lasound  -lzmq
 
-all: timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}}{% endfor %} {{"logger" if logger_needed}} {% for c in child_names %}{{c}} {% endfor %}
+all: timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in child_names %}{{c}} {% endfor %}
 
 timer: timer.c utilityFunctions.c 
 	$(CC) $(CFLAGS) timer.c utilityFunctions.c -o timer $(LDFLAGS)
@@ -17,30 +17,25 @@ timer: timer.c utilityFunctions.c
 {% if source_types[loop.index0] == 'python' -%}
 {{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c
 	cython --embed -o {{source}}.c {{source}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c lineUtilities.c -o {{source}} $(CYLDFLAGS) # remove lineUtilties if not a line source
+	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(CYLDFLAGS) # remove not a line source
 {% else -%}
 {{source}}: {{source}}.c sourceUtils.c utilityFunctions.c
 	$(CC) $(CFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(LDFLAGS)
 {% endif -%}
 {%- endfor %}
 
-{% for sink in sink_names -%}
-{{sink}}:  {{sink}}.pyx utilityFunctions.c networkUtilities.c
+{% for sink in sink_names %}
+{{sink}}:  {{sink}}.pyx utilityFunctions.c #networkUtilities.c
 	cython --embed -o {{sink}}.c {{sink}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c lineUtilities.c -o {{sink}} $(CYLDFLAGS)
-{%- endfor %}
-
-{% if logger_needed -%}
-logger: logger.c sqlHelpers.c shmHelpers.c networkUtilities.c utilityFunctions.c sqlite3async.c
-	$(CC) $(CFLAGS) logger.c sqlHelpers.c shmHelpers.c networkUtilities.c utilityFunctions.c sqlite3async.c -o logger $(LDFLAGS)
-{%- endif %}
+	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c -o {{sink}} $(CYLDFLAGS)
+{% endfor %}
 
 {% for child in child_names -%}
-{{child}}: {{child}}.pyx networkUtilities.c utilityFunctions.c
+{{child}}: {{child}}.pyx utilityFunctions.c #networkUtilities.c
 	cython --embed -o {{child}}.c {{child}}.pyx
-	$(CC) $(CYFLAGS) {{child}}.c networkUtilities.c utilityFunctions.c -o {{child}} $(CYLDFLAGS)
+	$(CC) $(CYFLAGS) -Wno-cpp {{child}}.c  utilityFunctions.c -o {{child}} $(CYLDFLAGS) #networkUtilities.c
 {%- endfor %}
 
 clean:
-	rm -f timer network logger *.db {% for c in child_names %}{{c}} {{c}}.c {{c}}.h{% endfor %}
+	rm -f timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %}{% for c in child_names %}{{c}} {% endfor %}
 

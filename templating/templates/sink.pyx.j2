@@ -1,6 +1,6 @@
 from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit
-from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int16_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int16_t, int32_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
 from posix.unistd cimport getppid, pause, close, getpid
@@ -13,16 +13,15 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
+import pygame # TODO CHANGE LATER
 import SharedArray as sa
 import numpy as np
 cimport numpy as np
 cimport cython
 import ctypes
 import portio
-{% if out_signal['args']['parser'] -%}
-import {{parser}}
-{%- endif %}
 
+{% set sig_type = out_signal['args']['type'] -%}
 cdef extern from "utilityFunctions.h" nogil:
   enum: __GNU_SOURCE
   void die(char *errorStr)
@@ -33,7 +32,6 @@ cdef extern from "utilityFunctions.h" nogil:
 cdef extern from "utilityFunctions.h":
   void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
 
-{% set sig_type = out_signal['args']['type'] -%}
 {% if sig_type == 'parport' -%}
 {% elif sig_type == 'udp' -%}
 cdef extern from "<arpa/inet.h>":
@@ -66,7 +64,8 @@ cdef extern from "<sys/socket.h>":
   ssize_t sendto(int socket, const void *message, size_t length,
        int flags, const sockaddr *dest_addr,
        socklen_t dest_len)
-{% elif sig_type == 'zmq' -%}
+{%- elif sig_type == 'zmq' %}
+
 cdef extern from "zmq.h":
   int zmq_close(void *s)
   int zmq_ctx_destroy(void *context)
@@ -74,7 +73,8 @@ cdef extern from "zmq.h":
   void *zmq_socket(void *, int type)
   int zmq_bind(void *s, const char *addr)
   int zmq_recv(void *s, void *buf, size_t len, int flags)
-{% elif sig_type == 'line' %}
+{%- elif sig_type == 'line' %}
+
 cdef extern from "<alsa/asoundlib.h>" nogil:
   struct _snd_pcm:
     pass
@@ -125,8 +125,7 @@ cdef extern from "<pthread.h>" nogil:
   int pthread_mutex_init(pthread_mutex_t *mutex, pthread_mutexattr_t *attr)
   int pthread_cond_init(pthread_cond_t *cond, pthread_condattr_t *attr)
   pthread_t pthread_self()
-
-{% endif %}
+{%- endif %}
 
 cdef extern from "semaphore.h":
   enum: __SIZEOF_SEM_T
@@ -163,6 +162,13 @@ cdef socklen_t recv_len
 {% elif sig_type == 'zmq' -%}
 cdef void *radio
 cdef void *context
+{% elif sig_type == 'vis' -%}
+# Init (CONSTRUCTOR)
+cdef:
+    int width = 600
+    int height = 600
+    tuple black = (0,0,0)
+
 {%- elif sig_type == 'line' %}
 cdef extern snd_pcm_t *play_handle
 cdef snd_pcm_uframes_t frames
@@ -185,26 +191,25 @@ cdef int sigalrm_recv = 0
 cdef uint8_t *pFinish
 cdef uint8_t *pmem
 
-# timer debugging
-cdef timespec timer
-cdef long diff
-
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
 lastVal = 1
 
-{% if out_signal['args']['parser'] -%}
-in_sigs = []
-{%- else %}
-cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigStrtPtr
-cdef {{in_signals[in_signals.keys()[0]]['dtype']}}_t *sigEndPtr
-# cdef {{in_signals['dtype']}}_t *curPtr
+in_signals = {}
+{%- if sig_types|length == 1 %}
+{%- set sig = sig_types[0][0] %}
 {%- endif %}
+{%- for sig_type in sig_types %}
+in_signals['{{sig_type[0]}}'] = None
+cdef {{sig_type[1]}} *{{sig_type[0]}}StrtPtr
+cdef {{sig_type[1]}} *{{sig_type[0]}}EndPtr
+{% endfor %}
 
-in_sig = None
+cdef {{out_dtype}} *outBuf
 
 cdef void handle_exit(int exitStatus):
   global cv, mutex, retVal, tid, radio, context, s
+  {{destruct_code}}
 {%- if sig_type == 'udp' %}
   close(s)
 {%- elif sig_type == 'zmq' %}
@@ -236,10 +241,14 @@ cdef void usr2_handler(int signum):
 
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, retVal, ret, frames, play_handle, sigStrtPtr, sigEndPtr, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, z
-  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  global mutex, cv, retVal, ret, frames, play_handle, pLocalSignalMem, pLocalSignalMem, zErrMsg, shouldDie, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
+  thread_sigmask(SIG_BLOCK, &exitMask, NULL)
   # int trc
   zErrMsg = <char *>0
+  {%- if parser_buffers %}
+  # TODO figure outBuf stuff for this
+  # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
+  {%- endif %}
   while (True):
     pthread_mutex_lock(&mutex)
     pthread_cond_wait(&cv, &mutex) 
@@ -252,7 +261,7 @@ cdef void* processRequests(void *arg) nogil:
       lineWrapped = True
 
     while (lineWrapped or ((lineWriteOffset + frames * 2) < pLocalSignalMem[1])):
-      ret = snd_pcm_writei(play_handle, <void *>(sigStrtPtr + lineWriteOffset), frames)
+      ret = snd_pcm_writei(play_handle, <void *>({{sig}}StrtPtr + lineWriteOffset), frames)
       if (ret == -EPIPE):
         # EPIPE means underrun
         printf("underrun occurred\n")
@@ -268,7 +277,7 @@ cdef void* processRequests(void *arg) nogil:
       #   z += 1
       # printf("\n\n")
       lineWriteOffset += (frames * 2)
-      if (lineWriteOffset >= (sigEndPtr - sigStrtPtr)):
+      if (lineWriteOffset >= ({{sig}}EndPtr - {{sig}}StrtPtr)):
         lineWriteOffset = 0
         lineWrapped = False
 
@@ -324,15 +333,24 @@ open_shared_mem(<uint8_t **>&pSignalSems, SMEMSIG_PATHNAME, 1
     + ({{num_sigs}} * sizeof(sem_t) - 1), O_RDWR,  PROT_READ | PROT_WRITE)
 
 created_mem = sa.list()
-{% for sig,args in in_signals.iteritems() %}
-if any(['{{sig}}' == x[0] for x in created_mem]):
-  in_sig = sa.attach("shm://{{sig}}") # TODO, fix dtype stuff
-  sa.mlock(in_sig)
+print created_mem
+{% for sig_type in sig_types %}
+print '{{sig_type[0]}}'
+if any(['{{sig_type[0]}}' == x[0] for x in created_mem]):
+  print 'test'
+  in_signals['{{sig_type[0]}}'] = sa.attach("shm://{{sig_type[0]}}") # TODO, fix dtype stuff  print 'tast '
+  sa.mlock(in_signals['{{sig_type[0]}}'])
 else:
   die("numpy signal not created\n")
+# print in_signals
+{{sig_type[0]}}StrtPtr = <{{sig_type[1]}} *><long>in_signals['{{sig_type[0]}}'].__array_interface__['data'][0] # TODO don't hardcode type
+{{sig_type[0]}}EndPtr = {{sig_type[0]}}StrtPtr + len(in_signals['{{sig_type[0]}}'])
 {% endfor %}
-sigStrtPtr = <{{in_signals[in_signals.keys()[0]]['dtype']}}_t *><long>in_sig.__array_interface__['data'][0] # TODO don't hardcode type
-sigEndPtr = sigStrtPtr + len(in_sig)
+
+{% if parser_buffers -%}
+# TODO malloc outBuf according to yaml config 
+# set outBufLen accordingly
+{%- endif %}
 
 {% if sig_type == 'udp' -%}
 # create a UDP socket
@@ -348,7 +366,7 @@ if (inet_aton("{{out_signal['args']['addr']}}", &si_other.sin_addr)==0):
 {% elif sig_type == 'line' %}
 # initiliaze line in 
 frames = pcm_init_play()
-print "FRMAES"
+print "FRAMES"
 print frames
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
@@ -365,37 +383,43 @@ rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
 {%- endif %}
 
-cdef uint32_t y
+{% if default_params -%}
+{{default_sig_name}} = {{default_params}}
+{%- endif %}
+
+{{construct_code}}
 
 make_realtime()
 
 kill(ppid,SIGUSR1)
+move_count = 0
 while(True):
   numMS += 1
 {%- for dep_on in s_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
-{%- if sig_type == 'udp' %}
-  if (sendto(s, sigStrtPtr, 250, 0, <sockaddr *>&si_other, slen)==-1):
-    die("sendto() failed")
-{%- elif sig_type == 'parport' %}
-  portio.outb(<unsigned char>sigStrtPtr[pLocalSignalMem[0]],0x{{out_signal['args']['addr']}})
-{%- elif sig_type == 'line' %}
-  # y = pLocalSignalMem[0]
-  # printf("%d\n", pLocalSignalMem[0])
-  # printf("%d\n", pLocalSignalMem[1])
-  # while(y < pLocalSignalMem[1]):
-  #   printf("%d ", (sigStrtPtr + y)[0])
-  #   y += 1
-  # printf("\n\n");
-{%- endif %}
 {%- endfor %}
 
 {%- for dep_on in m_dep_on %}
   sem_wait(&pSignalSems[{{dep_on[1]}}])
-  {% set sig = logged_signals[dep_on[0]] -%}
+  # {% set sig = logged_signals[dep_on[0]] -%}
   # TODO handle non-integer shapes
   # memcpy(pSignalsStructCur->{{dep_on[0]}}, p{{dep_on[0]|capitalize}}, sizeof(((signalsMsData*)0)->{{dep_on[0]}}))
 {%- endfor %}
+
+  {{parser_code}} 
+
+{%- if not parser_buffers %}
+  outBuf = {{sig}}StrtPtr + pLocalSignalMem[0]
+  outBufLen = pLocalSignalMem[1] - pLocalSignalMem[0] 
+{%- endif %}
+{%- if sig_type == 'udp' %}
+  if (sendto(s, outBuf, outBufLen, 0, <sockaddr *>&si_other, slen)==-1):
+    die("sendto() failed")
+{%- elif sig_type == 'parport' %}
+  portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
+{%- elif sig_type == 'line' %}
+  # Output handled in async thread
+{%- endif %}
 
 {%- if sig_type == 'line' %}
 

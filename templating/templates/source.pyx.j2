@@ -1,7 +1,8 @@
 from libc.stdio cimport printf, stdout, fflush
-from libc.stdlib cimport exit
-from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int16_t
+from libc.stdlib cimport exit, malloc
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, int64_t, int16_t, int32_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
+from libc.string cimport memcpy
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport getppid, pause, close, getpid
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
@@ -19,15 +20,16 @@ import numpy as np
 cimport numpy as np
 cimport cython
 import portio
-import pygame
-{% if in_signal['args']['parser'] -%}
-import {{parser}}
-{%- endif %}
 
 {% set testing = (config['config'].has_key('testing') and config['config']['testing']) %}
 {% set sig_type = in_signal['args']['type'] -%}
+{% if sig_type == 'joystick' -%}
+import pygame
+{%- endif %}
+
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
+
 {% if sig_type == 'udp' -%}
 cdef extern from "<arpa/inet.h>":
   uint16_t htons(uint16_t hostshort)
@@ -111,6 +113,7 @@ cdef extern from "constants.h":
 cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
+cdef socklen_t recv_len
 {% if in_signal['args']['parser'] -%}
 cdef char buf[{{max_buf_size}}]
 {%- endif %}
@@ -133,31 +136,39 @@ cdef snd_pcm_uframes_t frames
 cdef int ret
 {%- elif sig_type == 'parport' %}
 cdef unsigned char inVal
-readParport = False
+readInput = False
+recv_len = 1
+{%- elif sig_type == 'joystick' %}
+recv_len = 2
+readInput = False
 {%- endif %}
 cdef int64_t numMS= -1 * LATENCY
 parentSetup = True
-cdef socklen_t recv_len = 1
-# DELETE LATER
-readJoystick = False
 
 cdef uint32_t *pSignalMem
+cdef sem_t *pSourceSemStart
 cdef uint32_t *pLocalSignalMem
 cdef sem_t *pSem
-cdef timespec timer, timer2
 cdef unsigned long packet_num
 cdef unsigned long num_dropped = 0
 
 {% if in_signal['args']['parser'] -%}
-out_sigs = []
+out_sigs = {}
 {% else -%}
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigStrtPtr
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigEndPtr
-cdef {{in_signal['schema']['data']['dtype']}}_t *sigCurPtr
+{% set dtype = in_signal['schema']['data']['dtype'] -%}
+{% if dtype != 'object' -%}
+{% set dtype = dtype + '_t' -%}
+{% else -%}
+{% set dtype = 'void' -%}
+{% endif %}
+cdef {{dtype}} *sigStrtPtr
+cdef {{dtype}} *sigEndPtr
+cdef {{dtype}} *sigCurPtr
 cdef uint32_t max_num_samples_in_ms
 {%- endif %}
 
 cdef void handle_exit(int exitStatus):
+  {{destruct_code}}
   created_mem = sa.list()
 {%- for sig,args in out_signals.iteritems() %}
   if any(['{{sig}}' == x[0] for x in created_mem]):
@@ -189,16 +200,13 @@ cdef void segv_handler(int signum):
   handle_exit(1)
 
 cdef void alrm_handler(int signum):
-  global numMS, parentSetup, readParport, readJoystick # REMOVE
-  clock_gettime(CLOCK_MONOTONIC_RAW, &timer2)
-  (<unsigned long *>pSignalMem)[102] = timer2.tv_sec
-  (<long *>pSignalMem)[103] = timer2.tv_nsec
+  global numMS, parentSetup, readInput
   if (parentSetup):
     parentSetup = False
   numMS += 1
-  readJoystick = True # REMOVE
-{%- if sig_type == 'parport' %}
-  readParport = True
+{%- if sig_type == 'parport' or sig_type == 'joystick' %}
+  global readInput
+  readInput = True
 {%- endif %}
 
 cdef void usr2_handler(int signum):
@@ -218,9 +226,9 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
 open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
 pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
+pSourceSemStart = <sem_t *>(pSignalMem + {{num_sigs}} * 4)
 
 open_shared_mem(<uint8_t **>&pSem, SMEM0_PATHNAME, PAGESIZE, O_RDWR, PROT_READ | PROT_WRITE)
-
 {% if sig_type == 'udp' -%}
 # create a UDP socket
 s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
@@ -253,13 +261,14 @@ if (not dish):
   die("Could not create ZMQ socket.\n")
 rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
 assert (rc == 0)
-{% elif sig_type == 'joystick' %}
-'''
-FOR TESTING USB - DELETE AFTER
-'''
+{% elif sig_type == 'joystick' -%}
 pygame.init()
 pygame.joystick.init()
-joystick=pygame.joystick.Joystick(0)
+
+if pygame.joystick.get_count() < 1:
+  die("No joystick detected.\n")
+
+joystick = pygame.joystick.Joystick(0)
 joystick.init()
 {%- endif %}
 
@@ -276,12 +285,12 @@ else:
   out_sig_num_samples = {{args['shape']}} * {{args['history']}}
   dtype = np.{{args['dtype']}}
 {% endif %}
-{% if in_signal['args']['parser'] -%}
-  out_sigs.append = [sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}), out_sig_num_samples] # TODO, fix dtype stuff
-  sa.mlock(out_sig)
+{%- if in_signal['args']['parser'] %}
+  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=np.{{args['dtype']}}) # TODO, fix dtype stuff
+  sa.mlock(out_sigs['{{sig}}'])
 {%- else %}
-  tmp_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
-  sigStrtPtr = <{{in_signal['schema']['data']['dtype']}}_t *><long>tmp_sig.__array_interface__['data'][0] # TODO don't hardcode type
+  py_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
+  sigStrtPtr = <{{dtype}} *><long>py_sig.__array_interface__['data'][0] # TODO don't hardcode type
   sigCurPtr = sigStrtPtr
   sigEndPtr = sigStrtPtr + out_sig_num_samples
 {%- if sig_type == 'line' %}
@@ -293,13 +302,20 @@ else:
 {%- endif %}
 {%- endif %}
 {%- endfor %}
+{% if default_params -%}
+{{in_sig_name}} = {{default_params}}
+{%- endif %}
+{{construct_code}}
 
 make_realtime()
 
 fflush(stdout)
-kill(ppid, SIGUSR2) # TODO these kills should probably be semaphores
-pause()
-kill(ppid, SIGUSR2)
+kill(ppid, SIGUSR2) # this source is initialized
+printf("source wait: %d\n", {{source_num}})
+sem_wait(pSourceSemStart +  {{source_num}}) # wait for parent go signal
+printf("source post: %d\n", {{source_num}})
+sem_post(pSourceSemStart + {{source_num}}) # respond
+
 
 while(True):
 {%- if sig_type == 'udp' %}
@@ -341,12 +357,9 @@ while(True):
     die("pcm short error")
 {%- elif sig_type == 'parport' %}
   # recv_len always 1 for parport
-  if (readParport):
-    readParport = False
-    clock_gettime(CLOCK_MONOTONIC_RAW, &timer)
+  if (readInput):
+    readInput = False
     inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
-    (<unsigned long *>pSignalMem)[100] = timer.tv_sec
-    (<long *>pSignalMem)[101] = timer.tv_nsec
     sigCurPtr[0] = inVal
   else:
     pause()
@@ -355,18 +368,26 @@ while(True):
   recv_len = zmq_recv(dish, sigCurPtr, {{max_buf_size}}, 0)
   # TODO handle zmq error
   num_packets += 1
+{%- elif sig_type == 'joystick' %}
+  if (readInput):
+    readInput = False
+    pygame.event.pump()
+    for axis in range(recv_len):
+      sigCurPtr[axis] = int(joystick.get_axis(axis) * 5)
+  else:
+    pause()
+    continue
+{%- else %}
+  pause()
 {%- endif %}
 
   if (parentSetup):
     continue
 
 {%- if in_signal['args']['parser'] %}
-
   # use user parser
-  # int outlen = {{parser}}(buf, recv_len, &outbuf)
-  # memcpy
-{%- endif %}
-  
+  {{parser_code}}
+{%- else %}
   sem_wait(pSem)
   sigCurPtr += recv_len
   if ((sigCurPtr + max_num_samples_in_ms) > sigEndPtr):
@@ -378,4 +399,5 @@ while(True):
   pLocalSignalMem[2] = sigCurPtr - sigStrtPtr
 {%- endif %}
   sem_post(pSem)
+{%- endif %}
 
