@@ -19,6 +19,7 @@ import numpy as np
 cimport numpy as np
 cimport cython
 import portio
+import pygame
 {% if in_signal['args']['parser'] -%}
 import {{parser}}
 {%- endif %}
@@ -137,6 +138,8 @@ readParport = False
 cdef int64_t numMS= -1 * LATENCY
 parentSetup = True
 cdef socklen_t recv_len = 1
+# DELETE LATER
+readJoystick = False
 
 cdef uint32_t *pSignalMem
 cdef uint32_t *pLocalSignalMem
@@ -161,7 +164,8 @@ cdef void handle_exit(int exitStatus):
     sa.delete("shm://{{sig}}")
 {%- endfor %}
 {%- if sig_type == 'udp' %}
-  close(s)
+  if (s):
+    close(s)
 {%- elif sig_type == 'zmq' %}
   zmq_close(dish)
   zmq_ctx_destroy(context)
@@ -185,13 +189,14 @@ cdef void segv_handler(int signum):
   handle_exit(1)
 
 cdef void alrm_handler(int signum):
-  global numMS, parentSetup, readParport
+  global numMS, parentSetup, readParport, readJoystick # REMOVE
   clock_gettime(CLOCK_MONOTONIC_RAW, &timer2)
   (<unsigned long *>pSignalMem)[102] = timer2.tv_sec
   (<long *>pSignalMem)[103] = timer2.tv_nsec
   if (parentSetup):
     parentSetup = False
   numMS += 1
+  readJoystick = True # REMOVE
 {%- if sig_type == 'parport' %}
   readParport = True
 {%- endif %}
@@ -228,7 +233,8 @@ si_me.sin_port = htons({{in_signal['args']['port']}})
 interface_ip = get_ip("{{in_signal['args']['interface']}}")
 si_me.sin_addr.s_addr = interface_ip.s_addr
 # bind socket to port
-if(bind(s, <sockaddr *>&si_me, sizeof(si_me)) == -1):
+if(bind(s, <sockaddr *>&si_me, sizeof(si_me))  == -1):
+  print errno
   die("bind\n")
 {% elif sig_type == 'line' %}
 # initiliaze line in 
@@ -247,6 +253,14 @@ if (not dish):
   die("Could not create ZMQ socket.\n")
 rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
 assert (rc == 0)
+{% elif sig_type == 'joystick' %}
+'''
+FOR TESTING USB - DELETE AFTER
+'''
+pygame.init()
+pygame.joystick.init()
+joystick=pygame.joystick.Joystick(0)
+joystick.init()
 {%- endif %}
 
 created_mem = sa.list()
@@ -295,7 +309,7 @@ while(True):
   if (recv_len == -1):
     die("Read error.\n")
   tmp = ((<unsigned long *>sigCurPtr)[0]) - packet_num
-{%- if testing %}
+  {%- if testing %}
   if (not parentSetup):
     if (packet_num and (tmp != 1)):
       printf("dropped %lu packets\n", <unsigned long>tmp)
@@ -304,7 +318,13 @@ while(True):
       num_dropped += <unsigned long>tmp
     packet_num = (<unsigned long *>sigCurPtr)[0]
     num_packets += 1
-{%- endif %}
+  {%- endif %}
+{% elif sig_type == 'joystick' %}
+  if (readJoystick):
+      readJoystick = False
+      pygame.event.pump()
+      for i in range(4):
+         joystick.get_axis(i)
 {% elif sig_type == 'line' %}
   #read from line in
   ret = snd_pcm_readi(cap_handle, <char *>sigCurPtr, frames)
