@@ -20,6 +20,7 @@ import numpy as np
 cimport numpy as np
 cimport cython
 import portio
+import pygame
 
 {% set testing = (config['config'].has_key('testing') and config['config']['testing']) %}
 {% set sig_type = in_signal['args']['type'] -%}
@@ -175,7 +176,8 @@ cdef void handle_exit(int exitStatus):
     sa.delete("shm://{{sig}}")
 {%- endfor %}
 {%- if sig_type == 'udp' %}
-  close(s)
+  if (s):
+    close(s)
 {%- elif sig_type == 'zmq' %}
   zmq_close(dish)
   zmq_ctx_destroy(context)
@@ -240,7 +242,8 @@ si_me.sin_port = htons({{in_signal['args']['port']}})
 interface_ip = get_ip("{{in_signal['args']['interface']}}")
 si_me.sin_addr.s_addr = interface_ip.s_addr
 # bind socket to port
-if(bind(s, <sockaddr *>&si_me, sizeof(si_me)) == -1):
+if(bind(s, <sockaddr *>&si_me, sizeof(si_me))  == -1):
+  print errno
   die("bind\n")
 {% elif sig_type == 'line' %}
 # initiliaze line in 
@@ -323,7 +326,7 @@ while(True):
   if (recv_len == -1):
     die("Read error.\n")
   tmp = ((<unsigned long *>sigCurPtr)[0]) - packet_num
-{%- if testing %}
+  {%- if testing %}
   if (not parentSetup):
     if (packet_num and (tmp != 1)):
       printf("dropped %lu packets\n", <unsigned long>tmp)
@@ -332,7 +335,13 @@ while(True):
       num_dropped += <unsigned long>tmp
     packet_num = (<unsigned long *>sigCurPtr)[0]
     num_packets += 1
-{%- endif %}
+  {%- endif %}
+{% elif sig_type == 'joystick' %}
+  if (readJoystick):
+      readJoystick = False
+      pygame.event.pump()
+      for i in range(4):
+         joystick.get_axis(i)
 {% elif sig_type == 'line' %}
   #read from line in
   ret = snd_pcm_readi(cap_handle, <char *>sigCurPtr, frames)
