@@ -335,12 +335,6 @@ while(True):
     packet_num = (<unsigned long *>sigCurPtr)[0]
     num_packets += 1
   {%- endif %}
-{% elif sig_type == 'joystick' %}
-  if (readJoystick):
-      readJoystick = False
-      pygame.event.pump()
-      for i in range(4):
-         joystick.get_axis(i)
 {% elif sig_type == 'line' %}
   #read from line in
   ret = snd_pcm_readi(cap_handle, <char *>sigCurPtr, frames)
