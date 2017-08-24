@@ -176,7 +176,7 @@ static void check_children() {
       int chNum = childTopoOrder[CHILD_HEIGHT-1][al_i];
       if (pFinish[chNum]) {
         usleep(5000);
-        // printf("al_i:%d pFinish[%d]: %d\n", al_i, al_i, pFinish[al_i]);
+        printf("al_i:%d pFinish[%d]: %d\n", al_i, al_i, pFinish[al_i]);
         die("Child timing violation.\n");
       } 
       pFinish[chNum] = 0xff;
