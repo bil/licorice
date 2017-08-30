@@ -331,6 +331,8 @@ kill(ppid, SIGUSR2) # this source is initialized
 
 pause()
 
+printf("HELLO %p\n", sigCurPtr)
+
 while(True):
 {%- if sig_type == 'udp' %}
   recvLen = recvfrom(s, sigCurPtr, pSelfBufVars[5], 0, <sockaddr *> &si_other, &slen)
