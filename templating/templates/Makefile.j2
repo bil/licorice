@@ -8,7 +8,7 @@ LDFLAGS = -levent -lhiredis -lrt -pthread -lsqlite3  #-lasound
 LDTESTFLAGS = -lsqlite3 -pthread
 CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt #-lasound  -lzmq
 
-all: timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in child_names %}{{c}} {% endfor %}
+all: timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in module_names %}{{c}} {% endfor %}
 
 timer: timer.c utilityFunctions.c 
 	$(CC) $(CFLAGS) timer.c utilityFunctions.c -o timer $(LDFLAGS)
@@ -30,12 +30,12 @@ timer: timer.c utilityFunctions.c
 	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c -o {{sink}} $(CYLDFLAGS)
 {% endfor %}
 
-{% for child in child_names -%}
+{% for child in module_names -%}
 {{child}}: {{child}}.pyx utilityFunctions.c #networkUtilities.c
 	cython --embed -o {{child}}.c {{child}}.pyx
 	$(CC) $(CYFLAGS) -Wno-cpp {{child}}.c  utilityFunctions.c -o {{child}} $(CYLDFLAGS) #networkUtilities.c
 {%- endfor %}
 
 clean:
-	rm -f timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %}{% for c in child_names %}{{c}} {% endfor %}
+	rm -f timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %}{% for c in module_names %}{{c}} {% endfor %}
 

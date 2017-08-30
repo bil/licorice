@@ -3,7 +3,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "constants.h"
 
@@ -83,7 +82,7 @@ void set_sighandler(int signum, void *psh, sigset_t *block_mask) {
 * If the file descriptor needs to be ftruncated (i.e., this is the first process opening)
 * this shared memory, then make sure the O_CREAT flag is set in shm_flags
 */
-void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags) {
+void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags) {
   int fd = shm_open(pName, shm_flags, 0600);
   if(fd == -1) {
     die("shm_open failed\n");
