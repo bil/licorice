@@ -1,0 +1,179 @@
+{% block header %}
+from libc.stdlib cimport atoi, exit
+from libc.stdio cimport printf
+from libc.string cimport strcpy, memset
+from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT
+from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
+from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
+from posix.unistd cimport getppid, pause, close, getpid
+from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
+from posix.types cimport pid_t
+cimport posix.stat 
+from posix.fcntl cimport O_RDWR
+from libcpp cimport bool
+from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
+
+import sys, signal
+import SharedArray as sa
+from cpython.exc cimport PyErr_CheckSignals
+# TODO allow for imports in constructors
+import pygame as pygame
+import random as random
+import math
+import numpy as np
+
+cdef extern from "semaphore.h":
+  enum: __SIZEOF_SEM_T
+  cdef union sem_union:
+    char __size[__SIZEOF_SEM_T]
+    long int __align
+  ctypedef sem_union sem_t
+  int sem_init(sem_t *, int, unsigned)
+  int sem_wait(sem_t *)
+  int sem_getvalue(sem_t *restrict, int *restrict)
+  int sem_post(sem_t *)
+#not used yet, just seeing if it would work
+cdef extern from "unistd.h":
+  int getpagesize()
+cdef extern from "stdatomic.h":
+  enum memory_order:
+    memory_order_relaxed,
+    memory_order_consume,
+    memory_order_acquire,
+    memory_order_release,
+    memory_order_acq_rel,
+    memory_order_seq_cst
+  void atomic_thread_fence(memory_order)
+
+cdef extern from "utilityFunctions.h":
+  void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
+  void die(char *errorStr)
+  void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags)
+  void set_sighandler(int signum, void *psh, sigset_t *block_mask)
+  void make_realtime()
+
+import numpy as np
+cimport numpy as np
+cimport cython
+
+cdef extern from "constants.h":
+  enum: NUM_PAGES_IN_GB
+  enum: MAX_PATH_LEN
+  enum: NUM_CHILDREN
+  enum: BYTES_IN_GB
+  cdef const char *SMEM0_PATHNAME
+  enum: PAGESIZE
+  enum: LATENCY
+  enum: NUM_NON_SOURCES
+  enum: NUM_SEM_SIGS
+  enum: NUM_INTERNAL_SIGS
+  size_t ROUND_UP(int X, int Y)
+
+cdef pid_t pid
+cdef pid_t ppid
+cdef char pathName[MAX_PATH_LEN]
+cdef public sigset_t exitMask
+
+# shared memory vars
+cdef size_t shm_size
+cdef uint8_t *pmem
+cdef uint64_t *pNumTicks
+cdef sem_t *pTickUpSems
+cdef sem_t *pTickDownSems
+cdef sem_t *pSigSems
+cdef uint32_t *pBufVars
+
+{% endblock %}
+
+{% block handlers %}
+
+cdef void handle_exit(int exitStatus):
+  global pmem, shm_size
+  {{destruct_code}}
+  munmap(pmem, shm_size)
+  munlockall()
+  exit(exitStatus)
+
+cdef void exit_handler(int signum):
+  handle_exit(0)
+
+cdef void mem_error_handler(int signum):
+  printf("Child memory error: signum %d\n", signum)
+  printf("Child ID: %d\n", {{module_num}})
+  handle_exit(1)
+
+{%- endblock %}
+
+{% block setup -%}
+
+# runtime code
+# intialize utilityFunctions
+sigfillset(&exitMask)
+init_utils(&handle_exit, &exitMask)
+ppid = getppid()
+pid = getpid()
+printf("child %d id: %d\n", {{module_num}}, pid)
+
+# open and map shared parent memory
+shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * 8 * NUM_INTERNAL_SIGS)
+shm_size = ROUND_UP(shm_size, PAGESIZE)
+open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
+pNumTicks = <uint64_t *>(pmem)
+pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
+pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
+pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
+pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+
+input_dict = {}
+created_mem = sa.list()
+{#This forces creation of processes one at a time, since otherwise we might get two definitions for the same shared mem #}
+{% for sig,args in in_signals.iteritems() %}
+if any(['{{sig}}' == x[0] for x in created_mem]):
+  input_dict["{{sig}}"] = sa.attach("shm://{{sig}}")
+else:
+  print "{{sig}} not created"
+  die("signal not created")
+{%- endfor %}
+
+output_dict = {}
+{% for sig, args in out_signals.iteritems() %}
+if any(['{{sig}}' == x[0] for x in created_mem]):
+  output_dict["{{sig}}"] = sa.attach("shm://{{sig}}")
+else:
+  output_dict["{{sig}}"] = sa.create("shm://{{sig}}", {{args['shape']}}, dtype=np.{{args['dtype']}})
+  sa.mlock(output_dict["{{sig}}"])
+{% endfor %}
+
+# set signal mask
+sigfillset(&exitMask)
+# handle signals
+set_sighandler(SIGINT, &exit_handler, &exitMask)
+set_sighandler(SIGBUS, &mem_error_handler, &exitMask)
+set_sighandler(SIGSEGV, &mem_error_handler, &exitMask)
+
+{% if default_params -%}
+{{default_sig_name}} = {{default_params}}
+{%- endif %}
+{{construct_code}}
+
+make_realtime()
+
+kill(ppid,SIGUSR1)
+
+while(True):
+  sem_wait(&pTickUpSems[{{non_source_num}}])
+{%for dep_on in depends_on %}
+  sem_wait(&pSigSems[{{dep_on[1]}}])
+{%endfor%}
+  {#The user can just write a function and expect a dict of inputs and return a dict of outputs #}
+  # {{name}}(input_dict, output_dict)
+  {{user_code}}
+{%for dep_name, dep_val in dependencies.iteritems() %}
+{%for i in range(dep_val[0]) %}
+  sem_post(&pSigSems[{{dep_val[1]}}])
+{%endfor%}
+{%endfor%}
+  atomic_thread_fence(memory_order_seq_cst)
+  sem_post(&pTickDownSems[{{non_source_num}}])
+
+{% endblock %}

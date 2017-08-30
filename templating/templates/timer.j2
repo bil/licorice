@@ -18,24 +18,33 @@
 #include <sys/wait.h>
 #include <stdatomic.h>
 #include <time.h>
+#include <stdlib.h>
 #include "constants.h"
 #include "utilityFunctions.h"
 
-#define CHILD_HEIGHT {{topo_height}}
-#define NUM_SOURCES {{source_names|length}}
-#define NUM_SINKS {{sink_names|length}}
-#define NSECS 600000
+#define TOPO_HEIGHT {{topo_height}}
+#define NUM_SOURCES {{num_sources}}
+#define NUM_SINKS {{num_sinks}}
+#define NUM_MODULES {{num_modules}}
+#define NUM_TICKS_OFFSET 0 // TODO can i put sizeofs here?
+#define SOURCE_SEM_OFFSET 0
+#define TICK_SEMS_OFFSET 0
+#define SIG_SEMS_OFFSET 0
+#define BUF_VARS_OFFSET 0
 
 {% set test_start_time = (config['config'].has_key('test_start_time') and config['config']['test_start_time']) %}
 {% set test_tick_time = (config['config'].has_key('test_tick_time') and config['config']['test_tick_time']) %}
 // process IDs for each child numbered according to the index of the child's name
-// in childProcNames
-static pid_t ch_pids[NUM_CHILDREN];
-{%- if child_names|length != 0 %}
-static char childProcnames[NUM_CHILDREN][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in child_names[:-1] %}"{{n}}", {% endfor %}"{{child_names[-1]}}"{{'}'}};
+// in moduleProcnames
+static pid_t ch_pids[NUM_MODULES];
+{%- if num_modules != 0 %}
+static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
 {%- endif %}
-static int childLens[CHILD_HEIGHT] = {{'{'}}{% for l in topo_lens[:-1] %}{{l}}, {% endfor %}{{topo_lens[-1]}}{{'}'}};
-static int childTopoOrder[CHILD_HEIGHT][{{num_cores}}];
+{%- if topo_height != 0 %}
+static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{{l}}, {% endfor %}{{topo_widths[-1]}}{{'}'}};
+static int moduleTopoOrder[TOPO_HEIGHT][{{child_max_len}}];
+{%- endif %}
+static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source_module_check[:-1] %}{{i}}, {% endfor %}{{non_source_module_check[-1]}}{{'}'}};
 // network pid
 static pid_t so_pids[NUM_SOURCES];
 // logger pid
@@ -43,28 +52,29 @@ static pid_t si_pids[NUM_SINKS];
 {% if parport_tick_addr -%}
 static unsigned char outVal = 0;
 {%- endif %}
-// pointer to start of shared memory containing group timestamp and waveform data
+// pointer to start of shared memory
+static size_t shm_size;
 static uint8_t *pmem;
-static uint8_t *pFinish;
-static uint32_t *pSignalMem;
-static uint32_t *pCurSignalMem;
+static uint64_t *pNumTicks;
+static sem_t *pSourceSem;
+static sem_t *pTickUpSems;
+static sem_t *pTickDownSems;
+static sem_t *pSigSems;
+static uint32_t *pBufVars;
+static uint32_t *pCurBufVars;
+
 sigset_t exitMask;
 static sigset_t alrmMask;
-static unsigned long alrmNum = 0;
-static uint32_t *pMSStart;
-static uint32_t *pMSEnd;
-static uint32_t *pDataStart;
-static uint32_t *pDataEnd;
-static sem_t *pSem;
-static sem_t *pGlobalSems;
-static sem_t *pSourceSemStart;
 
 static int sigalrm_recv;
 static int sigexit_recv;
 static int sigchld_recv;
 
-static int num_cores;
-static int ex_i, al_i, de_i;
+// static int num_cores = {{num_cores}};
+static int ex_i, al_i, de_i, m_i;
+{%- if topo_height != 0 -%} 
+static int m_j;
+{%- endif %}
 
 static struct itimerval rtTimer;
 {%- if test_start_time %}
@@ -99,7 +109,7 @@ void handle_exit(int exitStatus) {
   setitimer(ITIMER_REAL, &rtTimer, NULL);
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
-  for (ex_i = 0; ex_i < NUM_CHILDREN; ex_i++) {
+  for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
     kill(ch_pids[ex_i], SIGINT);
     while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
   }
@@ -118,14 +128,10 @@ void handle_exit(int exitStatus) {
     }
   }
   printf("Unmapping shared memory...\n");
-  printf("%lu SIGALRMs sent\n", alrmNum);
+  printf("%lu SIGALRMs sent\n", *pNumTicks);
   // close shared memory
-  munmap(pSignalMem, PAGESIZE);
-  munmap(pmem, PAGESIZE);
-  munmap(pGlobalSems, {{num_non_sources + num_sem_sigs}} * sizeof (sem_t));
+  munmap(pmem, shm_size);
   shm_unlink(SMEM0_PATHNAME);
-  shm_unlink("/smem_sig_offsets");
-  shm_unlink(SMEMSIG_PATHNAME);
   munlockall();
   exit(exitStatus);
 }
@@ -162,77 +168,70 @@ static void check_children() {
 {%- endif %}
   
   // increment SIGALRM counter
-  alrmNum++;
+  (*pNumTicks)++;
 
   // only trigger network process on first iterations
-  if (alrmNum <= LATENCY) {
+  if (*pNumTicks <= INIT_BUFFER_TICKS) {
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
       kill(so_pids[al_i], SIGALRM);
     }
   }
-  else { // normal behavior on subsequent iterations
-    // check if children have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
-    for (al_i = 0; al_i < childLens[CHILD_HEIGHT-1]; al_i++) {
-      int chNum = childTopoOrder[CHILD_HEIGHT-1][al_i];
-      if (pFinish[chNum]) {
-        usleep(5000);
-        printf("al_i:%d pFinish[%d]: %d\n", al_i, al_i, pFinish[al_i]);
-        die("Child timing violation.\n");
+  // normal behavior on subsequent iterations
+  else {
+    // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
+    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
+      if (sem_trywait(pTickDownSems + al_i)) {
+        if (nonSourceModuleCheck[al_i])
+          die("Module timing violation.\n");
+        else
+          printf("Sink timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i); // TODO insert non_source name here
       } 
-      pFinish[chNum] = 0xff;
     }
-    // check if sinks have finished execution in allotted time
-    if (pFinish[NUM_CHILDREN]) {
-      printf("Logger timing violation on ms: %lu \n", alrmNum);
-      //usleep(5000);
-      //die("Logger timing violation.\n");
-    }
-    pFinish[NUM_CHILDREN] = 0xff;
 
-    // update ms start and end pointers for children
-    //***** added recently, not tested yet ********
-    //might need a lock around this with fence, since this should
-    //look atomic to children. could use pthread reader writer locks
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
+      sem_wait(pSourceSem);
+    // TODO does this need to be sequentially consistent?
     atomic_thread_fence(memory_order_seq_cst);
-    sem_wait(pSem);
-    *pMSStart = *pMSEnd;
-    *pMSEnd = *pDataEnd;
-    // TODO make this generic for N signals
 
-    pCurSignalMem = pSignalMem + 0;
+    // TODO make this generic for N signals
+    pCurBufVars = pBufVars + 0;
+
+    // debugging
+    // printf("\ntimer: %u %u %u %u %u %u %u %u  \n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
 
     // NON-LATENCY-DEPENDENT UPDATE
-    if (*(pCurSignalMem + 1) == *(pCurSignalMem + 3)) 
-      *(pCurSignalMem + 0) = 0;
-    else 
-      *(pCurSignalMem + 0) = *(pCurSignalMem + 1);
-    if (!*(pCurSignalMem + 2))
-      *(pCurSignalMem + 1) = *(pCurSignalMem + 3);
-    else 
-      *(pCurSignalMem + 1) = *(pCurSignalMem + 2);
+    if ((*(pCurBufVars + 7) - *(pCurBufVars + 1)) < *(pCurBufVars + 6))
+      *(pCurBufVars + 1) = 0;
+      *(pCurBufVars + 2) = 0;
+    *(pCurBufVars + 0) = *(pCurBufVars + 1);
+    *(pCurBufVars + 1) = *(pCurBufVars + 0) + *(pCurBufVars + 3);
+    *(pCurBufVars + 3) = 0;
 
     // LATENCY-DEPENDENT UPDATE
-    // if (*(pCurSignalMem + 0) == *(pCurSignalMem + 3)) 
-    //   *(pCurSignalMem + 0) = 0;
+    // TOOD figure out good way to spread buffered data over ticks
+    // if (*(pCurBufVars + 0) == *(pCurBufVars + 3)) 
+    //   *(pCurBufVars + 0) = 0;
     // else 
-    //   *(pCurSignalMem + 0) += (32 * 2);
-    // if (*(pCurSignalMem + 1) == *(pCurSignalMem + 3))
-    //   *(pCurSignalMem + 1) = 32 * 2;
+    //   *(pCurBufVars + 0) += (32 * 2);
+    // if (*(pCurBufVars + 1) == *(pCurBufVars + 3))
+    //   *(pCurBufVars + 1) = 32 * 2;
     // else 
-    //   *(pCurSignalMem + 1) += (32 * 2);
+    //   *(pCurBufVars + 1) += (32 * 2);
 
+    // debugging
+    // printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
     atomic_thread_fence(memory_order_release);
-    sem_post(pSem);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
+      sem_post(pSourceSem);
     
-    // trigger network process
+    // trigger sources
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
       kill(so_pids[al_i], SIGALRM);
     }
 
-    // release global tick locks for all modules and sinks
-    // TODO Might need to have lock here for network processes that have to do tick-level updates (like cerebus spike)
-    for (al_i = 0; al_i < {{num_non_sources}}; al_i++) {
-      sem_post(pGlobalSems + al_i);
+    // trigger all non-source processes
+    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
+      sem_post(pTickUpSems + al_i);
     }
   }
 
@@ -281,7 +280,7 @@ void dead_child() {
       so_pids[de_i] = -1;
     }
   }
-  for (de_i = 0; de_i < NUM_CHILDREN; de_i++) {
+  for (de_i = 0; de_i < NUM_MODULES; de_i++) {
     if (ch_pids[de_i] == dead_pid) {
       ch_pids[de_i] = -1;
     }
@@ -294,11 +293,9 @@ void chld_handler(int sig) {
   sigchld_recv++;
 }
 
-void stack_prefault() {
-  unsigned char dummy[MAX_SAFE_STACK];
-  memset(dummy, 0, MAX_SAFE_STACK);
-}
-
+/*
+ * Timer parent main
+ */
 int main(int argc, char* argv[]) {
 {%- if test_start_time %}
   clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
@@ -339,37 +336,44 @@ int main(int argc, char* argv[]) {
   // create shared memory and map it
   printf("Mapping memory...\n");
 
-  open_shared_mem((uint8_t **)&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
-  pSourceSemStart = (sem_t *)(pSignalMem + {{num_internal_sigs}} * 4);
+  shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * 8 * NUM_INTERNAL_SIGS);
+  shm_size = ROUND_UP(shm_size, PAGESIZE);
+  open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
+  pNumTicks = (uint64_t *)(pmem);
+  pSourceSem = (sem_t *)(pmem + sizeof(uint64_t));
+  pTickUpSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t));
+  pTickDownSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)));
+  pSigSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)));
+  pBufVars = (uint32_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t));
 
-  open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
-  // set pmem header variables
-  pSem = (sem_t*)pmem;
-  pMSStart = (uint32_t*)pmem + SMEM0_MS_START_OFFSET;
-  pMSEnd = (uint32_t*)pmem + SMEM0_MS_END_OFFSET;
-  pDataStart = (uint32_t*)pmem + SMEM0_DATA_START_OFFSET;
-  pDataEnd = (uint32_t*)pmem + SMEM0_DATA_END_OFFSET;
-  pFinish = pmem + SMEM0_HEADER_LEN;
-  open_shared_mem((uint8_t **)&pGlobalSems, SMEMSIG_PATHNAME, ({{num_non_sources + num_sem_sigs}}) * sizeof (sem_t), O_TRUNC | O_CREAT | O_RDWR,  PROT_READ | PROT_WRITE);
+  *pNumTicks = -1 * INIT_BUFFER_TICKS;
 
+  // initialize source semaphore
+  sem_init(pSourceSem, 1, NUM_SOURCES); 
 
-  // initialize non-source semaphores and signal semaphores
-  int i;
-  for (i = 0; i < {{num_non_sources + num_sem_sigs}}; i++) {
-    sem_init(pGlobalSems + i, true, 0);
+  // initialize up tick semaphores
+  for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
+    sem_init(pTickUpSems + m_i, 1, 0);
   }
+
+  // initialize down tick semaphores
+  for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
+    sem_init(pTickDownSems + m_i, 1, 1);
+  }
+
+  // initialize signal semaphores
+  for (m_i = 0; m_i < NUM_SEM_SIGS; m_i++) {
+    sem_init(pSigSems + m_i, 1, 0);
+  }
+
   printf("Memory mapped.\nForking children...\n");
-  // zero'd out byte in shared memory corresponding to child in child process
-
-  //initialize semaphore
-  sem_init(pSem, 1, 1);
-
-  // get number of cores
-  // Could also use _SC_NPROCESSORS_ONLN, but here we assume that all cores are online
-  num_cores = sysconf(_SC_NPROCESSORS_CONF);
   
   // set priority
   set_sched_prior(PRIORITY);
+  cpu_set_t mask;
+  CPU_ZERO(&mask);
+  CPU_SET(1, &mask);
+  sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
 
 {% for name in source_names -%} // TODO write this loop in C
@@ -399,42 +403,36 @@ int main(int argc, char* argv[]) {
   pause();
 {%- endfor %}
   printf("Sources ready.\n");
-{% for name in source_names -%}
+{%- for name in source_names %}
   printf("{{name}}: %d\n", so_pids[{{loop.index0}}]);
-{% endfor %}
+{%- endfor %}
 
 
-{% if child_names|length != 0 -%}
+{% if num_modules != 0 -%}
   // fork and exec child processes
 {% for i in range(0, topo_height) -%}
-{% for j in range(0, topo_lens[i]) -%}
-  childTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
+{% for j in range(0, topo_widths[i]) -%}
+  moduleTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
 {%- endfor %}
 {%- endfor %}
   
-  for (i = 0; i < CHILD_HEIGHT; i++) {
-    for (int j = 0; j < childLens[i]; j++) {
-      int childNum = childTopoOrder[i][j];
-      if (childNum == -1) { // source or sink
-        continue;
-      }
+  for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
+    for (m_j = 0; m_j < moduleTopoLens[m_i]; m_j++) {
+      int childNum = moduleTopoOrder[m_i][m_j];
       if ((ch_pids[childNum] = fork()) == -1) {
         die("fork failed\n");
       }
       if (ch_pids[childNum] == 0) {  // only runs for child processes
         cpu_set_t mask;
         CPU_ZERO(&mask);
-        CPU_SET(j + CPU_OFFSET, &mask);
+        CPU_SET(m_j + CPU_OFFSET, &mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &mask);
         setpriority(PRIO_PROCESS, 0, -19);
         set_sched_prior(PRIORITY);
-        char buf[4];
         char procBuf[64];
-        sprintf(buf, "%d", childNum);
-        printf("TEST HERE %s\n", childProcnames[childNum]);
-        sprintf(procBuf, "./%s", childProcnames[childNum]);
-        char* argv[3] = {procBuf, buf, NULL};
-        
+        sprintf(procBuf, "./%s", moduleProcnames[childNum]);
+        char* argv[2] = {procBuf, NULL};
+
         // execute child process
         // signal handlers and mmap are not preserved on exec
         execvp(argv[0],argv);
@@ -446,8 +444,9 @@ int main(int argc, char* argv[]) {
     }
   }
   printf("Internal modules ready.\n");
-for (i = 0; i < CHILD_HEIGHT; i++) {
-  printf("%s: %d\n", childProcnames[i], ch_pids[i]);
+
+for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
+  printf("%s: %d\n", moduleProcnames[m_i], ch_pids[m_i]);
 }
 {%- endif %}
 
@@ -483,8 +482,8 @@ for (i = 0; i < CHILD_HEIGHT; i++) {
 {% endfor %}
   make_realtime();
 
-  for (i = 0; i < NUM_SOURCES; i++) {
-    sem_post(pSourceSemStart + i); // start network immediately before setting timer
+  for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
+    kill(so_pids[m_i], SIGUSR2);
   }
   printf("Network process ready.\n");
 
@@ -508,8 +507,6 @@ for (i = 0; i < CHILD_HEIGHT; i++) {
       handle_exit(0);
     if (sigchld_recv)
       dead_child();
-    if (sigalrm_recv > NSECS)
-      handle_exit(0);
     if (sigalrm_recv)
       check_children();
     pause();

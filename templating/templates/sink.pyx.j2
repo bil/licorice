@@ -1,6 +1,6 @@
 from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit, malloc, free
-from libc.stdint cimport uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t
+from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
 from posix.unistd cimport getppid, pause, close, getpid
@@ -243,13 +243,16 @@ cdef extern from "constants.h":
   enum: SMEM0_HEADER_LEN
   cdef const char *SMEM0_PATHNAME
   cdef const char *SMEMSIG_PATHNAME
+  enum: NUM_NON_SOURCES
+  enum: NUM_SEM_SIGS
+  enum: NUM_INTERNAL_SIGS
+  size_t ROUND_UP(int X, int Y)
+  enum: NUM_TABLES
   cdef const char *DATALOGGER_SIGNALS_TABLE_NAME
   cdef const char *DATALOGGER_FILENAME
-  enum: NUM_TABLES
 
 #include <stdatomic.h>
 
-cdef int numMS = 0
 cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
@@ -258,7 +261,6 @@ cdef char pathName[MAX_PATH_LEN]
 cdef int s
 cdef sockaddr_in si_other
 cdef socklen_t slen=sizeof(si_other)
-cdef socklen_t recv_len
 {% elif sig_type == 'zmq' -%}
 cdef void *radio
 cdef void *context
@@ -321,14 +323,16 @@ cdef uint8_t *pSignalsBufEnd
 cdef int signalsBufSize
 {%- endif %}
 
-cdef sem_t *pGlobalSems
-cdef sem_t *pSignalSemStart
 cdef int sigalrm_recv = 0
-cdef uint8_t *pFinish
-cdef uint8_t *pmem
 
-cdef uint32_t *pSignalMem
-cdef uint32_t *pLocalSignalMem
+cdef size_t shm_size
+cdef uint8_t *pmem
+cdef uint64_t *pNumTicks
+cdef sem_t *pTickUpSems
+cdef sem_t *pTickDownSems
+cdef sem_t *pSigSems
+cdef uint32_t *pBufVars
+cdef uint32_t *pSelfBufVars
 lastVal = 1
 
 in_signals = {}
@@ -342,9 +346,11 @@ cdef {{sig_type[1]}} *{{sig_type[0]}}EndPtr
 {% endfor %}
 
 cdef {{out_dtype}} *outBuf
+cdef size_t sentBytes
+cdef size_t outBufLen
 
 cdef void handle_exit(int exitStatus):
-  global cv, mutex, retVal, tid, radio, context, s, pSignalsBufStart
+  global cv, mutex, retVal, tid, radio, context, s, shm_size, pmem
   {{destruct_code}}
 {%- if sig_type == 'udp' %}
   close(s)
@@ -372,6 +378,8 @@ cdef void handle_exit(int exitStatus):
   free(pSignalsBufStart)
 {%- endfor %}
 {%- endif %}
+  munmap(pmem, shm_size)
+  munlockall()
   exit(exitStatus)
 
 cdef void exit_handler(int signum):
@@ -442,7 +450,7 @@ cdef void* processRequests(void *arg) nogil:
 
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, pLocalSignalMem, pLocalSignalMem, zErrMsg, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
+  global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, pSelfBufVars, zErrMsg, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
   thread_sigmask(SIG_BLOCK, &exitMask, NULL)
   zErrMsg = <char *>0
   {%- if parser_buffers %}
@@ -457,10 +465,10 @@ cdef void* processRequests(void *arg) nogil:
       retVal = NULL  
       pthread_exit(retVal)
 
-    if (pLocalSignalMem[1] < lineWriteOffset):
+    if (pSelfBufVars[1] < lineWriteOffset):
       lineWrapped = True
 
-    while (lineWrapped or ((lineWriteOffset + frames * 2) < pLocalSignalMem[1])):
+    while (lineWrapped or ((lineWriteOffset + frames * 2) < pSelfBufVars[1])):
       ret = snd_pcm_writei(play_handle, <void *>({{sig}}StrtPtr + lineWriteOffset), frames)
       if (ret == -EPIPE):
         # EPIPE means underrun
@@ -588,20 +596,20 @@ for i in range({{args['shape']}}):
 {%- endif %}
 
 # open and map shared parent memory
-open_shared_mem(<uint8_t **>&pSignalMem, "/smem_sig_offsets", PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
-pLocalSignalMem = pSignalMem + 0 # TODO number all internal signals for use by corresponding source/module
 
-open_shared_mem(&pmem, SMEM0_PATHNAME, PAGESIZE, O_RDWR,  PROT_READ | PROT_WRITE)
-pFinish = pmem + SMEM0_HEADER_LEN
-pFinish[NUM_CHILDREN] = 0x0
-
-open_shared_mem(<uint8_t **>&pGlobalSems, SMEMSIG_PATHNAME, {{num_non_sources + num_sem_sigs}} * sizeof(sem_t), O_RDWR,  PROT_READ | PROT_WRITE)
-pSignalSemStart = pGlobalSems + {{num_non_sources}}
+shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * 8 * NUM_INTERNAL_SIGS)
+shm_size = ROUND_UP(shm_size, PAGESIZE)
+open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
+pNumTicks = <uint64_t *>(pmem)
+pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
+pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
+pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
+pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 
 created_mem = sa.list()
 {% for sig_type in sig_types %}
 if any(['{{sig_type[0]}}' == x[0] for x in created_mem]):
-  in_signals['{{sig_type[0]}}'] = sa.attach("shm://{{sig_type[0]}}")
+  in_signals['{{sig_type[0]}}'] = sa.attach("shm://{{sig_type[0]}}") # TODO, fix dtype stuff  print 'tast '
   sa.mlock(in_signals['{{sig_type[0]}}'])
 else:
   die("numpy signal not created\n")
@@ -654,30 +662,30 @@ make_realtime()
 kill(ppid,SIGUSR1)
 move_count = 0
 while(True):
-  numMS += 1
-
-  sem_wait(&pGlobalSems[{{tick_sem_idx}}])
+  sem_wait(&pTickUpSems[{{non_source_num}}])
 
 {%- for dep_on in m_dep_on %}
-  sem_wait(&pGlobalSems[{{num_non_sources + dep_on[1]}}])
+  sem_wait(&pSigSems[{{dep_on[1]}}])
 {%- endfor %}
 
   {{parser_code}} 
 
-{%- if not parser_buffers and not is_logger %}
-  outBuf = {{sig}}StrtPtr + pLocalSignalMem[0]
-  outBufLen = pLocalSignalMem[1] - pLocalSignalMem[0] 
+{%- if not parser_buffers %}
+  pSelfBufVars = pBufVars + 8 * {{in_sig_nums[in_signals.keys()[0]]}}
+  outBuf = {{sig}}StrtPtr + pSelfBufVars[0]
+  outBufLen = pSelfBufVars[1] - pSelfBufVars[0] 
 {%- endif %}
 {%- if sig_type == 'udp' %}
-  if (sendto(s, outBuf, outBufLen, 0, <sockaddr *>&si_other, slen)==-1):
-    die("sendto() failed")
+  # debugging
+  # printf("sink: %lu\n", outBufLen)
+  for sentBytes in range(0,outBufLen,1472): # TODO read in MTU or make constant for user
+    if (sendto(s, (<uint8_t *>outBuf) + sentBytes, 1472, 0, <sockaddr *>&si_other, slen)==-1):
+      die("sendto() failed")
 {%- elif sig_type == 'parport' %}
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
-{%- elif sig_type == 'line' %}
-  # Output handled in async thread
 {%- elif sig_type == 'disk' %}
-  {%- for sig_type in sig_types %}
-  memcpy(pSignalsStructCur.{{sig_type[0]}}, {{sig_type[0]}}StrtPtr, sizeof((<signalsMsData*>0).{{sig_type[0]}}))
+  {%- for sig_dtype in sig_types %}
+  memcpy(pSignalsStructCur.{{sig_dtype[0]}}, {{sig_dtype[0]}}StrtPtr + pSelfBufVars[0], sizeof((<signalsMsData*>0).{{sig_dtype[0]}}))
   {%- endfor %}
   pSignalsStructCur += 1
   if (<uint8_t*>pSignalsStructCur == pSignalsBufEnd):
@@ -685,8 +693,9 @@ while(True):
 {%- endif %}
 
 {%- if sig_type == 'line' %}
+  # Output handled in async thread
 
-  if (numMS % 25 == 0):
+  if (pNumTicks[0] % 25 == 0):
     pthread_mutex_lock(&mutex)
     pthread_cond_signal(&cv)
     pthread_mutex_unlock(&mutex)
@@ -697,5 +706,5 @@ while(True):
     pthread_mutex_unlock(&mutex)
 {%- endif %}
 
-  pFinish[NUM_CHILDREN] = 0x0
+  sem_post(&pTickDownSems[{{non_source_num}}])
   sigalrm_recv -= 1
