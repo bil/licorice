@@ -100,6 +100,7 @@ void handle_exit(int exitStatus) {
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
   for (ex_i = 0; ex_i < NUM_CHILDREN; ex_i++) {
+    printf("Killing child: %d\n", ch_pids[ex_i]);
     kill(ch_pids[ex_i], SIGINT);
     while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
   }
@@ -176,17 +177,17 @@ static void check_children() {
       int chNum = childTopoOrder[CHILD_HEIGHT-1][al_i];
       if (pFinish[chNum]) {
         usleep(5000);
-        printf("al_i:%d pFinish[%d]: %d\n", al_i, al_i, pFinish[al_i]);
+        printf("Violating child: %s, pFinish[%d]: %d\n", childProcnames[chNum], al_i, pFinish[al_i]);
         die("Child timing violation.\n");
       } 
       pFinish[chNum] = 0xff;
     }
     // check if sinks have finished execution in allotted time
-    if (pFinish[NUM_CHILDREN]) {
-      printf("Logger timing violation on ms: %lu \n", alrmNum);
-      //usleep(5000);
-      //die("Logger timing violation.\n");
-    }
+    // if (pFinish[NUM_CHILDREN]) {
+    //   printf("Logger timing violation on ms: %lu \n", alrmNum);
+    //   //usleep(5000);
+    //   //die("Logger timing violation.\n");
+    // }
     pFinish[NUM_CHILDREN] = 0xff;
 
     // update ms start and end pointers for children
