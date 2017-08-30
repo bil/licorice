@@ -345,7 +345,7 @@ cdef {{sig_type[1]}} *{{sig_type[0]}}StrtPtr
 cdef {{sig_type[1]}} *{{sig_type[0]}}EndPtr
 {% endfor %}
 
-cdef {{out_dtype}} *outBuf
+cdef uint8_t *outBuf
 cdef size_t sentBytes
 cdef size_t outBufLen
 
@@ -672,14 +672,14 @@ while(True):
 
 {%- if not parser_buffers %}
   pSelfBufVars = pBufVars + 8 * {{in_sig_nums[in_signals.keys()[0]]}}
-  outBuf = {{sig}}StrtPtr + pSelfBufVars[0]
+  outBuf = <uint8_t *>({{sig_types[0][0]}}StrtPtr + pSelfBufVars[0])
   outBufLen = pSelfBufVars[1] - pSelfBufVars[0] 
 {%- endif %}
 {%- if sig_type == 'udp' %}
   # debugging
   # printf("sink: %lu\n", outBufLen)
   for sentBytes in range(0,outBufLen,1472): # TODO read in MTU or make constant for user
-    if (sendto(s, (<uint8_t *>outBuf) + sentBytes, 1472, 0, <sockaddr *>&si_other, slen)==-1):
+    if (sendto(s, outBuf + sentBytes, 1472, 0, <sockaddr *>&si_other, slen)==-1):
       die("sendto() failed")
 {%- elif sig_type == 'parport' %}
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
@@ -700,7 +700,7 @@ while(True):
     pthread_cond_signal(&cv)
     pthread_mutex_unlock(&mutex)
 {%- elif sig_type == 'disk' %}
-  if (numMS % 1000 == 0):
+  if (pNumTicks[0] % 1000 == 0):
     pthread_mutex_lock(&mutex)
     pthread_cond_signal(&cv)
     pthread_mutex_unlock(&mutex)

@@ -166,7 +166,7 @@ cdef unsigned long packetNum = 0
 cdef unsigned long numDropped = 0
 cdef int i
 
-{% if in_signal['args']['parser'] -%}
+{% if parser_code != '' -%}
 out_sigs = {}
 {% endif %}
 cdef {{in_dtype}} *sigStrtPtr
@@ -296,7 +296,7 @@ else:
   out_sig_num_samples = {{args['shape']}} * {{args['history']}}
   dtype = np.{{args['dtype']}}
   {% endif %}
-  {%- if in_signal['args']['parser'] %}
+  {%- if parser_code != '' %}
   out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype) 
   sa.mlock(out_sigs['{{sig}}'])
   {%- else %}
@@ -314,7 +314,7 @@ else:
   pSelfBufVars[0] = pSelfBufVars[3]
     {%- else %}
   pSelfBufVars[6] = {{args['shape']}} 
-  pSelfBufVars[5] = {{in_signal['schema']['data']['shape']}}  * sizeof({{sig_types[sig]}}) # TODO for multiple outputs, user will have to specify packet size per signal (distribution of bytes across signals)
+  pSelfBufVars[5] = {{in_signal['schema']['data']['shape']}}  #* sizeof({{sig_types[sig]}}) # TODO for multiple outputs, user will have to specify packet size per signal (distribution of bytes across signals)
     {%- endif %}
   # TODO make all these things generic for multiple output signals
   {%- endif %}
@@ -393,7 +393,7 @@ while(True):
   if (parentSetup):
     continue
 
-{%- if in_signal['args']['parser'] %}
+{%- if parser_code != '' %}
   # use user parser
   {{parser_code}}
 {%- else %}
@@ -401,9 +401,9 @@ while(True):
   # TODO figure out buffer updates for multiple output signals
   sem_wait(pSourceSem)
   # debugging
-  # printf("source 1 : %u %u %u %u %u %u %u %u  \n", pSelfBufVars[0], pSelfBufVars[1], pSelfBufVars[2], pSelfBufVars[3], pSelfBufVars[4], pSelfBufVars[5], pSelfBufVars[6], pSelfBufVars[7])
   for i in {{out_sig_nums.values()}}:
     pSelfBufVars = pBufVars + (i * 8)
+    # printf("source 1 : %u %u %u %u %u %u %u %u  \n", pSelfBufVars[0], pSelfBufVars[1], pSelfBufVars[2], pSelfBufVars[3], pSelfBufVars[4], pSelfBufVars[5], pSelfBufVars[6], pSelfBufVars[7])
     pSelfBufVars[2] += pSelfBufVars[5]
     pSelfBufVars[3] += pSelfBufVars[5]
     if (pSelfBufVars[7] - pSelfBufVars[1] <= pSelfBufVars[6]):
@@ -412,8 +412,8 @@ while(True):
       pSelfBufVars[4] = pSelfBufVars[2] if (pSelfBufVars[2] > pSelfBufVars[4]) else pSelfBufVars[4]
     pSelfBufVars[2] %= pSelfBufVars[7]
     sigCurPtr = sigStrtPtr + pSelfBufVars[2]
-  # debugging
-  # printf("source 2: %u %u %u %u %u %u %u %u  \n", pSelfBufVars[0], pSelfBufVars[1], pSelfBufVars[2], pSelfBufVars[3], pSelfBufVars[4], pSelfBufVars[5], pSelfBufVars[6], pSelfBufVars[7])
+    # debugging
+    # printf("source 2: %u %u %u %u %u %u %u %u  \n", pSelfBufVars[0], pSelfBufVars[1], pSelfBufVars[2], pSelfBufVars[3], pSelfBufVars[4], pSelfBufVars[5], pSelfBufVars[6], pSelfBufVars[7])
   sem_post(pSourceSem)
 {%- endif %}
 
