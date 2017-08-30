@@ -193,19 +193,24 @@ static void check_children() {
     // TODO does this need to be sequentially consistent?
     atomic_thread_fence(memory_order_seq_cst);
 
-    // TODO make this generic for N signals
-    pCurBufVars = pBufVars + 0;
 
-    // debugging
-    // printf("\ntimer: %u %u %u %u %u %u %u %u  \n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
+    for (al_i = 0; al_i < NUM_INTERNAL_SIGS; al_i++) {
+      pCurBufVars = pBufVars + (8 * al_i);
 
-    // NON-LATENCY-DEPENDENT UPDATE
-    if ((*(pCurBufVars + 7) - *(pCurBufVars + 1)) < *(pCurBufVars + 6))
-      *(pCurBufVars + 1) = 0;
-      *(pCurBufVars + 2) = 0;
-    *(pCurBufVars + 0) = *(pCurBufVars + 1);
-    *(pCurBufVars + 1) = *(pCurBufVars + 0) + *(pCurBufVars + 3);
-    *(pCurBufVars + 3) = 0;
+      // debugging
+      // printf("\ntimer: %u %u %u %u %u %u %u %u  \n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
+
+      // NON-LATENCY-DEPENDENT BUFFER UPDATE
+      if ((*(pCurBufVars + 7) - *(pCurBufVars + 1)) < *(pCurBufVars + 6)) {
+        *(pCurBufVars + 1) = 0;
+        *(pCurBufVars + 2) = 0;
+      }
+      *(pCurBufVars + 0) = *(pCurBufVars + 1);
+      *(pCurBufVars + 1) = *(pCurBufVars + 0) + *(pCurBufVars + 3);
+      *(pCurBufVars + 3) = 0;
+      // debugging
+      // printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
+    }
 
     // LATENCY-DEPENDENT UPDATE
     // TOOD figure out good way to spread buffered data over ticks
@@ -218,8 +223,6 @@ static void check_children() {
     // else 
     //   *(pCurBufVars + 1) += (32 * 2);
 
-    // debugging
-    // printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
     atomic_thread_fence(memory_order_release);
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
       sem_post(pSourceSem);

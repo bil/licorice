@@ -397,7 +397,7 @@ def parse(config, confirm):
                   num_sem_sigs=num_sem_sigs,
                   source_num=source_names.index(name),
                   in_dtype=in_dtype,
-                  sig_types=sig_types,
+                  sig_types=sig_types
                 )
       
       # parse sink
@@ -438,10 +438,10 @@ def parse(config, confirm):
           dtype = fix_dtype(dtype)
           sig_types.append([sig, dtype])
 
-        out_dtype = dtype
-        if module_args.has_key('parser') and module_args['parser'] and si_out_sig['args']['type'] != 'vis':
-          out_dtype = si_out_sig['schema']['data']['dtype']
-          out_dtype = fix_dtype(out_dtype)
+        # out_dtype = dtype # TODO fix for multiple signals
+        # if module_args.has_key('parser') and module_args['parser'] and si_out_sig['args']['type'] != 'vis':
+        #   out_dtype = si_out_sig['schema']['data']['dtype']
+        #   out_dtype = fix_dtype(out_dtype)
 
         parser_code = ""
         if module_args.has_key('parser') and module_args['parser']:
@@ -483,7 +483,7 @@ def parse(config, confirm):
                   default_params=default_params,
                   parser_buffers=(module_args.has_key('parser') and module_args['parser']),
                   sig_types=sig_types,
-                  out_dtype=out_dtype,
+                  # out_dtype=out_dtype,
                   non_source_num=non_source_names.index(name)
                 )
 
