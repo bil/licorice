@@ -2,6 +2,7 @@ import os, shutil
 import jinja2
 import sys
 from toposort import toposort
+import psutil
 
 # some constants
 TEMPLATE_DIR='./templates'
@@ -13,8 +14,8 @@ EXPORT_DIR='./export'
 TMP_MODULE_DIR='./.modules'
 TMP_OUTPUT_DIR='./.out'
 
-TEMPLATE_MODULE_C='module_c.j2'
-TEMPLATE_MODULE_PY='module_py.j2'
+TEMPLATE_MODULE_C='module.c.j2'
+TEMPLATE_MODULE_PY='module.py.j2'
 TEMPLATE_LOGGER='logger.j2'
 TEMPLATE_SINK_PY='sink.pyx.j2'
 TEMPLATE_SINK_C='sink.c.j2'
@@ -39,8 +40,6 @@ OUTPUT_MAKEFILE='Makefile'
 OUTPUT_TIMER='timer.c'
 OUTPUT_CONSTANTS='constants.h'
 
-MAX_NUM_CORES = 4
-
 # load, setup, and write template
 def do_jinja(template_path, out_path, **data):
   template = jinja2.Template(open(template_path, 'r').read())
@@ -48,6 +47,7 @@ def do_jinja(template_path, out_path, **data):
   out_f.write(template.render(data))
   out_f.close()
 
+# generate empty templates for modules, parsers, constructors, and destructors
 def generate(config, confirm):
   print "Generating modules...\n"
 
@@ -81,7 +81,7 @@ def generate(config, confirm):
       external_signals.append(signal_name)
 
   for module_name, module_args in modules.iteritems():
-    if all(map(lambda x: x in external_signals, module_args.get('in', []))):
+    if all(map(lambda x: x in external_signals, module_args['in'])):
       # source
       print " - " + module_name + " (source)"
 
@@ -163,7 +163,7 @@ def generate(config, confirm):
                 os.path.join(MODULE_DIR, module_name + '.py'),
                 name=module_name, 
                 verbose_comments=config['config']['verbose_comments'],
-                in_sig=module_args.get('in', []), 
+                in_sig=module_args['in'], 
                 out_sig=module_args['out'] )
 
       if module_args.has_key('constructor') and module_args['constructor']:
@@ -221,54 +221,82 @@ def parse(config, confirm):
 
   # process modules
   sem_location = 0
-  sem_dict = {}
+  sig_sem_dict = {}
   num_sem_sigs = 0
-  # logged_signals = {}
 
   module_names = []
   source_names = []
   sink_names = []
   source_outputs = {}
   dependency_graph = {}
-  independent_modules = []
   in_signals = {}
   out_signals = {}
   line_source_exists = 0
-  print internal_signals
+  num_threaded_sinks = 0
+
+  all_names = modules.keys()
+  assert (len(all_names) == len(set(all_names)))
+
   for module_name, module_args in modules.iteritems():
     if all(map(lambda x: x in external_signals, module_args['in'])):
       source_names.append(module_name)
       for sig in module_args['out']:
         source_outputs[sig] = 0
-      for sig in module_args.get('in', []):
+      if isinstance(module_args['in'], list):
+        assert len(module_args['in']) == 1
+      else: 
+        module_args['in'] = [module_args['in']]
+      for sig in module_args['in']:
         assert signals[sig]['args'].has_key('type')
         in_signals[sig] = signals[sig]['args']['type']
     elif all(map(lambda x: x in external_signals, module_args['out'])):
       sink_names.append(module_name)
+      if isinstance(module_args['out'], list):
+        assert len(module_args['out']) == 1
+      else: 
+        module_args['out'] = [module_args['out']]
       for sig in module_args['out']:
         assert signals[sig]['args'].has_key('type')
-        out_signals[sig] = signals[sig]['args']['type']
+        out_signals[sig] = signals[sig]['args']['type'] 
+        if out_signals[sig] in ['line', 'disk']:
+          num_threaded_sinks += 1
     else:
       module_names.append(module_name)
 
-    # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
-    for sig_name in module_args.get('in', []):
-      if not sem_dict.has_key(sig_name):
-        sem_dict[sig_name] = sem_location
-        sem_location += 1
-    num_sem_sigs = len(sem_dict)
+  # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
+  for sig_name in internal_signals:
+    if sig_name not in source_outputs.keys() and not sig_sem_dict.has_key(sig_name):
+      sig_sem_dict[sig_name] = sem_location
+      sem_location += 1
+  num_sem_sigs = len(sig_sem_dict)
 
-  # process input signals
+  for idx, name in enumerate(module_names):
+    args = modules[name]
+    deps = set()
+    for in_sig in args['in']:
+      for dep_idx, dep_name in enumerate(module_names):
+        dep_args = modules[dep_name]
+        for out_sig in dep_args['out']:
+          if (in_sig == out_sig):
+            deps = deps.union({dep_idx})
+    dependency_graph[idx] = deps
+
+  assert(set(all_names) == set(source_names + module_names + sink_names))
+  non_source_names = sink_names + module_names
+  topo_children = map(list, list(toposort(dependency_graph)))
+  topo_widths = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
+  topo_height = len(topo_children)
+  num_cores_used = 1 + len(source_names) + topo_height + len(sink_names) + num_threaded_sinks # TODO put threaded sink threads on cores w modules
+  num_cores_avail = psutil.cpu_count()
+  assert(num_cores_used <= num_cores_avail)
+
+  # process external signals
   print "Inputs: "
   for sig_name, sig_type in in_signals.iteritems():
     print " - " + sig_name + ": " + sig_type 
   print "Outputs: "
   for sig_name, sig_type in out_signals.iteritems():
     print " - " + sig_name + ": " + sig_type 
-
-  all_names = source_names + sink_names + module_names
-  print all_names
-  assert (len(all_names) == len(set(all_names)))
 
   print "Modules: "
 
@@ -305,7 +333,22 @@ def parse(config, confirm):
         default_params = None
         if so_in_sig['args']['type'] == 'default':
           default_params = so_in_sig['schema']['default']
-          print default_params
+
+        sig_types = {}
+        for sig, args in out_signals.iteritems():
+          dtype = out_signals[sig]['dtype']
+          if dtype != 'object':
+            dtype = dtype + '_t'
+          else: 
+            dtype = 'void'
+          sig_types[sig] = dtype
+        in_dtype = dtype
+        if module_args.has_key('parser') and module_args['parser']: # TODO check
+          in_dtype = so_in_sig['dtype']
+          if in_dtype != 'object':
+            in_dtype = in_dtype + '_t'
+          else: 
+            in_dtype = 'void'
 
         parser_code = ""
         if module_args.has_key('parser') and module_args['parser']:
@@ -329,6 +372,7 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
 
+        out_sig_nums={x: internal_signals.index(x) for x in out_signals.keys()}
         do_jinja( os.path.join(TEMPLATE_DIR, template), 
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -338,18 +382,19 @@ def parse(config, confirm):
                   destruct_code=destruct_code, 
                   signals=signals, 
                   out_signals=out_signals,
-                  max_buf_size=3750, # TODO, don't hardcode this
+                  out_sig_nums=out_sig_nums,
                   in_signal=so_in_sig,
                   in_sig_name=module_args['in'][0],
                   default_params=default_params,
-                  num_sigs=num_sem_sigs,
-                  source_num=source_names.index(name)
+                  num_sem_sigs=num_sem_sigs,
+                  source_num=source_names.index(name),
+                  in_dtype=in_dtype,
+                  sig_types=sig_types,
                 )
       
       # parse sink
       elif name in sink_names:
         print " - " + name + " (sink)"
-
         if module_language == 'python':
           template = TEMPLATE_SINK_PY
           in_extension = '.py'
@@ -360,7 +405,6 @@ def parse(config, confirm):
           out_extension = '.c'
 
         module_depends_on = []
-        source_depends_on = []
         default_sig_name = ''
         default_params = None
         for in_sig in module_args['in']:
@@ -370,15 +414,14 @@ def parse(config, confirm):
           elif in_sig in source_outputs.keys():
             #store the signal name in 0 and location of sem in 1
             source_outputs[in_sig] += 1
-            source_depends_on.append((in_sig, sem_dict[in_sig]))
           else:
-            module_depends_on.append((in_sig, sem_dict[in_sig]))  
+            module_depends_on.append((in_sig, sig_sem_dict[in_sig]))  
         # if (name == 'logger'): # TODO make this more generic
         #   logged_signals = { sig_name: signals[sig_name] for sig_name in module_args.get('in', []) }
         si_out_sig = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         assert len(si_out_sig) == 1
         si_out_sig = si_out_sig[si_out_sig.keys()[0]]
-        in_signals = {x: signals[x] for x in (sigkeys & set(module_args.get('in', [])))}
+        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
         if (not module_args.has_key('parser') or not module_args['parser']):
           assert len(in_signals) == 1
         
@@ -422,7 +465,7 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
 
-        print sig_types
+        in_sig_nums = {x: internal_signals.index(x) for x in in_signals.keys()}
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -430,18 +473,17 @@ def parse(config, confirm):
                   parser_code=parser_code,
                   construct_code=construct_code,
                   destruct_code=destruct_code, 
-                  num_sigs=num_sem_sigs,
-                  s_dep_on=source_depends_on,
+                  num_sem_sigs=num_sem_sigs,
                   m_dep_on=module_depends_on,
-                  # logged_signals=logged_signals,
-                  # num_logged_signals=len(logged_signals),
                   in_signals=in_signals,
+                  in_sig_nums=in_sig_nums,
                   out_signal=si_out_sig,
                   default_sig_name=default_sig_name,
                   default_params=default_params,
                   parser_buffers=(module_args.has_key('parser') and module_args['parser']),
                   sig_types=sig_types,
-                  out_dtype=out_dtype
+                  out_dtype=out_dtype,
+                  non_source_num=non_source_names.index(name)
                 )
 
       # parse module type
@@ -471,19 +513,9 @@ def parse(config, confirm):
                   dependencies[in_sig] += 1
                 else:
                   dependencies[in_sig] = 1
-                if all_names[child_index] not in sink_names: # take this out to include sinks in dependency graph
-                  dg_cidx = module_names.index(all_names[child_index])
-                  dg_pidx = module_names.index(name)
-                else:
-                  independent_modules.append(module_names.index(name))
-                  continue
-                if dependency_graph.has_key(child_index):
-                  dependency_graph[dg_cidx] = dependency_graph[dg_cidx].union({dg_pidx})
-                else: 
-                  dependency_graph[dg_cidx] = {dg_pidx}
         for dependency in dependencies:
           #store num dependencies in 0 and location of sem in 1
-          dependencies[dependency] = (dependencies[dependency], sem_dict[dependency])
+          dependencies[dependency] = (dependencies[dependency], sig_sem_dict[dependency])
 
         depends_on = []
         default_sig_name = ''
@@ -495,7 +527,7 @@ def parse(config, confirm):
           if in_sig in source_outputs.keys():
             source_outputs[in_sig] += 1
           #store the signal name in 0 and location of sem in 1
-          depends_on.append((in_sig, sem_dict[in_sig]))
+          depends_on.append((in_sig, sig_sem_dict[in_sig]))
 
         user_code = ""
         with open(os.path.join(MODULE_DIR, name + in_extension), 'r') as f:
@@ -518,6 +550,8 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
             
+        out_sig_nums = {x: internal_signals.index(x) for x in out_signals.keys()}
+        in_sig_nums = {x: internal_signals.index(x) for x in in_signals.keys()}
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -529,61 +563,58 @@ def parse(config, confirm):
                   dependencies=dependencies, 
                   depends_on=depends_on,
                   out_signals={ x: signals[x] for x in (sigkeys & set(module_args['out'])) },
+                  out_sig_nums=out_sig_nums,
                   in_signals={ x: signals[x] for x in (sigkeys & set(module_args['in'])) },
-                  num_sigs=num_sem_sigs,
+                  in_sig_nums=in_sig_nums,
+                  num_sem_sigs=num_sem_sigs,
                   default_sig_name=default_sig_name,
-                  default_params=default_params
+                  default_params=default_params,
+                  module_num=module_names.index(name),
+                  non_source_num=non_source_names.index(names)
                 )
 
   # parse Makefile
   do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_MAKEFILE),
             os.path.join(OUTPUT_DIR, OUTPUT_MAKEFILE),
-            child_names=module_names,
-            # logger_needed=(len(logged_signals)!=0),
+            module_names=module_names,
             source_names=source_names,
             sink_names=sink_names,
             source_types=map(lambda x: modules[x]['language'], source_names)
           )
 
   # parse timer parent
-  topo_children = map(list, list(toposort(dependency_graph)))
-  if len(topo_children) == 0:
-    topo_children.append(independent_modules)
-  else:
-    topo_children[0] += independent_modules
-  print topo_children
-  print module_names
-  topo_lens = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
-  num_cores = 1 if len(topo_lens) == 0 else max(topo_lens)
-  num_children = len(module_names)
-  assert(num_cores < MAX_NUM_CORES)
-  source_sems = map(lambda x: [sem_dict[x], source_outputs[x]] , source_outputs.keys())
+  child_max_len = 1 if len(topo_widths) == 0 else max(topo_widths)
   parport_tick_addr = config['config']['parport_tick_addr'] if config['config'].has_key('parport_tick_addr') else None
+  non_source_module_check = map(lambda x: int(x in module_names), non_source_names)
   do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_TIMER), 
             os.path.join(OUTPUT_DIR, OUTPUT_TIMER),
             config = config,
             topo_order=topo_children,
-            topo_lens=topo_lens,
-            topo_height=len(topo_children),
-            child_names=module_names, 
-            num_cores=num_cores,
-            num_children=num_children,
+            topo_widths=topo_widths,
+            topo_height=topo_height,
+            num_cores=num_cores_avail,
+            child_max_len=child_max_len,
+
+            # child names and lengths
             source_names=source_names,
             num_sources=len(source_names),
+            module_names=module_names, 
+            num_modules=len(module_names),
             sink_names=sink_names,
             num_sinks=len(sink_names),
-            num_sigs=num_sem_sigs,
-            source_sems=source_sems,
+
             internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
-            parport_tick_addr=parport_tick_addr
+            parport_tick_addr=parport_tick_addr,
+            non_source_module_check=non_source_module_check
           )
 
   # parse constants.h
   do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_CONSTANTS),
             os.path.join(OUTPUT_DIR, OUTPUT_CONSTANTS),
-            num_children=num_children,
-            line=line_source_exists,
-            num_sigs=num_sem_sigs
+            init_buffer_ticks=(50 if line_source_exists else 1),
+            num_sem_sigs=num_sem_sigs,
+            num_non_sources=len(non_source_names),
+            num_internal_sigs=len(internal_signals)
           )
 
   print
