@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <signal.h>
+#include <stdlib.h>
 
 #define __GNU_SOURCE
 
@@ -26,7 +27,7 @@ void die(char *errorStr);
  * create a signal handler that handles signal signum and runs the function *psh
  * when signum is raised
  */
-void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags);
+void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags);
 
 /*
  * open a shared memory block with:
