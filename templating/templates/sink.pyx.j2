@@ -451,7 +451,7 @@ cdef void* processRequests(void *arg) nogil:
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
   global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, pSelfBufVars, zErrMsg, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
-  thread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
   zErrMsg = <char *>0
   {%- if parser_buffers %}
   # TODO figure outBuf stuff for this

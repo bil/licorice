@@ -42,7 +42,7 @@ static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n 
 {%- endif %}
 {%- if topo_height != 0 %}
 static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{{l}}, {% endfor %}{{topo_widths[-1]}}{{'}'}};
-static int moduleTopoOrder[TOPO_HEIGHT][{{child_max_len}}];
+static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
 {%- endif %}
 static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source_module_check[:-1] %}{{i}}, {% endfor %}{{non_source_module_check[-1]}}{{'}'}};
 // network pid

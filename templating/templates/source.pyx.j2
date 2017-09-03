@@ -1,5 +1,5 @@
 from libc.stdio cimport printf, stdout, fflush
-from libc.stdlib cimport exit, malloc
+from libc.stdlib cimport exit, malloc, free
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from libc.string cimport memcpy
@@ -123,7 +123,7 @@ cdef char buf[{{in_signal['schema']['data']['shape']}}]
 {%- endif %}
 cdef char *outbuf
 cdef int parse_idx
-cdef uint32_t out_sig_num_samples
+cdef uint32_t out_sig_shape
 {%- if sig_type == 'zmq' %}
 cdef int num_packets = 0
 cdef void *dish
@@ -161,17 +161,22 @@ cdef uint32_t *pBufVars
 # 5: packet size (bytes)
 # 6: max samples per tick (samples)
 # 7: buffer size offset (samples)
-cdef uint32_t *pSelfBufVars 
 cdef unsigned long packetNum = 0
 cdef unsigned long numDropped = 0
 cdef int i
 
-{% if parser_code != '' -%}
 out_sigs = {}
-{% endif %}
-cdef {{in_dtype}} *sigStrtPtr
-cdef {{in_dtype}} *sigEndPtr
-cdef {{in_dtype}} *sigCurPtr
+{%- if not parser %}
+out_sig = None
+{%- endif %}
+cdef in_bytes = {{in_signal['schema']['data']['shape']}} * sizeof({{in_dtype}})
+cdef {{in_dtype}} *bufStrtPtr
+cdef {{in_dtype}} *bufEndPtr
+cdef {{in_dtype}} *bufCurPtr
+{%- for sig, dtype in sig_types.iteritems() %}
+cdef {{dtype}} *{{sig}}StrtPtr
+cdef uint32_t *{{sig}}BufVars
+{%- endfor %}
 
 cdef void handle_exit(int exitStatus):
   global pmem, shm_size, num_packets, pNumTicks, numDropped
@@ -192,6 +197,9 @@ cdef void handle_exit(int exitStatus):
 {%- endif %}
 {%- if sig_type == 'udp' or sig_type == 'zmq' %}
   printf("Received %d packets over %ld ms. Dropped %lu\n", num_packets, pNumTicks[0], numDropped)
+{%- endif %}
+{%- if parser %}
+  free(bufStrtPtr)
 {%- endif %}
   munmap(pmem, shm_size)
   munlockall()
@@ -290,35 +298,39 @@ if any(['{{sig}}' == x[0] for x in created_mem]):
   die("numpy signal already created\n")
 else:
   {%- if sig_type == 'line' %}
-  out_sig_num_samples = {{args['history']}} * frames
+  out_sig_shape = {{args['history']}} * frames
   dtype = np.int16 # TODO grab this from alsa
   {% else %}
-  out_sig_num_samples = {{args['shape']}} * {{args['history']}}
+  out_sig_shape = {{args['shape']}} * {{args['history']}}
   dtype = np.{{args['dtype']}}
   {% endif %}
-  {%- if parser_code != '' %}
-  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype) 
-  sa.mlock(out_sigs['{{sig}}'])
-  {%- else %}
-  py_sig = sa.create("shm://{{sig}}", out_sig_num_samples, dtype=dtype)
-  sigStrtPtr = <{{sig_types[sig]}} *><long>py_sig.__array_interface__['data'][0]
-  sigCurPtr = sigStrtPtr
-  sigEndPtr = sigStrtPtr + out_sig_num_samples
-  pSelfBufVars = pBufVars + (8 * {{out_sig_nums[sig]}})
-  pSelfBufVars[7] = sigEndPtr - sigStrtPtr
-    {%- if sig_type == 'line' %}
-  # TODO update this for new pSelfBufVars protocol
-  pSelfBufVars[6] = recvLen
-  pSelfBufVars[5] = frames # TODO, this right? should be packet size in bytes
-  pSelfBufVars[3] = sigEndPtr - sigStrtPtr
-  pSelfBufVars[0] = pSelfBufVars[3]
-    {%- else %}
-  pSelfBufVars[6] = {{args['shape']}} 
-  pSelfBufVars[5] = {{in_signal['schema']['data']['shape']}}  #* sizeof({{sig_types[sig]}}) # TODO for multiple outputs, user will have to specify packet size per signal (distribution of bytes across signals)
-    {%- endif %}
-  # TODO make all these things generic for multiple output signals
+  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_shape, dtype=dtype)
+  {%- if not parser %}
+  out_sig = out_sigs['{{sig}}']
   {%- endif %}
+  sa.mlock(out_sigs['{{sig}}'])
+  {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * 8}})
+  {{sig}}BufVars[7] = out_sig_shape
+    {%- if sig_type == 'line' %}
+  {{sig}}BufVars[6] = recvLen
+  {{sig}}BufVars[5] = frames # TODO, this right? should be packet size in bytes
+  {{sig}}BufVars[3] = out_sig_shape
+  {{sig}}BufVars[0] = {{sig}}BufVars[3]
+    {%- else %}
+  {{sig}}BufVars[6] = {{args['shape']}} 
+  {{sig}}BufVars[5] = {{in_signal['schema']['data']['shape']}}  #* sizeof({{sig_types[sig]}}) # TODO for multiple outputs, user will have to specify packet size per signal (distribution of bytes across signals)
+    {%- endif %}
 {%- endfor %}
+{%- if parser %}
+bufStrtPtr = <{{in_dtype}} *>malloc(in_bytes)
+bufCurPtr = bufStrtPtr
+bufEndPtr = bufStrtPtr + {{in_signal['schema']['data']['shape']}}
+{%- else %}
+bufStrtPtr = <{{in_dtype}} *><long>out_sig.__array_interface__['data'][0]
+bufCurPtr = bufStrtPtr
+bufEndPtr = bufStrtPtr + out_sig_shape # this must be 1D for no parser
+{%- endif %}
+
 {% if default_params -%}
 {{in_sig_name}} = {{default_params}}
 {%- endif %}
@@ -331,32 +343,30 @@ kill(ppid, SIGUSR2) # this source is initialized
 
 pause()
 
-printf("HELLO %p\n", sigCurPtr)
-
 while(True):
 {%- if sig_type == 'udp' %}
-  recvLen = recvfrom(s, sigCurPtr, pSelfBufVars[5], 0, <sockaddr *> &si_other, &slen)
+  recvLen = recvfrom(s, bufCurPtr, in_bytes, 0, <sockaddr *> &si_other, &slen)
   if (recvLen == -1 and errno != EINTR):
     die("NETWORK ERROR: recvfrom()\n")
   if (recvLen == -1):
     die("Read error.\n")
-  tmp = ((<unsigned long *>sigCurPtr)[0]) - packetNum
+  tmp = ((<unsigned long *>bufCurPtr)[0]) - packetNum
   {%- if test_throughput %}
   if (not parentSetup):
     if (packetNum and (tmp != 1)):
       printf("dropped %lu packets\n", <unsigned long>tmp)
       printf("%lu\n", packetNum)
-      printf("%lu\n", (<unsigned long *>sigCurPtr)[0])
+      printf("%lu\n", (<unsigned long *>bufCurPtr)[0])
       numDropped += <unsigned long>tmp
-    packetNum = (<unsigned long *>sigCurPtr)[0]
+    packetNum = (<unsigned long *>bufCurPtr)[0]
     num_packets += 1
   {%- endif %}
 {% elif sig_type == 'line' %}
   #read from line in
-  ret = snd_pcm_readi(cap_handle, <char *>sigCurPtr, frames)
+  ret = snd_pcm_readi(cap_handle, <char *>bufCurPtr, frames)
   for i in range(640):
     pass
-    # printf("%u\n", sigCurPtr[i])
+    # printf("%u\n", bufCurPtr[i])
   if (ret == -EPIPE):
     # EPIPE means overrun
     die("pcm overrun")
@@ -370,12 +380,12 @@ while(True):
   if (readInput):
     readInput = False
     inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
-    sigCurPtr[0] = inVal
+    bufCurPtr[0] = inVal
   else:
     pause()
     continue
 {%- elif sig_type == 'zmq' %}
-  recvLen = zmq_recv(dish, sigCurPtr, pSelfBufVars[5], 0)
+  recvLen = zmq_recv(dish, bufCurPtr, in_bytes, 0)
   if (recvLen == -1):
     die("zmq_recv error.\n")
   num_packets += 1
@@ -384,7 +394,7 @@ while(True):
     readInput = False
     pygame.event.pump()
     for axis in range(recvLen):
-      sigCurPtr[axis] = joystick.get_axis(axis)
+      bufCurPtr[axis] = joystick.get_axis(axis)
   else:
     pause()
     continue
@@ -395,27 +405,28 @@ while(True):
   if (parentSetup):
     continue
 
-{%- if parser_code != '' %}
+{%- if parser %}
   # use user parser
   {{parser_code}}
-{%- else %}
+{%- endif %}
   # TODO figure out how to step through data for something like line (artificial data packaging per tick)
   # TODO figure out buffer updates for multiple output signals
   sem_wait(pSourceSem)
+{%- for sig, args in out_signals.iteritems() %}
+
   # debugging
-  for i in {{out_sig_nums.values()}}:
-    pSelfBufVars = pBufVars + (i * 8)
-    # printf("source 1 : %u %u %u %u %u %u %u %u  \n", pSelfBufVars[0], pSelfBufVars[1], pSelfBufVars[2], pSelfBufVars[3], pSelfBufVars[4], pSelfBufVars[5], pSelfBufVars[6], pSelfBufVars[7])
-    pSelfBufVars[2] += pSelfBufVars[5]
-    pSelfBufVars[3] += pSelfBufVars[5]
-    if (pSelfBufVars[7] - pSelfBufVars[1] <= pSelfBufVars[6]):
-      pSelfBufVars[4] = pSelfBufVars[2]
-    else:
-      pSelfBufVars[4] = pSelfBufVars[2] if (pSelfBufVars[2] > pSelfBufVars[4]) else pSelfBufVars[4]
-    pSelfBufVars[2] %= pSelfBufVars[7]
-    sigCurPtr = sigStrtPtr + pSelfBufVars[2]
-    # debugging
-    # printf("source 2: %u %u %u %u %u %u %u %u  \n", pSelfBufVars[0], pSelfBufVars[1], pSelfBufVars[2], pSelfBufVars[3], pSelfBufVars[4], pSelfBufVars[5], pSelfBufVars[6], pSelfBufVars[7])
+  # printf("source 1 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
+  {{sig}}BufVars[2] += {{sig}}BufVars[5]
+  {{sig}}BufVars[3] += {{sig}}BufVars[5]
+  if ({{sig}}BufVars[7] - {{sig}}BufVars[1] <= {{sig}}BufVars[6]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+  else:
+    {{sig}}BufVars[4] = {{sig}}BufVars[2] if ({{sig}}BufVars[2] > {{sig}}BufVars[4]) else {{sig}}BufVars[4]
+  {{sig}}BufVars[2] %= {{sig}}BufVars[7]
+  bufCurPtr = bufStrtPtr + {{sig}}BufVars[2]
+  # debugging
+  # printf("source 2: %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
+{%- endfor %}
+
   sem_post(pSourceSem)
-{%- endif %}
 
