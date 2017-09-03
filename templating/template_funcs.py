@@ -297,7 +297,8 @@ def parse(config, confirm):
   topo_children = map(list, list(toposort(dependency_graph)))
   topo_widths = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   topo_height = len(topo_children)
-  num_cores_used = 1 + len(source_names) + max(topo_widths) + len(sink_names) + num_threaded_sinks # TODO put threaded sink threads on cores w modules
+  topo_max_width = 0 if len(topo_widths) == 0 else max(topo_widths)
+  num_cores_used = 1 + len(source_names) + topo_max_width + len(sink_names) + num_threaded_sinks # TODO put threaded sink threads on cores w modules
   num_cores_avail = psutil.cpu_count()
 
   assert(num_cores_used <= num_cores_avail)
@@ -352,7 +353,6 @@ def parse(config, confirm):
           sig_types[sig] = dtype
         in_dtype = dtype
         if module_args.has_key('parser') and module_args['parser']: # TODO check
-          print so_in_sig
           in_dtype = so_in_sig['schema']['data']['dtype']
           in_dtype = fix_dtype(in_dtype)
 
@@ -380,10 +380,12 @@ def parse(config, confirm):
             destruct_code = destruct_code.replace("\n", "\n  ")
 
         out_sig_nums={x: internal_signals.index(x) for x in out_signals.keys()}
+        # TODO if no parser, assert in_dtype == out_signal dtype
         do_jinja( os.path.join(TEMPLATE_DIR, template), 
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
                   config=config,
+                  parser=module_args.has_key('parser') and module_args['parser'],
                   parser_code=parser_code,
                   construct_code=construct_code,
                   destruct_code=destruct_code, 
@@ -553,8 +555,10 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
             
-        out_sig_nums = {x: internal_signals.index(x) for x in out_signals.keys()}
+        in_signals = { x: signals[x] for x in (sigkeys & set(module_args['in'])) }
         in_sig_nums = {x: internal_signals.index(x) for x in in_signals.keys()}
+        out_signals={ x: signals[x] for x in (sigkeys & set(module_args['out'])) }
+        out_sig_nums = {x: internal_signals.index(x) for x in out_signals.keys()}
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -566,10 +570,10 @@ def parse(config, confirm):
                   dependencies=dependencies, 
                   depends_on=depends_on,
                   tick_sem_idx=non_source_names.index(name),
-                  out_signals={ x: signals[x] for x in (sigkeys & set(module_args['out'])) },
-                  out_sig_nums=out_sig_nums,
-                  in_signals={ x: signals[x] for x in (sigkeys & set(module_args['in'])) },
+                  in_signals=in_signals,
                   in_sig_nums=in_sig_nums,
+                  out_signals=out_signals,
+                  out_sig_nums=out_sig_nums,
                   num_sem_sigs=num_sem_sigs,
                   default_sig_name=default_sig_name,
                   default_params=default_params,
@@ -587,7 +591,6 @@ def parse(config, confirm):
           )
 
   # parse timer parent
-  child_max_len = 1 if len(topo_widths) == 0 else max(topo_widths)
   parport_tick_addr = config['config']['parport_tick_addr'] if config['config'].has_key('parport_tick_addr') else None
   non_source_module_check = map(lambda x: int(x in module_names), non_source_names)
   do_jinja( os.path.join(TEMPLATE_DIR, TEMPLATE_TIMER), 
@@ -597,7 +600,7 @@ def parse(config, confirm):
             topo_widths=topo_widths,
             topo_height=topo_height,
             num_cores=num_cores_avail,
-            child_max_len=child_max_len,
+            topo_max_width=topo_max_width,
 
             # child names and lengths
             source_names=source_names,
