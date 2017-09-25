@@ -174,8 +174,8 @@ cdef {{in_dtype}} *bufStrtPtr
 cdef {{in_dtype}} *bufEndPtr
 cdef {{in_dtype}} *bufCurPtr
 {%- for sig, dtype in sig_types.iteritems() %}
-cdef {{dtype}} *{{sig}}StrtPtr
 cdef uint32_t *{{sig}}BufVars
+cdef {{dtype}} *{{sig}}StrtPtr
 {%- endfor %}
 
 cdef void handle_exit(int exitStatus):
@@ -423,7 +423,7 @@ while(True):
   else:
     {{sig}}BufVars[4] = {{sig}}BufVars[2] if ({{sig}}BufVars[2] > {{sig}}BufVars[4]) else {{sig}}BufVars[4]
   {{sig}}BufVars[2] %= {{sig}}BufVars[7]
-  bufCurPtr = bufStrtPtr + {{sig}}BufVars[2]
+  bufCurPtr = bufStrtPtr + {{sig}}BufVars[2] #TODO check this for parser == True
   # debugging
   # printf("source 2: %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
 {%- endfor %}
