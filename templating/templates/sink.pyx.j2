@@ -332,17 +332,18 @@ cdef sem_t *pTickUpSems
 cdef sem_t *pTickDownSems
 cdef sem_t *pSigSems
 cdef uint32_t *pBufVars
-cdef uint32_t *pSelfBufVars
 lastVal = 1
 
-in_signals = {}
-{%- if sig_types|length == 1 %}
-{%- set sig = sig_types[0][0] %}
+in_sigs = {}
+{%- if not buffer_parser %}
+in_sig = None
 {%- endif %}
-{%- for sig_type in sig_types %}
-in_signals['{{sig_type[0]}}'] = None
-cdef {{sig_type[1]}} *{{sig_type[0]}}StrtPtr
-cdef {{sig_type[1]}} *{{sig_type[0]}}EndPtr
+cdef {{out_dtype}} *bufStrtPtr
+cdef {{out_dtype}} *bufEndPtr
+{%- for sig, dtype in sig_types.iteritems() %}
+in_sigs['{{sig}}'] = None
+cdef uint32_t *{{sig}}BufVars
+cdef {{dtype}} *{{sig}}StrtPtr
 {% endfor %}
 
 cdef uint8_t *outBuf
@@ -453,7 +454,7 @@ cdef void* processRequests(void *arg) nogil:
   global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, pSelfBufVars, zErrMsg, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
   pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
   zErrMsg = <char *>0
-  {%- if parser_buffers %}
+  {%- if buffer_parser %}
   # TODO figure outBuf stuff for this
   # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
   {%- endif %}
@@ -607,17 +608,18 @@ pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOUR
 pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 
 created_mem = sa.list()
-{% for sig_type in sig_types %}
-if any(['{{sig_type[0]}}' == x[0] for x in created_mem]):
-  in_signals['{{sig_type[0]}}'] = sa.attach("shm://{{sig_type[0]}}") # TODO, fix dtype stuff  print 'tast '
-  sa.mlock(in_signals['{{sig_type[0]}}'])
+{% for sig,dtype in sig_types.iteritems() %}
+if any(['{{sig}}' == x[0] for x in created_mem]):
+  in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}") # TODO, fix dtype stuff  print 'tast '
+  sa.mlock(in_sigs['{{sig}}'])
+  {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * 8}}
 else:
   die("numpy signal not created\n")
-{{sig_type[0]}}StrtPtr = <{{sig_type[1]}} *><long>in_signals['{{sig_type[0]}}'].__array_interface__['data'][0] # TODO don't hardcode type
-{{sig_type[0]}}EndPtr = {{sig_type[0]}}StrtPtr + len(in_signals['{{sig_type[0]}}'])
+bufStrtPtr = <{{dtype}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0] # TODO don't hardcode type
+bufEndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
 {% endfor %}
 
-{% if parser_buffers and not is_logger -%}
+{% if buffer_parser and not is_logger -%}
 # TODO malloc outBuf according to yaml config 
 # set outBufLen accordingly
 {%- endif %}
@@ -651,10 +653,6 @@ rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
 {%- endif %}
 
-{% if default_params -%}
-{{default_sig_name}} = {{default_params}}
-{%- endif %}
-
 {{construct_code}}
 
 make_realtime()
@@ -670,8 +668,7 @@ while(True):
 
   {{parser_code}} 
 
-{%- if not parser_buffers %}
-  pSelfBufVars = pBufVars + 8 * {{in_sig_nums[in_signals.keys()[0]]}}
+{%- if not buffer_parser %}
   outBuf = <uint8_t *>({{sig_types[0][0]}}StrtPtr + pSelfBufVars[0])
   outBufLen = pSelfBufVars[1] - pSelfBufVars[0] 
 {%- endif %}
@@ -684,8 +681,8 @@ while(True):
 {%- elif sig_type == 'parport' %}
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'disk' %}
-  {%- for sig_dtype in sig_types %}
-  memcpy(pSignalsStructCur.{{sig_dtype[0]}}, {{sig_dtype[0]}}StrtPtr + pSelfBufVars[0], sizeof((<signalsMsData*>0).{{sig_dtype[0]}}))
+  {%- for sig,dtype in sig_types.iteritems() %}
+  memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + pSelfBufVars[0], sizeof((<signalsMsData*>0).{{sig}}))
   {%- endfor %}
   pSignalsStructCur += 1
   if (<uint8_t*>pSignalsStructCur == pSignalsBufEnd):

@@ -329,35 +329,32 @@ def parse(config, confirm):
           template = TEMPLATE_SOURCE_C
           in_extension = '.c'
           out_extension = '.c'
-
-        so_in_sig = { x: signals[x] for x in (sigkeys & set(module_args['in'])) }
-        assert len(so_in_sig) == 1
-        assert len(module_args['in']) == 1
-        so_in_sig = so_in_sig[so_in_sig.keys()[0]]
+        in_signal = { x: signals[x] for x in (sigkeys & set(module_args['in'])) }
+        assert len(in_signal) == 1
+        in_signal = in_signal[in_signal.keys()[0]]
         out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
-        if (not module_args.has_key('parser') or not module_args['parser']):
-          assert len(out_signals) == 1
-        if so_in_sig['args']['type'] == 'line':
-          line_source_exists = 1
-          so_in_sig['schema'] = {}
-          so_in_sig['schema']['data'] = {}
-          so_in_sig['schema']['data']['dtype'] = 'uint16'
-        default_params = None
-        if so_in_sig['args']['type'] == 'default':
-          default_params = so_in_sig['schema']['default']
+        out_sig_nums = {x: internal_signals.index(x) for x in out_signals.keys()}
+        parser = module_args.has_key('parser') and module_args['parser']
+        if (not parser): assert len(out_signals) == 1 
+        default_params = in_signal['schema']['default'] if (in_signal['args']['type'] == 'default') else None
 
+        if in_signal['args']['type'] == 'line':
+          line_source_exists = 1
+          in_signal['schema'] = {}
+          in_signal['schema']['data'] = {}
+          in_signal['schema']['data']['dtype'] = 'uint16'
+
+        in_dtype = in_signal['schema']['data']['dtype']
+        in_dtype = fix_dtype(in_dtype)
         sig_types = {}
         for sig, args in out_signals.iteritems():
           dtype = out_signals[sig]['dtype']
           dtype = fix_dtype(dtype)
           sig_types[sig] = dtype
-        in_dtype = dtype
-        if module_args.has_key('parser') and module_args['parser']: # TODO check
-          in_dtype = so_in_sig['schema']['data']['dtype']
-          in_dtype = fix_dtype(in_dtype)
-
+          if not parser: assert in_dtype == dtype  # out_signals has length 1 for no parser
+  
         parser_code = ""
-        if module_args.has_key('parser') and module_args['parser']:
+        if parser:
           if module_args['parser'] == True:
             module_args['parser'] = name + "_parser"
           with open(os.path.join(MODULE_DIR, module_args['parser'] + in_extension), 'r') as f:
@@ -378,26 +375,22 @@ def parse(config, confirm):
           with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
-
-        out_sig_nums={x: internal_signals.index(x) for x in out_signals.keys()}
-        # TODO if no parser, assert in_dtype == out_signal dtype
+            
         do_jinja( os.path.join(TEMPLATE_DIR, template), 
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
+                  source_num=source_names.index(name),
                   config=config,
-                  parser=module_args.has_key('parser') and module_args['parser'],
+                  parser=parser,
                   parser_code=parser_code,
                   construct_code=construct_code,
                   destruct_code=destruct_code, 
-                  signals=signals, 
-                  num_internal_sigs=len(internal_signals),
+                  in_sig_name=module_args['in'][0],
+                  in_signal=in_signal,
                   out_signals=out_signals,
                   out_sig_nums=out_sig_nums,
-                  in_signal=so_in_sig,
-                  in_sig_name=module_args['in'][0],
                   default_params=default_params,
                   num_sem_sigs=num_sem_sigs,
-                  source_num=source_names.index(name),
                   in_dtype=in_dtype,
                   sig_types=sig_types
                 )
@@ -413,42 +406,37 @@ def parse(config, confirm):
           template = TEMPLATE_SINK_C
           in_extension = '.c'
           out_extension = '.c'
+        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
+        in_sig_nums = {x: internal_signals.index(x) for x in in_signals.keys()}
+        out_signal = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
+        assert len(out_signal) == 1
+        out_signal = out_signal[out_signal.keys()[0]]
+        parser = module_args.has_key('parser') and module_args['parser']
+        if ((not parser) and (out_signal['args']['type'] != 'disk')): assert len(in_signals) == 1 
+        buffer_parser = parser and out_signal['args']['type'] != 'vis'
 
         module_depends_on = []
-        default_sig_name = ''
-        default_params = None
-        for in_sig in module_args['in']:
-          if (in_sig in external_signals) and (signals[in_sig]['args']['type'] == 'default'):
-            default_sig_name = in_sig
-            default_params = signals[in_sig]['schema']['default'].keys()
-          elif in_sig in source_outputs.keys():
+        for sig,args in in_signals.iteritems():
+          if sig in source_outputs.keys():
             #store the signal name in 0 and location of sem in 1
-            source_outputs[in_sig] += 1
+            source_outputs[sig] += 1
           else:
-            module_depends_on.append((in_sig, sig_sem_dict[in_sig]))  
-        si_out_sig = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
-        assert len(si_out_sig) == 1
-        si_out_sig = si_out_sig[si_out_sig.keys()[0]]
-        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
-        print signals[module_args['out'][0]]['args']['type'] != 'disk'
-        if ((not module_args.has_key('parser') or not module_args['parser']) and (signals[module_args['out'][0]]['args']['type'] != 'disk')):
-          assert len(in_signals) == 1
-        
-        sig_types = []
+            module_depends_on.append((sig, sig_sem_dict[sig]))  
+          
+        out_dtype = None
+        if parser and out_signal['args']['type'] != 'vis':
+          out_dtype = out_signal['schema']['data']['dtype']
+          out_dtype = fix_dtype(out_dtype)
+        sig_types = {}
         for sig, args in in_signals.iteritems():
           dtype = in_signals[sig]['dtype']
           dtype = fix_dtype(dtype)
-          sig_types.append([sig, dtype])
-
-        # out_dtype = dtype # TODO fix for multiple signals
-        # if module_args.has_key('parser') and module_args['parser'] and si_out_sig['args']['type'] != 'vis':
-        #   out_dtype = si_out_sig['schema']['data']['dtype']
-        #   out_dtype = fix_dtype(out_dtype)
+          sig_types[sig] = dtype
+          if not parser and out_dtype: assert (out_dtype == dtype) # in_signals has length 1 for no parser
 
         parser_code = ""
-        if module_args.has_key('parser') and module_args['parser']:
-          if module_args['parser'] == True:
-            module_args['parser'] = name + "_parser"
+        if parser and (module_args['parser'] == True):
+          module_args['parser'] = name + "_parser"
           with open(os.path.join(MODULE_DIR, module_args['parser'] + in_extension), 'r') as f:
             parser_code = f.read()
             parser_code = parser_code.replace("\n", "\n  ")
@@ -468,25 +456,24 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
 
-        in_sig_nums = {x: internal_signals.index(x) for x in in_signals.keys()}
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
+                  non_source_num=non_source_names.index(name),
                   config=config, 
+                  parser=parser,
+                  buffer_parser=buffer_parser,
                   parser_code=parser_code,
                   construct_code=construct_code,
                   destruct_code=destruct_code, 
-                  num_sem_sigs=num_sem_sigs,
-                  m_dep_on=module_depends_on,
                   in_signals=in_signals,
                   in_sig_nums=in_sig_nums,
-                  out_signal=si_out_sig,
-                  default_sig_name=default_sig_name,
-                  default_params=default_params,
-                  parser_buffers=(module_args.has_key('parser') and module_args['parser']),
+                  out_sig_name=module_args['out'][0],
+                  out_signal=out_signal,
+                  num_sem_sigs=num_sem_sigs,
+                  m_dep_on=module_depends_on,
                   sig_types=sig_types,
-                  # out_dtype=out_dtype,
-                  non_source_num=non_source_names.index(name)
+                  out_dtype=out_dtype
                 )
 
       # parse module
