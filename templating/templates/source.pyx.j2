@@ -305,6 +305,7 @@ else:
   dtype = np.{{args['dtype']}}
   {% endif %}
   out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_shape, dtype=dtype)
+  {{sig}}StrtPtr = <{{sig_types[sig]}} *><long>out_sigs['{{sig}}'].__array_interface__['data'][0]
   {%- if not parser %}
   out_sig = out_sigs['{{sig}}']
   {%- endif %}
