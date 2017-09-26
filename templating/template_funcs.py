@@ -346,11 +346,11 @@ def parse(config, confirm):
 
         in_dtype = in_signal['schema']['data']['dtype']
         in_dtype = fix_dtype(in_dtype)
-        sig_types = {}
+        out_sig_types = {}
         for sig, args in out_signals.iteritems():
-          dtype = out_signals[sig]['dtype']
+          dtype = args['dtype']
           dtype = fix_dtype(dtype)
-          sig_types[sig] = dtype
+          out_sig_types[sig] = dtype
           if not parser: assert in_dtype == dtype  # out_signals has length 1 for no parser
   
         parser_code = ""
@@ -375,7 +375,7 @@ def parse(config, confirm):
           with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
-            
+
         do_jinja( os.path.join(TEMPLATE_DIR, template), 
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -392,7 +392,7 @@ def parse(config, confirm):
                   default_params=default_params,
                   num_sem_sigs=num_sem_sigs,
                   in_dtype=in_dtype,
-                  sig_types=sig_types
+                  sig_types=out_sig_types
                 )
       
       # parse sink
@@ -427,11 +427,11 @@ def parse(config, confirm):
         if parser and out_signal['args']['type'] != 'vis':
           out_dtype = out_signal['schema']['data']['dtype']
           out_dtype = fix_dtype(out_dtype)
-        sig_types = {}
+        in_sig_types = {}
         for sig, args in in_signals.iteritems():
-          dtype = in_signals[sig]['dtype']
+          dtype = args['dtype']
           dtype = fix_dtype(dtype)
-          sig_types[sig] = dtype
+          in_sig_types[sig] = dtype
           if not parser and out_dtype: assert (out_dtype == dtype) # in_signals has length 1 for no parser
 
         parser_code = ""
@@ -472,7 +472,7 @@ def parse(config, confirm):
                   out_signal=out_signal,
                   num_sem_sigs=num_sem_sigs,
                   m_dep_on=module_depends_on,
-                  sig_types=sig_types,
+                  sig_types=in_sig_types,
                   out_dtype=out_dtype
                 )
 
@@ -520,6 +520,21 @@ def parse(config, confirm):
             # store the signal name in 0 and location of sem in 1
             depends_on.append((in_sig, sig_sem_dict[in_sig]))
 
+        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
+        out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
+        in_sig_types = {}
+        for sig, args in in_signals.iteritems():
+          dtype = args['dtype']
+          dtype = fix_dtype(dtype)
+          in_sig_types[sig] = dtype
+        out_sig_types = {}
+        for sig, args in out_signals.iteritems():
+          dtype = args['dtype']
+          dtype = fix_dtype(dtype)
+          out_sig_types[sig] = dtype
+        print out_sig_types
+        print in_sig_types
+
         user_code = ""
         with open(os.path.join(MODULE_DIR, name + in_extension), 'r') as f:
           user_code = f.read()
@@ -542,9 +557,9 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
             
-        in_signals = { x: signals[x] for x in (sigkeys & set(module_args['in'])) }
         in_sig_nums = {x: internal_signals.index(x) for x in in_signals.keys()}
-        out_signals={ x: signals[x] for x in (sigkeys & set(module_args['out'])) }
+        print in_sig_nums
+        print out_signals
         out_sig_nums = {x: internal_signals.index(x) for x in out_signals.keys()}
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
@@ -565,7 +580,9 @@ def parse(config, confirm):
                   default_sig_name=default_sig_name,
                   default_params=default_params,
                   module_num=module_names.index(name),
-                  non_source_num=non_source_names.index(name)
+                  non_source_num=non_source_names.index(name),
+                  in_sig_types=in_sig_types,
+                  out_sig_types=out_sig_types
                 )
 
   # parse Makefile
