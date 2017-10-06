@@ -110,6 +110,7 @@ void handle_exit(int exitStatus) {
   printf("Killing child processes...\n");
   // send SIGINT to all child processes and wait
   for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
+    printf("Killing child: %d\n", ch_pids[ex_i]);
     kill(ch_pids[ex_i], SIGINT);
     while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
   }
@@ -176,6 +177,7 @@ static void check_children() {
       kill(so_pids[al_i], SIGALRM);
     }
   }
+  
   // normal behavior on subsequent iterations
   else {
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)

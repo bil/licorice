@@ -20,6 +20,7 @@ cimport numpy as np
 cimport cython
 import ctypes
 import portio
+import time
 
 {% set sig_type = out_signal['args']['type'] -%}
 cdef extern from "utilityFunctions.h" nogil:
@@ -256,6 +257,7 @@ cdef extern from "constants.h":
 cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
+#cdef struct timespec tickTimer;
 
 {% if sig_type == 'udp' -%}
 cdef int s
@@ -654,7 +656,6 @@ assert (rc == 0)
 {% if default_params -%}
 {{default_sig_name}} = {{default_params}}
 {%- endif %}
-
 {{construct_code}}
 
 make_realtime()

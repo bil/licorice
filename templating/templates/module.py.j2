@@ -82,7 +82,6 @@ cdef sem_t *pTickUpSems
 cdef sem_t *pTickDownSems
 cdef sem_t *pSigSems
 cdef uint32_t *pBufVars
-
 {% endblock %}
 
 {% block handlers %}
@@ -95,6 +94,7 @@ cdef void handle_exit(int exitStatus):
   exit(exitStatus)
 
 cdef void exit_handler(int signum):
+  printf("EXIT HANDLER for %s\n", "{{name}}")
   handle_exit(0)
 
 cdef void mem_error_handler(int signum):
