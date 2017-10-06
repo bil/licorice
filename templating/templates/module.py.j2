@@ -131,12 +131,13 @@ pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOU
 pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
 pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 
-input_dict = {}
-created_mem = sa.list()
 {#This forces creation of processes one at a time, since otherwise we might get two definitions for the same shared mem #}
+created_mem = sa.list()
+input_dict = {}
 {% for sig,args in in_signals.iteritems() %}
 if any(['{{sig}}' == x[0] for x in created_mem]):
   input_dict["{{sig}}"] = sa.attach("shm://{{sig}}")
+  {{sig}}BufVars = pBufVars + {{sig_nums[sig] * 8}}
 else:
   print "{{sig}} not created"
   die("signal not created")
@@ -145,11 +146,13 @@ else:
 output_dict = {}
 {% for sig, args in out_signals.iteritems() %}
 if any(['{{sig}}' == x[0] for x in created_mem]):
-  output_dict["{{sig}}"] = sa.attach("shm://{{sig}}")
+  print "{{sig}} already created"
+  die("numpy signal already created")
+  # output_dict["{{sig}}"] = sa.attach("shm://{{sig}}")
 else:
   output_dict["{{sig}}"] = sa.create("shm://{{sig}}", {{args['shape']}}, dtype=np.{{args['dtype']}})
   sa.mlock(output_dict["{{sig}}"])
-  {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * 8}}
+  {{sig}}BufVars = pBufVars + {{sig_nums[sig] * 8}}
 {% endfor %}
 
 # set signal mask
