@@ -26,7 +26,7 @@
 #define NUM_SOURCES {{num_sources}}
 #define NUM_SINKS {{num_sinks}}
 #define NUM_MODULES {{num_modules}}
-#define NUM_TICKS_OFFSET 0 // TODO can i put sizeofs here?
+#define NUM_TICKS_OFFSET 0
 #define SOURCE_SEM_OFFSET 0
 #define TICK_SEMS_OFFSET 0
 #define SIG_SEMS_OFFSET 0
@@ -55,11 +55,20 @@ static unsigned char outVal = 0;
 // pointer to start of shared memory
 static size_t shm_size;
 static uint8_t *pmem;
+// global tick counter
 static uint64_t *pNumTicks;
+// TODO figure out better synch
+// source buffer offset update synchronization semaphore
 static sem_t *pSourceSem;
+// per-process tick start semaphore
+// timer signals each proces by upping this semaphore
 static sem_t *pTickUpSems;
+// per-process computation end semaphore
+// porcess signals timer by upping this semaphore
 static sem_t *pTickDownSems;
+// signal semaphores. synchronizes process hierarchy during runtime 
 static sem_t *pSigSems;
+
 static uint32_t *pBufVars;
 static uint32_t *pCurBufVars;
 
@@ -181,8 +190,9 @@ static void check_children() {
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems + al_i)) {
-        if (nonSourceModuleCheck[al_i])
+        if (nonSourceModuleCheck[al_i]) {
           die("Module timing violation.\n");
+        }
         else
           printf("Sink timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i); // TODO insert non_source name here
       } 
@@ -201,13 +211,14 @@ static void check_children() {
       // printf("\ntimer: %u %u %u %u %u %u %u %u  \n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
 
       // NON-LATENCY-DEPENDENT BUFFER UPDATE
-      if ((*(pCurBufVars + 7) - *(pCurBufVars + 1)) < *(pCurBufVars + 6)) {
-        *(pCurBufVars + 1) = 0;
+
+      *(pCurBufVars + 1) = *(pCurBufVars + 2);
+      *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
+      if ((*(pCurBufVars + 7) - *(pCurBufVars + 2)) < *(pCurBufVars + 6)) {
         *(pCurBufVars + 2) = 0;
       }
-      *(pCurBufVars + 0) = *(pCurBufVars + 1);
-      *(pCurBufVars + 1) = *(pCurBufVars + 0) + *(pCurBufVars + 3);
       *(pCurBufVars + 3) = 0;
+
       // debugging
       // printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
     }

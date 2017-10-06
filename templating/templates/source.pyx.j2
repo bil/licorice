@@ -123,7 +123,7 @@ cdef char buf[{{in_signal['schema']['data']['shape']}}]
 {%- endif %}
 cdef char *outbuf
 cdef int parse_idx
-cdef uint32_t out_sig_shape
+cdef uint32_t sig_buffer_size
 {%- if sig_type == 'zmq' %}
 cdef int num_packets = 0
 cdef void *dish
@@ -153,10 +153,10 @@ cdef uint8_t *pmem
 cdef uint64_t *pNumTicks
 cdef sem_t *pSourceSem
 cdef uint32_t *pBufVars
-# 0: ms start
-# 1: ms end
+# 0: tick start
+# 1: tick end
 # 2: next data location
-# 3: num samples received this ms
+# 3: num samples received this tick
 # 4: buffer end offset (samples)
 # 5: packet size (bytes)
 # 6: max samples per tick (samples)
@@ -169,7 +169,7 @@ out_sigs = {}
 {%- if not parser %}
 out_sig = None
 {%- endif %}
-cdef in_bytes = {{in_signal['schema']['data']['shape']}} * sizeof({{in_dtype}})
+cdef uint32_t in_bytes = {{in_signal['schema']['data']['shape']}} * sizeof({{in_dtype}})
 cdef {{in_dtype}} *bufStrtPtr
 cdef {{in_dtype}} *bufEndPtr
 cdef {{in_dtype}} *bufCurPtr
@@ -298,24 +298,24 @@ if any(['{{sig}}' == x[0] for x in created_mem]):
   die("numpy signal already created\n")
 else:
   {%- if sig_type == 'line' %}
-  out_sig_shape = {{args['history']}} * frames
+  sig_buffer_size = {{args['history']}} * frames
   dtype = np.int16 # TODO grab this from alsa
   {% else %}
-  out_sig_shape = {{args['shape']}} * {{args['history']}}
+  sig_buffer_size = {{args['shape']}} * ({{args['history']}} + 2) # packet size * (2*history) so that at least `history` packets always buffered
   dtype = np.{{args['dtype']}}
   {% endif %}
-  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", out_sig_shape, dtype=dtype)
+  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", sig_buffer_size, dtype=dtype)
   {{sig}}StrtPtr = <{{sig_types[sig]}} *><long>out_sigs['{{sig}}'].__array_interface__['data'][0]
   {%- if not parser %}
   out_sig = out_sigs['{{sig}}']
   {%- endif %}
   sa.mlock(out_sigs['{{sig}}'])
   {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * 8}})
-  {{sig}}BufVars[7] = out_sig_shape
+  {{sig}}BufVars[7] = sig_buffer_size
     {%- if sig_type == 'line' %}
   {{sig}}BufVars[6] = recvLen
   {{sig}}BufVars[5] = frames # TODO, this right? should be packet size in bytes
-  {{sig}}BufVars[3] = out_sig_shape
+  {{sig}}BufVars[3] = sig_buffer_size
   {{sig}}BufVars[0] = {{sig}}BufVars[3]
     {%- else %}
   {{sig}}BufVars[6] = {{args['shape']}} 
@@ -329,7 +329,7 @@ bufEndPtr = bufStrtPtr + {{in_signal['schema']['data']['shape']}}
 {%- else %}
 bufStrtPtr = <{{in_dtype}} *><long>out_sig.__array_interface__['data'][0]
 bufCurPtr = bufStrtPtr
-bufEndPtr = bufStrtPtr + out_sig_shape # this must be 1D for no parser
+bufEndPtr = bufStrtPtr + sig_buffer_size # this must be 1D for no parser
 {%- endif %}
 
 {% if default_params -%}
@@ -406,13 +406,15 @@ while(True):
   if (parentSetup):
     continue
 
+  # sempahore needs to be before parser (unfortunately includes memcpy) so that interrupt doesn't happen between 
+  # when {{sig}}BufVars[2] is read by the parser and when it is updated below.
+  sem_wait(pSourceSem) 
 {%- if parser %}
   # use user parser
   {{parser_code}}
 {%- endif %}
   # TODO figure out how to step through data for something like line (artificial data packaging per tick)
   # TODO figure out buffer updates for multiple output signals
-  sem_wait(pSourceSem)
 {%- for sig, args in out_signals.iteritems() %}
 
   # debugging

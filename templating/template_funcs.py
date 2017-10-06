@@ -294,6 +294,7 @@ def parse(config, confirm):
 
   assert(set(all_names) == set(source_names + module_names + sink_names))
   non_source_names = sink_names + module_names
+  print non_source_names
   topo_children = map(list, list(toposort(dependency_graph)))
   topo_widths = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   topo_height = len(topo_children)
@@ -532,8 +533,6 @@ def parse(config, confirm):
           dtype = args['dtype']
           dtype = fix_dtype(dtype)
           out_sig_types[sig] = dtype
-        print out_sig_types
-        print in_sig_types
 
         user_code = ""
         with open(os.path.join(MODULE_DIR, name + in_extension), 'r') as f:
@@ -557,10 +556,7 @@ def parse(config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
             
-        in_sig_nums = {x: internal_signals.index(x) for x in in_signals.keys()}
-        print in_sig_nums
-        print out_signals
-        out_sig_nums = {x: internal_signals.index(x) for x in out_signals.keys()}
+        sig_nums = {x: internal_signals.index(x) for x in (in_signals.keys() + out_signals.keys())}
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -573,9 +569,8 @@ def parse(config, confirm):
                   depends_on=depends_on,
                   tick_sem_idx=non_source_names.index(name),
                   in_signals=in_signals,
-                  in_sig_nums=in_sig_nums,
                   out_signals=out_signals,
-                  out_sig_nums=out_sig_nums,
+                  sig_nums=sig_nums,
                   num_sem_sigs=num_sem_sigs,
                   default_sig_name=default_sig_name,
                   default_params=default_params,
