@@ -20,8 +20,8 @@ cimport numpy as np
 cimport cython
 import ctypes
 import portio
+import time
 
-{% set sig_type = out_signal['args']['type'] -%}
 cdef extern from "utilityFunctions.h" nogil:
   enum: __GNU_SOURCE
   void die(char *errorStr)
@@ -31,6 +31,12 @@ cdef extern from "utilityFunctions.h" nogil:
 
 cdef extern from "utilityFunctions.h":
   void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
+
+{% if not is_single_threaded %}
+cdef extern from "<pthread.h>":
+  struct sched_param:
+    int sched_priority
+{% endif %}
 
 {% if sig_type == 'parport' -%}
 {% elif sig_type == 'udp' -%}
@@ -184,7 +190,7 @@ cdef extern from "sqlHelpers.h" nogil:
   enum: NUM_MS_IN_S
 {%- endif %}
 
-{% if sig_type == 'disk' or sig_type == 'line' -%}
+{% if not is_single_threaded -%}
 cdef extern from "<sched.h>":
   enum: SCHED_FIFO
   ctypedef struct cpu_set_t:
@@ -256,6 +262,7 @@ cdef extern from "constants.h":
 cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
+#cdef struct timespec tickTimer;
 
 {% if sig_type == 'udp' -%}
 cdef int s
@@ -292,11 +299,8 @@ cdef char currDbName[32]
 cdef char *zErrMsg
 cdef void * retVal
 # numpy signal data structs to hold one millisecond of data 
-ctypedef struct signalsMsData: 
-{% for sig_type in sig_types -%}
-# TODO need to check for compatibility between numpy/C types
-  {{sig_type[1]}} {{sig_type[0]}}[{{in_signals[sig_type[0]]['shape']}}]
-{%- endfor %}
+ctypedef struct signalsMsData:
+  pass
 cdef signalsMsData *pSignalsStructCur
 cdef signalsMsData *pSignalsStructFlushStart
 cdef signalsMsData *pSignalsStructFlushEnd
@@ -317,9 +321,6 @@ cdef msgpack_sbuffer mpSignals{{sig|capitalize}}Buf
 cdef msgpack_packer mpSignals{{sig|capitalize}}Pk
 {%- endfor %}
 
-# data buffer
-cdef uint8_t *pSignalsBufStart
-cdef uint8_t *pSignalsBufEnd
 cdef int signalsBufSize
 {%- endif %}
 
@@ -335,17 +336,20 @@ cdef uint32_t *pBufVars
 lastVal = 1
 
 in_sigs = {}
-{%- if not buffer_parser %}
+{%- if not has_parser and out_signal['args']['type'] != 'vis' %}
 in_sig = None
 {%- endif %}
+{% if sig_type != 'vis' %}
 cdef {{out_dtype}} *bufStrtPtr
 cdef {{out_dtype}} *bufEndPtr
+{% endif %}
 {%- for sig, dtype in sig_types.iteritems() %}
 in_sigs['{{sig}}'] = None
 cdef uint32_t *{{sig}}BufVars
 cdef {{dtype}} *{{sig}}StrtPtr
 {% endfor %}
 
+# temporary pointer to pass to output APIs
 cdef uint8_t *outBuf
 cdef size_t sentBytes
 cdef size_t outBufLen
@@ -376,7 +380,7 @@ cdef void handle_exit(int exitStatus):
 
   sqlite3_close(db)
   sqlite3async_shutdown()
-  free(pSignalsBufStart)
+  free(bufStrtPtr)
 {%- endfor %}
 {%- endif %}
   munmap(pmem, shm_size)
@@ -434,8 +438,8 @@ cdef void* processRequests(void *arg) nogil:
       sql_finalize(signalsStmt)
 
       pSignalsStructFlushStart += 1
-      if (<uint8_t*>pSignalsStructFlushStart == pSignalsBufEnd):
-        pSignalsStructFlushStart = <signalsMsData*>pSignalsBufStart
+      if (<uint8_t*>pSignalsStructFlushStart == bufEndPtr):
+        pSignalsStructFlushStart = <signalsMsData*>bufStrtPtr
 
 
     ret = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &zErrMsg)
@@ -451,10 +455,10 @@ cdef void* processRequests(void *arg) nogil:
 
 {% if sig_type == 'line' -%}
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, pSelfBufVars, zErrMsg, lineWriteOffset, {% for sig_type in sig_types %}{{sig_type[0]}}StrtPtr, {{sig_type[0]}}EndPtr{{"," if not loop.last}} {% endfor %}
+  global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, pSelfBufVars, zErrMsg, lineWriteOffset, {% for sig,dtype in sig_types %}{{sig}}StrtPtr, {{sig}}EndPtr{{"," if not loop.last}} {% endfor %}
   pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
   zErrMsg = <char *>0
-  {%- if buffer_parser %}
+  {%- if has_parser and out_signal['args']['type'] != 'vis' %}
   # TODO figure outBuf stuff for this
   # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
   {%- endif %}
@@ -508,7 +512,7 @@ set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
-{% if sig_type == 'line' or sig_type == 'disk' -%}
+{% if not is_single_threaded -%}
 # init mutex and condition variable
 rc = pthread_mutex_init(&mutex, NULL)
 if (rc): die("pthread_mutex_init failed")
@@ -561,9 +565,9 @@ strcat(signalsQuery, COMMA)
 strcat(signalsQuery, CLOSE_BRACE_SEMI)
 # signals buffer
 signalsBufSize = NUM_BUF_S * NUM_MS_IN_S * sizeof(signalsMsData)
-pSignalsBufStart = <uint8_t *>malloc(signalsBufSize)
-pSignalsBufEnd = pSignalsBufStart + signalsBufSize
-pSignalsStructCur = <signalsMsData *>pSignalsBufStart
+bufStrtPtr = <uint8_t *>malloc(signalsBufSize)
+bufEndPtr = bufStrtPtr + signalsBufSize
+pSignalsStructCur = <signalsMsData *>bufStrtPtr
 pSignalsStructFlushStart = pSignalsStructCur
 openDatabase(&db, DATALOGGER_FILENAME, currDbName)
 sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
@@ -615,11 +619,13 @@ if any(['{{sig}}' == x[0] for x in created_mem]):
   {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * 8}}
 else:
   die("numpy signal not created\n")
+{% if sig_type != 'vis' %}
 bufStrtPtr = <{{dtype}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0] # TODO don't hardcode type
 bufEndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
+{% endif %}
 {% endfor %}
 
-{% if buffer_parser and not is_logger -%}
+{% if has_parser and out_signal['args']['type'] != 'vis' and is_single_threaded -%}
 # TODO malloc outBuf according to yaml config 
 # set outBufLen accordingly
 {%- endif %}
@@ -653,6 +659,9 @@ rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
 {%- endif %}
 
+{% if default_params -%}
+{{default_sig_name}} = {{default_params}}
+{%- endif %}
 {{construct_code}}
 
 make_realtime()
@@ -668,8 +677,8 @@ while(True):
 
   {{parser_code}} 
 
-{%- if not buffer_parser %}
-  outBuf = <uint8_t *>({{sig_types[0][0]}}StrtPtr + pSelfBufVars[0])
+{%- if not has_parser and out_signal['args']['type'] != 'vis' %}
+  outBuf = <uint8_t *>({{sig_types[out_sig_name]}}StrtPtr + pSelfBufVars[0])
   outBufLen = pSelfBufVars[1] - pSelfBufVars[0] 
 {%- endif %}
 {%- if sig_type == 'udp' %}
@@ -685,8 +694,8 @@ while(True):
   memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + pSelfBufVars[0], sizeof((<signalsMsData*>0).{{sig}}))
   {%- endfor %}
   pSignalsStructCur += 1
-  if (<uint8_t*>pSignalsStructCur == pSignalsBufEnd):
-    pSignalsStructCur = <signalsMsData*>pSignalsBufStart
+  if (<uint8_t*>pSignalsStructCur == bufEndPtr):
+    pSignalsStructCur = <signalsMsData*>bufStrtPtr
 {%- endif %}
 
 {%- if sig_type == 'line' %}

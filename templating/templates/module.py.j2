@@ -89,7 +89,6 @@ cdef uint32_t *{{sig}}BufVars
 cdef uint32_t *{{sig}}BufVars
 {% endfor %}
 
-
 {% endblock %}
 
 {% block handlers %}
@@ -102,6 +101,7 @@ cdef void handle_exit(int exitStatus):
   exit(exitStatus)
 
 cdef void exit_handler(int signum):
+  printf("EXIT HANDLER for %s\n", "{{name}}")
   handle_exit(0)
 
 cdef void mem_error_handler(int signum):
@@ -133,25 +133,25 @@ pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_S
 
 {#This forces creation of processes one at a time, since otherwise we might get two definitions for the same shared mem #}
 created_mem = sa.list()
-input_dict = {}
+in_sigs = {}
 {% for sig,args in in_signals.iteritems() %}
 if any(['{{sig}}' == x[0] for x in created_mem]):
-  input_dict["{{sig}}"] = sa.attach("shm://{{sig}}")
+  in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * 8}}
 else:
   print "{{sig}} not created"
   die("signal not created")
 {%- endfor %}
 
-output_dict = {}
+out_sigs = {}
 {% for sig, args in out_signals.iteritems() %}
 if any(['{{sig}}' == x[0] for x in created_mem]):
   print "{{sig}} already created"
   die("numpy signal already created")
-  # output_dict["{{sig}}"] = sa.attach("shm://{{sig}}")
+  # out_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
 else:
-  output_dict["{{sig}}"] = sa.create("shm://{{sig}}", {{args['shape']}}, dtype=np.{{args['dtype']}})
-  sa.mlock(output_dict["{{sig}}"])
+  out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['shape']}}, dtype=np.{{args['dtype']}})
+  sa.mlock(out_sigs["{{sig}}"])
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * 8}}
 {% endfor %}
 
@@ -177,7 +177,7 @@ while(True):
   sem_wait(&pSigSems[{{dep_on[1]}}])
 {%endfor%}
   {#The user can just write a function and expect a dict of inputs and return a dict of outputs #}
-  # {{name}}(input_dict, output_dict)
+  # {{name}}(in_signals, out_signals)
   {{user_code}}
 {%for dep_name, dep_val in dependencies.iteritems() %}
 {%for i in range(dep_val[0]) %}

@@ -294,7 +294,6 @@ def parse(config, confirm):
 
   assert(set(all_names) == set(source_names + module_names + sink_names))
   non_source_names = sink_names + module_names
-  print non_source_names
   topo_children = map(list, list(toposort(dependency_graph)))
   topo_widths = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   topo_height = len(topo_children)
@@ -412,9 +411,10 @@ def parse(config, confirm):
         out_signal = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         assert len(out_signal) == 1
         out_signal = out_signal[out_signal.keys()[0]]
-        parser = module_args.has_key('parser') and module_args['parser']
-        if ((not parser) and (out_signal['args']['type'] != 'disk')): assert len(in_signals) == 1 
-        buffer_parser = parser and out_signal['args']['type'] != 'vis'
+        sig_type = out_signal['args']['type']
+        has_parser = module_args.has_key('parser') and module_args['parser']
+        if ((not has_parser) and (out_signal['args']['type'] != 'disk')): assert len(in_signals) == 1 
+        # buffer_parser = has_parser and out_signal['args']['type'] != 'vis'
 
         module_depends_on = []
         for sig,args in in_signals.iteritems():
@@ -425,7 +425,7 @@ def parse(config, confirm):
             module_depends_on.append((sig, sig_sem_dict[sig]))  
           
         out_dtype = None
-        if parser and out_signal['args']['type'] != 'vis':
+        if has_parser and out_signal['args']['type'] != 'vis':
           out_dtype = out_signal['schema']['data']['dtype']
           out_dtype = fix_dtype(out_dtype)
         in_sig_types = {}
@@ -433,10 +433,12 @@ def parse(config, confirm):
           dtype = args['dtype']
           dtype = fix_dtype(dtype)
           in_sig_types[sig] = dtype
-          if not parser and out_dtype: assert (out_dtype == dtype) # in_signals has length 1 for no parser
+          if not has_parser and out_dtype: assert (out_dtype == dtype) # in_signals has length 1 for no parser
+        if not out_dtype:
+          out_dtype = "uint8_t"
 
         parser_code = ""
-        if parser and (module_args['parser'] == True):
+        if has_parser and (module_args['parser'] == True):
           module_args['parser'] = name + "_parser"
           with open(os.path.join(MODULE_DIR, module_args['parser'] + in_extension), 'r') as f:
             parser_code = f.read()
@@ -462,8 +464,7 @@ def parse(config, confirm):
                   name=name, 
                   non_source_num=non_source_names.index(name),
                   config=config, 
-                  parser=parser,
-                  buffer_parser=buffer_parser,
+                  has_parser=has_parser,
                   parser_code=parser_code,
                   construct_code=construct_code,
                   destruct_code=destruct_code, 
@@ -474,7 +475,10 @@ def parse(config, confirm):
                   num_sem_sigs=num_sem_sigs,
                   m_dep_on=module_depends_on,
                   sig_types=in_sig_types,
-                  out_dtype=out_dtype
+                  out_dtype=out_dtype,
+                  sig_type=sig_type,
+                  is_vis=(sig_type == 'vis'),
+                  is_single_threaded=((sig_type != 'disk') and (sig_type != 'line'))
                 )
 
       # parse module
