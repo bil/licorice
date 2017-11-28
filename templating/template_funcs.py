@@ -458,7 +458,7 @@ def parse(config, confirm):
           with open(os.path.join(MODULE_DIR, module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
-
+            
         do_jinja( os.path.join(TEMPLATE_DIR, template),
                   os.path.join(OUTPUT_DIR, name + out_extension),
                   name=name, 
@@ -468,6 +468,7 @@ def parse(config, confirm):
                   parser_code=parser_code,
                   construct_code=construct_code,
                   destruct_code=destruct_code, 
+                  in_signal_name=(None if (has_parser) else in_signals.keys()[0]),
                   in_signals=in_signals,
                   in_sig_nums=in_sig_nums,
                   out_sig_name=module_args['out'][0],

@@ -15,6 +15,7 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 
 import sys
+import os
 import SharedArray as sa
 import numpy as np
 cimport numpy as np
@@ -221,7 +222,6 @@ cdef void alrm_handler(int signum):
   if (parentSetup):
     parentSetup = False
 {%- if sig_type == 'parport' or sig_type == 'joystick' %}
-  global readInput
   readInput = True
 {%- endif %}
 
@@ -391,6 +391,7 @@ while(True):
     die("zmq_recv error.\n")
   num_packets += 1
 {%- elif sig_type == 'joystick' %}
+  # TODO: maybe put this in reader parser?
   if (readInput):
     readInput = False
     pygame.event.pump()
@@ -418,17 +419,21 @@ while(True):
 {%- for sig, args in out_signals.iteritems() %}
 
   # debugging
-  # printf("source 1 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
+{%- if sig_type == 'joystick' %}
+  printf("source 1 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
+{%- endif %}
   {{sig}}BufVars[2] += {{sig}}BufVars[5]
   {{sig}}BufVars[3] += {{sig}}BufVars[5]
   if ({{sig}}BufVars[7] - {{sig}}BufVars[1] <= {{sig}}BufVars[6]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
   else:
     {{sig}}BufVars[4] = {{sig}}BufVars[2] if ({{sig}}BufVars[2] > {{sig}}BufVars[4]) else {{sig}}BufVars[4]
-  {{sig}}BufVars[2] %= {{sig}}BufVars[7]
+  #{{sig}}BufVars[2] %= {{sig}}BufVars[7]
   bufCurPtr = bufStrtPtr + {{sig}}BufVars[2] #TODO check this for parser == True
   # debugging
-  # printf("source 2: %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
+{%- if sig_type == 'joystick' %}
+  printf("source 2 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
+{%- endif %}
 {%- endfor %}
 
   sem_post(pSourceSem)
