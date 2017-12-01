@@ -180,6 +180,15 @@ while(True):
   # {{name}}(in_signals, out_signals)
   {{user_code}}
 {%for dep_name, dep_val in dependencies.iteritems() %}
+
+  {{dep_name}}BufVars[2] += {{dep_name}}BufVars[5]
+  {{dep_name}}BufVars[3] += {{dep_name}}BufVars[5]
+  if ({{dep_name}}BufVars[7] - {{dep_name}}BufVars[1] <= {{dep_name}}BufVars[6]):
+    {{dep_name}}BufVars[4] = {{dep_name}}BufVars[2]
+  else:
+    {{dep_name}}BufVars[4] = {{dep_name}}BufVars[2] if ({{dep_name}}BufVars[2] > {{dep_name}}BufVars[4]) else {{dep_name}}BufVars[4]
+  #{{dep_name}}BufVars[2] %= {{dep_name}}BufVars[7]
+ 
 {%for i in range(dep_val[0]) %}
   sem_post(&pSigSems[{{dep_val[1]}}])
 {%endfor%}
