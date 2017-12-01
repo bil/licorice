@@ -240,18 +240,26 @@ static void check_children() {
       // 6: max samples per tick (samples)
       // 7: buffer size offset (samples)
 
-      if (*(pCurBufVars + 2) == 0) {
-        *(pCurBufVars + 1) = *(pCurBufVars + 7);
-        *(pCurBufVars + 0) = *(pCurBufVars + 7) - *(pCurBufVars + 3);
-      }
-      else {
-        *(pCurBufVars + 1) = *(pCurBufVars + 2);
-        *(pCurBufVars + 0) = (*(pCurBufVars + 1) - *(pCurBufVars + 3));
-      }
-      if ((*(pCurBufVars + 7) - *(pCurBufVars + 2)) < *(pCurBufVars + 6)) {
+      if ((*(pCurBufVars + 7) - *(pCurBufVars + 1)) < *(pCurBufVars + 6)) {
+        *(pCurBufVars + 1) = 0;
         *(pCurBufVars + 2) = 0;
       }
+      *(pCurBufVars + 0) = *(pCurBufVars + 1);
+      *(pCurBufVars + 1) = *(pCurBufVars + 0) + *(pCurBufVars + 3);
       *(pCurBufVars + 3) = 0;
+
+      // if (*(pCurBufVars + 2) == 0) {
+      //   *(pCurBufVars + 1) = *(pCurBufVars + 7);
+      //   *(pCurBufVars + 0) = *(pCurBufVars + 7) - *(pCurBufVars + 3);
+      // }
+      // else {
+      //   *(pCurBufVars + 1) = *(pCurBufVars + 2);
+      //   *(pCurBufVars + 0) = (*(pCurBufVars + 1) - *(pCurBufVars + 3));
+      // }
+      // if ((*(pCurBufVars + 7) - *(pCurBufVars + 2)) < *(pCurBufVars + 6)) {
+      //   *(pCurBufVars + 2) = 0;
+      // }
+      // *(pCurBufVars + 3) = 0;
 
       // debugging
       printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
