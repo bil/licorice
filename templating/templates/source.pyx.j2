@@ -424,7 +424,7 @@ while(True):
 {%- endif %}
   {{sig}}BufVars[2] += {{sig}}BufVars[5]
   {{sig}}BufVars[3] += {{sig}}BufVars[5]
-  if ({{sig}}BufVars[7] - {{sig}}BufVars[1] < {{sig}}BufVars[6]):
+  if ({{sig}}BufVars[7] - {{sig}}BufVars[1] <= {{sig}}BufVars[6]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
   elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2] 
