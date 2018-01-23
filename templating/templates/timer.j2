@@ -44,6 +44,9 @@ static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n 
 static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{{l}}, {% endfor %}{{topo_widths[-1]}}{{'}'}};
 static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
 {%- endif %}
+{%- if num_source_sigs != 0 %}
+static int sourceOutSigNums[NUM_SOURCE_SIGS] = {{'{'}}{% for sig, num in source_out_sig_nums.iteritems() %}{{num}}{{ "," if not loop.last }}{% endfor %}{{source_out_sig_nums[-1]}}{{'}'}};
+{%- endif %}
 static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source_module_check[:-1] %}{{i}}, {% endfor %}{{non_source_module_check[-1]}}{{'}'}};
 // network pid
 static pid_t so_pids[NUM_SOURCES];
@@ -223,11 +226,11 @@ static void check_children() {
     atomic_thread_fence(memory_order_seq_cst);
 
 
-    for (al_i = 0; al_i < NUM_INTERNAL_SIGS; al_i++) {
-      pCurBufVars = pBufVars + (8 * al_i);
+    for (al_i = 0; al_i < NUM_SOURCE_SIGS; al_i++) {
+      pCurBufVars = pBufVars + (8 * sourceOutSigNums[al_i]);
 
       // debugging
-      printf("\ntimer: %u %u %u %u %u %u %u %u  \n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
+      // printf("\ntimer: %u %u %u %u %u %u %u %u  \n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
 
       // NON-LATENCY-DEPENDENT BUFFER UPDATE
 
@@ -240,12 +243,11 @@ static void check_children() {
       // 6: max samples per tick (samples)
       // 7: buffer size offset (samples)
 
-      if ((*(pCurBufVars + 7) - *(pCurBufVars + 1)) < *(pCurBufVars + 6)) {
-        *(pCurBufVars + 1) = 0;
+      *(pCurBufVars + 1) = *(pCurBufVars + 2);
+      *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
+      if ((*(pCurBufVars + 7) - *(pCurBufVars + 2)) < *(pCurBufVars + 6)) {
         *(pCurBufVars + 2) = 0;
       }
-      *(pCurBufVars + 0) = *(pCurBufVars + 1);
-      *(pCurBufVars + 1) = *(pCurBufVars + 0) + *(pCurBufVars + 3);
       *(pCurBufVars + 3) = 0;
 
       // if (*(pCurBufVars + 2) == 0) {
@@ -262,19 +264,8 @@ static void check_children() {
       // *(pCurBufVars + 3) = 0;
 
       // debugging
-      printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
+      // printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
     }
-
-    // LATENCY-DEPENDENT UPDATE
-    // TOOD figure out good way to spread buffered data over ticks
-    // if (*(pCurBufVars + 0) == *(pCurBufVars + 3)) 
-    //   *(pCurBufVars + 0) = 0;
-    // else 
-    //   *(pCurBufVars + 0) += (32 * 2);
-    // if (*(pCurBufVars + 1) == *(pCurBufVars + 3))
-    //   *(pCurBufVars + 1) = 32 * 2;
-    // else 
-    //   *(pCurBufVars + 1) += (32 * 2);
 
     atomic_thread_fence(memory_order_release);
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
