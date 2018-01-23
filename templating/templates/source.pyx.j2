@@ -419,21 +419,16 @@ while(True):
 {%- for sig, args in out_signals.iteritems() %}
 
   # debugging
-{%- if sig_type == 'joystick' %}
-  printf("source 1 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
-{%- endif %}
+  # printf("source 1 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
   {{sig}}BufVars[2] += {{sig}}BufVars[5]
-  {{sig}}BufVars[3] += {{sig}}BufVars[5]
-  if ({{sig}}BufVars[7] - {{sig}}BufVars[1] <= {{sig}}BufVars[6]):
+  if ({{sig}}BufVars[7] - {{sig}}BufVars[2] <= {{sig}}BufVars[6]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
   elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2] 
-  {{sig}}BufVars[2] %= {{sig}}BufVars[7]
+  {{sig}}BufVars[3] += {{sig}}BufVars[5]
   bufCurPtr = bufStrtPtr + {{sig}}BufVars[2] #TODO check this for parser == True
   # debugging
-{%- if sig_type == 'joystick' %}
-  printf("source 2 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
-{%- endif %}
+  # printf("source 2 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
 {%- endfor %}
 
   sem_post(pSourceSem)

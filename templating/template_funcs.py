@@ -224,6 +224,8 @@ def parse(config, confirm):
   shutil.copytree(TEMPLATE_DIR, OUTPUT_DIR, ignore=shutil.ignore_patterns(('*.j2')))
   external_signals = []
   internal_signals = []
+  async_signals = []
+  sync_signals = []
   for signal_name, signal_args in signals.iteritems():
     if signal_args.has_key('args'):
       external_signals.append(signal_name)
@@ -615,6 +617,8 @@ def parse(config, confirm):
             num_sinks=len(sink_names),
 
             internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
+            num_source_sigs=len(source_outputs.keys()),
+            source_out_sig_nums={x : internal_signals.index(x) for x in source_outputs.keys()},
             parport_tick_addr=parport_tick_addr,
             non_source_module_check=non_source_module_check
           )
@@ -625,7 +629,8 @@ def parse(config, confirm):
             init_buffer_ticks=(50 if line_source_exists else 1),
             num_sem_sigs=num_sem_sigs,
             num_non_sources=len(non_source_names),
-            num_internal_sigs=len(internal_signals)
+            num_internal_sigs=len(internal_signals),
+            num_source_sigs=len(source_outputs.keys())
           )
 
 
