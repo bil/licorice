@@ -120,7 +120,7 @@ cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
 cdef socklen_t recvLen
 {% if in_signal['args']['parser'] -%}
-cdef char buf[{{in_signal['schema']['data']['shape']}}]
+cdef char buf[{{in_signal['schema']['data']['numel']}}]
 {%- endif %}
 cdef char *outbuf
 cdef int parse_idx
@@ -170,7 +170,7 @@ out_sigs = {}
 {%- if not parser %}
 out_sig = None
 {%- endif %}
-cdef uint32_t in_bytes = {{in_signal['schema']['data']['shape']}} * sizeof({{in_dtype}})
+cdef uint32_t in_bytes = {{in_signal['schema']['data']['numel']}} * sizeof({{in_dtype}})
 cdef {{in_dtype}} *bufStrtPtr
 cdef {{in_dtype}} *bufEndPtr
 cdef {{in_dtype}} *bufCurPtr
@@ -301,7 +301,7 @@ else:
   sig_buffer_size = {{args['history']}} * frames
   dtype = np.int16 # TODO grab this from alsa
   {% else %}
-  sig_buffer_size = {{args['shape']}} * ({{args['history']}} + 2) # packet size * (2*history) so that at least `history` packets always buffered
+  sig_buffer_size = {{args['numel']}} * ({{args['history']}} + 2) # packet size * (2*history) so that at least `history` packets always buffered
   dtype = np.{{args['dtype']}}
   {% endif %}
   out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", sig_buffer_size, dtype=dtype)
@@ -318,14 +318,14 @@ else:
   {{sig}}BufVars[3] = sig_buffer_size
   {{sig}}BufVars[0] = {{sig}}BufVars[3]
     {%- else %}
-  {{sig}}BufVars[6] = {{args['shape']}} 
-  {{sig}}BufVars[5] = {{in_signal['schema']['data']['shape']}}  #* sizeof({{sig_types[sig]}}) # TODO for multiple outputs, user will have to specify packet size per signal (distribution of bytes across signals)
+  {{sig}}BufVars[6] = {{args['numel']}} 
+  {{sig}}BufVars[5] = {{in_signal['schema']['data']['numel']}}  #* sizeof({{sig_types[sig]}}) # TODO for multiple outputs, user will have to specify packet size per signal (distribution of bytes across signals)
     {%- endif %}
 {%- endfor %}
 {%- if parser %}
 bufStrtPtr = <{{in_dtype}} *>malloc(in_bytes)
 bufCurPtr = bufStrtPtr
-bufEndPtr = bufStrtPtr + {{in_signal['schema']['data']['shape']}}
+bufEndPtr = bufStrtPtr + {{in_signal['schema']['data']['numel']}}
 {%- else %}
 bufStrtPtr = <{{in_dtype}} *><long>out_sig.__array_interface__['data'][0]
 bufCurPtr = bufStrtPtr
@@ -415,7 +415,6 @@ while(True):
   {{parser_code}}
 {%- endif %}
   # TODO figure out how to step through data for something like line (artificial data packaging per tick)
-  # TODO figure out buffer updates for multiple output signals
 {%- for sig, args in out_signals.iteritems() %}
 
   # debugging

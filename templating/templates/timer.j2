@@ -213,6 +213,7 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems + al_i)) {
         if (nonSourceModuleCheck[al_i]) {
+          printf("Module timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i);
           die("Module timing violation.\n");
         }
         else
