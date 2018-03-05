@@ -4,6 +4,7 @@ import sys
 from toposort import toposort
 import numpy as np
 import psutil
+from ast import literal_eval
 
 # some constants
 TEMPLATE_DIR='./templates'
@@ -45,10 +46,18 @@ OUTPUT_CONSTANTS='constants.h'
 def fix_dtype(dtype):
   if 'int' in dtype:
     return dtype + '_t'
-  elif dtype == 'float':
+  elif dtype == 'float64' or dtype == 'double':
     return 'double'
+  elif dtype == 'float32' or dtype == 'float':
+    return 'float'
   elif dtype == 'object':
     return 'void'
+  return dtype
+
+# change dtype to msgpack format
+def fix_dtype_msgpack(dtype):
+  if 'float' in dtype or 'double' in dtype:
+    dtype = 'float'
   return dtype
 
 # load, setup, and write template
@@ -228,8 +237,13 @@ def parse(config, confirm):
   sync_signals = []
   for signal_name, signal_args in signals.iteritems():
     if signal_args.has_key('args'):
+      if signal_args.has_key('schema'):
+        signal_args['schema']['data']['numel'] = np.prod(np.array(literal_eval(str(signal_args['schema']['data']['shape']))))
       external_signals.append(signal_name)
     else: 
+      print np.array((signal_args['shape']))
+      signal_args['numel'] = np.prod(np.array(literal_eval(str(signal_args['shape']))))
+      signal_args['dtype_msgpack'] = fix_dtype_msgpack(signal_args['dtype'])
       internal_signals.append(signal_name)
 
   # process modules
@@ -296,6 +310,7 @@ def parse(config, confirm):
 
   assert(set(all_names) == set(source_names + module_names + sink_names))
   non_source_names = sink_names + module_names
+  print non_source_names
   topo_children = map(list, list(toposort(dependency_graph)))
   topo_widths = map(len, topo_children) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
   topo_height = len(topo_children)
@@ -337,6 +352,7 @@ def parse(config, confirm):
         out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         out_sig_nums = {x: internal_signals.index(x) for x in out_signals.keys()}
         parser = module_args.has_key('parser') and module_args['parser']
+        print module_args
         if (not parser): assert len(out_signals) == 1 
         default_params = in_signal['schema']['default'] if (in_signal['args']['type'] == 'default') else None
 
@@ -544,8 +560,8 @@ def parse(config, confirm):
         user_code = ""
         with open(os.path.join(MODULE_DIR, name + in_extension), 'r') as f:
           user_code = f.read()
-          if module_language == 'python':
-            user_code = user_code.replace("def ", "cpdef ")
+          # if module_language == 'python':
+          #   user_code = user_code.replace("def ", "cpdef ")
           user_code = user_code.replace("\n", "\n  ")
 
         construct_code = ""
@@ -593,7 +609,8 @@ def parse(config, confirm):
             module_names=module_names,
             source_names=source_names,
             sink_names=sink_names,
-            source_types=map(lambda x: modules[x]['language'], source_names)
+            source_types=map(lambda x: modules[x]['language'], source_names),
+            numpy_incl=np.get_include()
           )
 
   # parse timer parent

@@ -153,9 +153,9 @@ else:
   out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['shape']}} * {{args['history']}}, dtype=np.{{args['dtype']}})
   sa.mlock(out_sigs["{{sig}}"])
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * 8}}
-  {{sig}}BufVars[7] = {{args['shape']}} * ({{args['history']}}) # don't need extra 2 for buffering since "packet size" is predetermined 
-  {{sig}}BufVars[6] = {{args['shape']}} 
-  {{sig}}BufVars[5] = {{args['shape']}}  # packet size and max sampes per tick are the same since we always get the same nubmer of samples
+  {{sig}}BufVars[7] = {{args['numel']}} * ({{args['history']}}) # don't need extra 2 for buffering since "packet size" is predetermined 
+  {{sig}}BufVars[6] = {{args['numel']}} 
+  {{sig}}BufVars[5] = {{args['numel']}}  # packet size and max sampes per tick are the same since we always get the same nubmer of samples
 {% endfor %}
 
 # set signal mask

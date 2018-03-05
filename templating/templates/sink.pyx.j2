@@ -301,7 +301,7 @@ cdef void * retVal
 # numpy signal data structs to hold one millisecond of data 
 ctypedef struct signalsMsData:
 {%- for sig,dtype in sig_types.iteritems() %}
-  {{dtype}} {{sig}}[{{in_signals[sig]['shape']}}]
+  {{dtype}} {{sig}}[{{in_signals[sig]['numel']}}]
 {%- endfor %}
 cdef signalsMsData *pSignalsStructCur
 cdef signalsMsData *pSignalsStructFlushStart
@@ -431,9 +431,9 @@ cdef void* processRequests(void *arg) nogil:
 
     {%- for sig, args in in_signals.iteritems() %}
       msgpack_sbuffer_clear(&mpSignals{{sig|capitalize}}Buf)
-      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['shape']}})
-      for i in range({{args['shape']}}):
-        msgpack_pack_{{args['dtype']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
+      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['numel']}})
+      for i in range({{args['numel']}}):
+        msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
       sql_bind_blob(signalsStmt, {{loop.index}}, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
     {%- endfor %}
 
@@ -577,7 +577,7 @@ sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
 {%- for sig,args in in_signals.iteritems() %}
 signalsTableArr[{{loop.index0}}].colName = "{{sig}}"
 signalsTableArr[{{loop.index0}}].type = "uint64_t"
-signalsTableArr[{{loop.index0}}].number = {{args['shape']}}
+signalsTableArr[{{loop.index0}}].number = {{args['numel']}}
 signalsTableArr[{{loop.index0}}].unit = "TODO"
 signalsTableArr[{{loop.index0}}].data = NULL
 signalsTableArr[{{loop.index0}}].SQLtype = "BLOB"
@@ -595,8 +595,8 @@ sqlite3async_run()
 msgpack_sbuffer_init(&mpSignals{{sig|capitalize}}Buf)
 msgpack_packer_init(&mpSignals{{sig|capitalize}}Pk, &mpSignals{{sig|capitalize}}Buf, msgpack_sbuffer_write)
 # enlarge buffer before main execution
-msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['shape']}})
-for i in range({{args['shape']}}):
+msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['numel']}})
+for i in range({{args['numel']}}):
   msgpack_pack_int16(&mpSignals{{sig|capitalize}}Pk, 0)
 {% endfor %}
 {%- endif %}
