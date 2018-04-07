@@ -562,7 +562,7 @@ def parse(config, confirm):
           user_code = f.read()
           # if module_language == 'python':
           #   user_code = user_code.replace("def ", "cpdef ")
-          user_code = user_code.replace("\n", "\n  ")
+          user_code = user_code.replace("\n", "\n    ")
 
         construct_code = ""
         if module_args.has_key('constructor') and module_args['constructor']:
@@ -570,6 +570,7 @@ def parse(config, confirm):
             module_args['constructor'] = name + "_constructor"
           with open(os.path.join(MODULE_DIR, module_args['constructor'] + in_extension), 'r') as f:
             construct_code = f.read()
+            # construct_code = construct_code.replace("\n","\n  ")
 
         destruct_code = ""
         if module_args.has_key('destructor') and module_args['destructor']:
