@@ -25,6 +25,7 @@ import portio
 {% set test_throughput = (config['config'].has_key('test_throughput') and config['config']['test_throughput']) %}
 {% set sig_type = in_signal['args']['type'] -%}
 {% if sig_type == 'joystick' -%}
+{% set hand = in_signal['args']['hand'] -%}
 import pygame
 {%- endif %}
 
@@ -395,8 +396,19 @@ while(True):
   if (readInput):
     readInput = False
     pygame.event.pump()
-    for axis in range(recvLen):
-      bufCurPtr[axis] = joystick.get_axis(axis)
+    for axis in range(recvLen): # THIS IS THE LINE TO CHANGE FOR HANDEDNESS
+        {% if hand == 'r' -%}
+          axis += 2
+        {%- endif %}
+        bufCurPtr[axis] = joystick.get_axis(axis)
+        
+    # {%- if hand == 'left' %}
+    #   for axis in range(recvLen): # THIS IS THE LINE TO CHANGE FOR HANDEDNESS
+    #     bufCurPtr[axis] = joystick.get_axis(axis)
+    # {%- else %}
+    #   bufCurPtr[0] = joystick.get_axis(2)
+    #   bufCurPtr[1] = joystick.get_axis(3)
+    # {%- endif %}
   else:
     pause()
     continue

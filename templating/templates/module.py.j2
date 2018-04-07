@@ -181,7 +181,10 @@ while(True):
 {%endfor%}
   {#The user can just write a function and expect a dict of inputs and return a dict of outputs #}
   # {{name}}(in_signals, out_signals)
-  {{user_code}}
+  try:
+    {{user_code}}
+  except Exception:
+    die("Module error.")
 {%for dep_name, dep_val in dependencies.iteritems() %}
 
   # printf("module 1 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
