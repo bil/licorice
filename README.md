@@ -17,16 +17,7 @@ Tests:
 
 ## OS/Kernel Prequisities and Setup
 
-Clone the LiCoRICE repository:
-
-```
-$ git clone CODE LINK HERE
-$ cd LiCoRICE
-```
-
-then patch the kernel.
-
-From the top-level LiCoRICE directory:
+Clone the LiCoRICE repository and patch the kernel. From the top-level LiCoRICE directory run:
 
 ```
 /docs/rt_kernel_setup.sh
@@ -35,20 +26,26 @@ From the top-level LiCoRICE directory:
 ## Software Prerequisites and Setup
 
 Python:
+
 ```
 pip install argparse yaml jinja2 toposort psutil literal_eval
+pip install portio SharedArray
 ```
-and install numpy, scipy, cython, and numba from source. OR NUMPY WITH ANACONDA/INTEL MKL?
+
+Install numpy, scipy, cython, and numba from source. OR NUMPY WITH ANACONDA/INTEL MKL?
+DO WE NEED TO DETAIL HOW TO INSTALL THESE FROM SOURCE?
 
 Add the following to your .bashrc file:
+
 ```
 if [ -f ~/LiCoRICE/.bash_aliases ]; then
     . ~/LiCoRICE/.bash_aliases
 fi
 ```
+
 and reload your bashrc:
 ```
-source .bashrc
+source ~/.bashrc
 ```
 
 ## Running the System
