@@ -1,3 +1,4 @@
 *.db
-templating/out
-templating/.out
+lico_tests/*USB*
+lico_tests/jitter_det_data
+lico_test/jitter1
