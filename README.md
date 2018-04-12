@@ -91,7 +91,15 @@ Connect systems 1 and 2 by parallel port. To view signals on an oscilloscope, us
 
 On system 1 (LiCoRICE):
 
+```
+$ r throughput_test.yaml
+```
+
 On system 2 (tick measurement):
+
+```
+$ test_jit
+```
 
 * Latency
 
@@ -100,12 +108,44 @@ Connect systems 1 and 2 with two separate parallel port male to male cables. Res
 On system 1 (LiCoRICE):
 
 ```
-r lico
+$ r latency_par_test.yaml
 ```
 
 On system 2 (tick send and measurement):
 
+On first bash shell:
+
+```
+test_lat1
+```
+
+On second bash shell:
+
+```
+test_lat2
+```
 
 * Throughput
 
+
+First, open templating/throughput_test.yaml and set the IP addresses of eth_in and eth_out to match the local machine's IP address and the second machine's IP address, respectively. Feel free to change the ports as well.
+
+Then, open lico_tests/throughput_writer.c and change the IP and port to match that of eth_in as set above. 
+
+On system 1 (LiCoRICE):
+
+```
+$ r throughput_test.yaml
+```
+
+On system 2 (data generation)
+
+```
+$ test_thru
+```
+
 * CPU Crunch
+
+```
+$ r numba_burn_test.yaml
+```
