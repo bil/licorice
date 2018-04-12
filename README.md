@@ -41,6 +41,12 @@ Finally, install the remaining dependencies with pip:
 pip install argparse yaml jinja2 toposort psutil literal_eval portio SharedArray
 ```
 
+Install sqlite3:
+
+```
+$ sudo apt-get install sqlite3 libsqlite3-dev
+```
+
 Add the following to your.bashrc file:
 
 ```
