@@ -23,19 +23,25 @@ Clone the LiCoRICE repository and patch the kernel. From the top-level LiCoRICE 
 /docs/rt_kernel_setup.sh
 ```
 
+and reboot to finish installation.
+
 ## Software Prerequisites and Setup
 
 Python:
 
+First install numpy from source.
+<!-- OR WITH ANACONDA/INTEL MKL? -->
+
+Next, install scipy, cython, and numba from source. 
+<!-- DO WE NEED TO DETAIL THIS? -->
+
+Finally, install the remaining dependencies with pip:
+
 ```
-pip install argparse yaml jinja2 toposort psutil literal_eval
-pip install portio SharedArray
+pip install argparse yaml jinja2 toposort psutil literal_eval portio SharedArray
 ```
 
-Install numpy, scipy, cython, and numba from source. OR NUMPY WITH ANACONDA/INTEL MKL?
-DO WE NEED TO DETAIL HOW TO INSTALL THESE FROM SOURCE?
-
-Add the following to your .bashrc file:
+Add the following to your.bashrc file:
 
 ```
 if [ -f ~/LiCoRICE/.bash_aliases ]; then
@@ -45,7 +51,7 @@ fi
 
 and reload your bashrc:
 ```
-source ~/.bashrc
+$ source ~/.bashrc
 ```
 
 ## Running the System
@@ -56,7 +62,8 @@ $ r throughput_test.yaml
 
 ## Tests
 
-* get parallel port base number
+To get parallel port base numbers:
+
 ```
 $ cat /proc/ioports | grep parport
 ```
