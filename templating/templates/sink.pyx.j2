@@ -13,14 +13,12 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
-import pygame # TODO CHANGE LATER
 import SharedArray as sa
 import numpy as np
 cimport numpy as np
 cimport cython
 import ctypes
 import portio
-import time
 
 cdef extern from "utilityFunctions.h" nogil:
   enum: __GNU_SOURCE
