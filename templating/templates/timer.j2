@@ -103,9 +103,11 @@ static unsigned long numTicksMeasured = 0;
 {%- endif %}
 
 // INSERTED
+{%- if parport_tick_addr %}
 static struct timespec record_timer;
 static long curTime;
 static time_t curSec;
+{%- endif %}
 static FILE *f;
 
 void handle_exit(int exitStatus) {
@@ -167,7 +169,6 @@ static void check_children() {
 {% if parport_tick_addr -%}
   // flip bits and output to parallel port
   outb(outVal,0x{{parport_tick_addr}});
-  printf("%d\n", outVal);
   outVal = ~outVal;
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
