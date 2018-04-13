@@ -167,6 +167,7 @@ static void check_children() {
 {% if parport_tick_addr -%}
   // flip bits and output to parallel port
   outb(outVal,0x{{parport_tick_addr}});
+  printf("%d\n", outVal);
   outVal = ~outVal;
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
