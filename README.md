@@ -41,6 +41,12 @@ Finally, install the remaining dependencies with pip:
 pip install argparse yaml jinja2 toposort psutil literal_eval portio SharedArray
 ```
 
+Install sqlite3:
+
+```
+$ sudo apt-get install sqlite3 libsqlite3-dev
+```
+
 Add the following to your.bashrc file:
 
 ```
@@ -79,13 +85,48 @@ $ ./systemStartTime.sh N
 
 where the output is the average system start time over N tests in ns
 
+* Throughput
+
+
+First, open templating/throughput_test.yaml and set the IP addresses of eth_in and eth_out to match the local machine's IP address and the second machine's IP address, respectively. Feel free to change the ports as well.
+
+Then, open lico_tests/throughput_writer.c and change the IP and port to match that of eth_in as set above. 
+
+On system 1 (LiCoRICE):
+
+```
+$ r throughput_test.yaml
+```
+
+On system 2 (data generation)
+
+```
+$ test_thru
+```
+
 * Jitter
 
 Connect systems 1 and 2 by parallel port. To view signals on an oscilloscope, use a parallel port breakout board and connect any of the data pins (2-9). Any of pins 18-25 are ground.
 
-On system 1 (LiCoRICE):
+On system 1 (tick measurement):
 
-On system 2 (tick measurement):
+Open lico_tests/jitter_det.c and replace PARA_PORT_BASE_ADDR with the parallel port base address receiving ticks from system 2.
+
+Run the tick recorder:
+```
+$ test_jit
+```
+
+On system 2 (LiCoRICE):
+
+Open templating/throughput_test.yaml and replace config/parport_tick_addr with the  parallel port base address sending ticks to system 1.
+
+Run LiCoRICE:
+```
+$ r throughput_test.yaml
+```
+
+The jitter test may also be run while system 2 is sending data to system 1 over ethernet as in the throughput test.
 
 * Latency
 
@@ -93,13 +134,34 @@ Connect systems 1 and 2 with two separate parallel port male to male cables. Res
 
 On system 1 (LiCoRICE):
 
+Open templating/latency_par_test.yaml, replace par_in/args/addr with the parallel port base address reading in from system 2 and replace par_out/args/addr with the parallel port base address writing to system 2.
+
 ```
-r lico
+$ r latency_par_test.yaml
 ```
 
 On system 2 (tick send and measurement):
 
+Open lico_tests/latency_par_writer.c and replace PARA_PORT_BASE_ADDR with the parallel port base address writing to system 1. Open lico_tests/jitter_det.c and replace PARA_PORT_BASE_ADDR with the parallel port base address reading from system 1.
 
-* Throughput
+On first bash shell:
+
+```
+test_lat1
+```
+
+On second bash shell:
+
+```
+test_lat2
+```
 
 * CPU Crunch
+
+```
+$ r numba_burn_test.yaml
+```
+
+## Interpreting Results
+
+TODO: put in python file used to graph stuff
