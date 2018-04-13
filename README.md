@@ -131,7 +131,7 @@ $ test_jit
 To plot the data as a histogram, run:
 
 ```
-python jitter.py
+$ python jitter.py
 ```
 
 from the lico_tests/ directory.
@@ -140,7 +140,7 @@ The jitter test may also be run while system 2 is sending data to system 1 over 
 
 * Latency
 
-Connect systems 1 and 2 with two separate parallel port male to male cables. Results can be viewed on an oscilloscope as detailed above.
+Connect systems 1 and 2 with two separate parallel port male to male cables. Results can be viewed on an oscilloscope as detailed above. One cable will be used as system 2 output to system 1 input and the other will be used as system 1 output to system 2 input. The choice is arbitrary.
 
 On system 1 (LiCoRICE):
 
@@ -157,21 +157,25 @@ Open lico_tests/latency_par_writer.c and replace PARA_PORT_BASE_ADDR with the pa
 On first bash shell:
 
 ```
-test_lat1
+$ test_lat1
 ```
 
 On second bash shell:
 
 ```
-test_lat2
+$ test_lat2
 ```
 
-* CPU Crunch
+To plot the data as a histogram, run: 
+
+```
+$ python latency.py
+```
+
+from the lico_tests/ directory.
+
+* CPU Crunch with numba
 
 ```
 $ r numba_burn_test.yaml
 ```
-
-## Interpreting Results
-
-TODO: put in python file used to graph stuff

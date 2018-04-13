@@ -685,7 +685,6 @@ while(True):
     if (sendto(s, outBuf + sentBytes, 1472, 0, <sockaddr *>&si_other, slen)==-1):
       die("sendto() failed")
 {%- elif sig_type == 'parport' %}
-  print outBuf[0]
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'disk' %}
   {%- for sig,dtype in sig_types.iteritems() %}
