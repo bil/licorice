@@ -103,9 +103,11 @@ static unsigned long numTicksMeasured = 0;
 {%- endif %}
 
 // INSERTED
+{%- if parport_tick_addr %}
 static struct timespec record_timer;
 static long curTime;
 static time_t curSec;
+{%- endif %}
 static FILE *f;
 
 void handle_exit(int exitStatus) {
