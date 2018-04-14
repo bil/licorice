@@ -2,6 +2,8 @@
 
 LiCoRICE is an application layer that allows for soft realtime processing of data, but for reliable timing the application layer must be run on a machine that is properly configured and patched with the RTLinux kernel patch. This artifact provides necessary files and instructions to reproduce experiments from the LCTES 2018 paper by Mehrotra\*, Dasgupta\*, et al. from a fresh install of Ubuntu 16.04 Server LTS.
 
+We recognize that this is a non-typical hardware and software configuration and we are happy to provide the artifact committee with remote access to our preconfigured development systems to verify the artifacts.
+
 ## Hardware Prerequisites
 
 LiCoRICE setup:
@@ -28,7 +30,7 @@ From the top-level LiCoRICE directory, run:
 ./docs/rt_kernel_setup.sh
 ```
 
-This script will take a couple hours to complete.
+This script will take one to two hours to complete.
 Reboot to finish installation when notified.
 A USB keyboard will not work after this point (USB support is disabled in this realtime kernel), use a PS/2 keyboard or ssh into the system.
 
@@ -39,20 +41,21 @@ From the top-level LiCoRICE directory, run:
 ./docs/venv_setup.sh
 ```
 
-Add the following to your.bashrc file:
+This script will take 15 to 30 minutes to complete.
 
+Bind to the virtualenv:
 ```
-if [ -f ~/LiCoRICE/.bash_aliases ]; then
-    . ~/LiCoRICE/.bash_aliases
-fi
+source ~/venv/bin/activate
 ```
 
-and reload your bashrc:
+Source the LiCoRICE aliases:
 ```
-$ source ~/.bashrc
+source ~/LiCoRICE/.bash_aliases
 ```
 
 ## Running the System
+
+Tests are called with the following bash alias, whcih parses, compiles, and then executes a specified model.
 
 ```
 $ r throughput_test.yaml
