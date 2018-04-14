@@ -42,4 +42,7 @@ sudo dpkg -i $KERNEL_DIR/linux-image-4.4.12-licorice-rt19_4.4.12-licorice-rt19-1
 sudo dpkg -i $KERNEL_DIR/linux-headers-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
 
 # reboot when done
+echo ""
+echo ""
+echo "Kernel installation complete. Please reboot the system."
 #sudo reboot
