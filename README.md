@@ -1,6 +1,6 @@
 ## Artifact for "#55  WIP: An open-source realtime computational platform," LCTES 2018
 
-LiCoRICE is an application layer that allows for soft realtime processing of data, but for reliable timing the application layer must be run on a machine that is properly configured and patched with the RTLinux kernel patch. This artifact provides necessary files and instructions to reproduce experiments from the LCTES 2018 paper by Mehrotra, Dasgupta, et al. from a clean install of Ubuntu 16.04 LTS.
+LiCoRICE is an application layer that allows for soft realtime processing of data, but for reliable timing the application layer must be run on a machine that is properly configured and patched with the RTLinux kernel patch. This artifact provides necessary files and instructions to reproduce experiments from the LCTES 2018 paper by Mehrotra\*, Dasgupta\*, et al. from a fresh install of Ubuntu 16.04 Server LTS.
 
 ## Hardware Prerequisites
 
@@ -12,39 +12,31 @@ LiCoRICE setup:
 Tests: 
 * 2 identical LiCoRICE setups
 * 2 parallel ports on each machine 
+* PS/2 keyboard (or ssh access)
 * 1- or 10- gigabit ethernet cards on both machines
 * oscilloscope (to verify and visualize jitter and latency measurements during runtime)
 
 ## OS/Kernel Prequisities and Setup
 
-Clone the LiCoRICE repository and patch the kernel. From the top-level LiCoRICE directory run:
+* Clone the LiCoRICE repository.
+  * the name of the repostiroy directoy *MUST* be LiCoRICE for the scripts to work
+
+Patch the kernel with the following script.
+From the top-level LiCoRICE directory, run:
 
 ```
-/docs/rt_kernel_setup.sh
+./docs/rt_kernel_setup.sh
 ```
 
-and reboot to finish installation.
+This script will take a couple hours to complete.
+Reboot to finish installation when notified.
+A USB keyboard will not work after this point (USB support is disabled in this realtime kernel), use a PS/2 keyboard or ssh into the system.
 
 ## Software Prerequisites and Setup
 
-Python:
-
-First install numpy from source.
-<!-- OR WITH ANACONDA/INTEL MKL? -->
-
-Next, install scipy, cython, and numba from source. 
-<!-- DO WE NEED TO DETAIL THIS? -->
-
-Finally, install the remaining dependencies with pip:
-
+From the top-level LiCoRICE directory, run:
 ```
-pip install argparse yaml jinja2 toposort psutil literal_eval portio SharedArray
-```
-
-Install sqlite3 and matplotlib:
-
-```
-$ sudo apt-get install sqlite3 libsqlite3-dev python-matplotlib
+./docs/venv_setup.sh
 ```
 
 Add the following to your.bashrc file:
