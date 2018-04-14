@@ -41,10 +41,10 @@ Finally, install the remaining dependencies with pip:
 pip install argparse yaml jinja2 toposort psutil literal_eval portio SharedArray
 ```
 
-Install sqlite3:
+Install sqlite3 and matplotlib:
 
 ```
-$ sudo apt-get install sqlite3 libsqlite3-dev
+$ sudo apt-get install sqlite3 libsqlite3-dev python-matplotlib
 ```
 
 Add the following to your.bashrc file:
@@ -108,29 +108,39 @@ $ test_thru
 
 Connect systems 1 and 2 by parallel port. To view signals on an oscilloscope, use a parallel port breakout board and connect any of the data pins (2-9). Any of pins 18-25 are ground.
 
-On system 1 (tick measurement):
-
-Open lico_tests/jitter_det.c and replace PARA_PORT_BASE_ADDR with the parallel port base address receiving ticks from system 2.
-
-Run the tick recorder:
-```
-$ test_jit
-```
-
-On system 2 (LiCoRICE):
+On system 1 (LiCoRICE):
 
 Open templating/throughput_test.yaml and replace config/parport_tick_addr with the  parallel port base address sending ticks to system 1.
 
 Run LiCoRICE:
+
 ```
 $ r throughput_test.yaml
 ```
+
+On system 2 (tick measurement):
+
+Open lico_tests/jitter_det.c and replace PARA_PORT_BASE_ADDR with the parallel port base address receiving ticks from system 2.
+
+Run the tick recorder:
+
+```
+$ test_jit
+```
+
+To plot the data as a histogram, run:
+
+```
+$ python jitter.py
+```
+
+from the lico_tests/ directory.
 
 The jitter test may also be run while system 2 is sending data to system 1 over ethernet as in the throughput test.
 
 * Latency
 
-Connect systems 1 and 2 with two separate parallel port male to male cables. Results can be viewed on an oscilloscope as detailed above.
+Connect systems 1 and 2 with two separate parallel port male to male cables. Results can be viewed on an oscilloscope as detailed above. One cable will be used as system 2 output to system 1 input and the other will be used as system 1 output to system 2 input. The choice is arbitrary.
 
 On system 1 (LiCoRICE):
 
@@ -147,21 +157,25 @@ Open lico_tests/latency_par_writer.c and replace PARA_PORT_BASE_ADDR with the pa
 On first bash shell:
 
 ```
-test_lat1
+$ test_lat1
 ```
 
 On second bash shell:
 
 ```
-test_lat2
+$ test_lat2
 ```
 
-* CPU Crunch
+To plot the data as a histogram, run: 
+
+```
+$ python latency.py
+```
+
+from the lico_tests/ directory.
+
+* CPU Crunch with numba
 
 ```
 $ r numba_burn_test.yaml
 ```
-
-## Interpreting Results
-
-TODO: put in python file used to graph stuff
