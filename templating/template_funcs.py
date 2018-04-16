@@ -9,12 +9,12 @@ from ast import literal_eval
 # some constants
 TEMPLATE_DIR='./templates'
 GENERATE_DIR='./generate'
-MODULE_DIR='./modules'
-OUTPUT_DIR='./out'
+MODULE_DIR='../../run/modules'
+OUTPUT_DIR='../../run/out'
 EXPORT_DIR='./export'
 
-TMP_MODULE_DIR='./.modules'
-TMP_OUTPUT_DIR='./.out'
+TMP_MODULE_DIR='../../run/modules'
+TMP_OUTPUT_DIR='../../run/out'
 
 TEMPLATE_MODULE_C='module.c.j2'
 TEMPLATE_MODULE_PY='module.py.j2'
