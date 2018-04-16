@@ -6,7 +6,7 @@
 
 # set some variables
 REPO_DIR=`pwd`
-KERNEL_DIR=~/rt
+KERNEL_DIR=~/rt_kernel
 TMP_DIR=/tmp
 
 # update to most recent version of packages, install essentials, do some cleanup
@@ -27,7 +27,7 @@ cd $KERNEL_DIR
 tar -zxvf $TMP_DIR/linux-4.4.12.tar.gz
 
 # copy kernel .config file from git
-cp $REPO_DIR/.config $KERNEL_DIR/linux-4.4.12/.config
+cp $REPO_DIR/init_scripts/.config $KERNEL_DIR/linux-4.4.12/.config
 
 # patch kernel with realtime patch
 cd $KERNEL_DIR/linux-4.4.12
@@ -41,7 +41,7 @@ CONCURRENCY_LEVEL=9 fakeroot make-kpkg --initrd --append-to-version=-licorice bi
 sudo dpkg -i $KERNEL_DIR/linux-image-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
 sudo dpkg -i $KERNEL_DIR/linux-headers-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
 
-# reboot when done
+# notify reboot when done
 echo ""
 echo ""
 echo "Kernel installation complete. Please reboot the system."
