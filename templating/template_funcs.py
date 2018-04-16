@@ -101,7 +101,7 @@ def generate(paths, model, confirm):
       external_signals.append(signal_name)
 
   for module_name, module_args in modules.iteritems():
-    if all(map(lambda x: x in external_signals, module_args['in'])):
+    if 'in' in module_args and all(map(lambda x: x in external_signals, module_args['in'])):
       # source
       print " - " + module_name + " (source)"
 
@@ -319,7 +319,7 @@ def parse(paths, model, confirm):
   num_cores_used = 1 + len(source_names) + topo_max_width + len(sink_names) + num_threaded_sinks # TODO put threaded sink threads on cores w modules
   num_cores_avail = psutil.cpu_count()
 
-  assert(num_cores_used <= num_cores_avail)
+#  assert(num_cores_used <= num_cores_avail)
 
   # process external signals
   print "Inputs: "
@@ -520,14 +520,15 @@ def parse(paths, model, confirm):
         for out_sig in module_args['out']:
           for tmp_name in all_names:
             mod = modules[tmp_name]
-            for in_sig in mod['in']:
-              if (in_sig == out_sig):
-                child_index = all_names.index(tmp_name)
-                parent_index = all_names.index(name)
-                if dependencies.has_key(in_sig):
-                  dependencies[in_sig] += 1
-                else:
-                  dependencies[in_sig] = 1
+            if 'in' in mod :
+              for in_sig in mod['in']:
+                if (in_sig == out_sig):
+                  child_index = all_names.index(tmp_name)
+                  parent_index = all_names.index(name)
+                  if dependencies.has_key(in_sig):
+                    dependencies[in_sig] += 1
+                  else:
+                    dependencies[in_sig] = 1
         for dependency in dependencies:
           #store num dependencies in 0 and location of sem in 1
           dependencies[dependency] = (dependencies[dependency], sig_sem_dict[dependency])
@@ -535,17 +536,20 @@ def parse(paths, model, confirm):
         depends_on = []
         default_sig_name = ''
         default_params = None
-        for in_sig in module_args['in']:
-          if (in_sig in external_signals) and (signals[in_sig]['args']['type'] == 'default'):
-            default_sig_name = in_sig
-            default_params = signals[in_sig]['schema']['default']
-          if in_sig in source_outputs.keys():
-            source_outputs[in_sig] += 1
-          else: 
-            # store the signal name in 0 and location of sem in 1
-            depends_on.append((in_sig, sig_sem_dict[in_sig]))
+        if 'in' in module_args :
+          for in_sig in module_args['in']:
+            if (in_sig in external_signals) and (signals[in_sig]['args']['type'] == 'default'):
+              default_sig_name = in_sig
+              default_params = signals[in_sig]['schema']['default']
+            if in_sig in source_outputs.keys():
+              source_outputs[in_sig] += 1
+            else: 
+              # store the signal name in 0 and location of sem in 1
+              depends_on.append((in_sig, sig_sem_dict[in_sig]))
 
-        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
+          in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
+        else:
+          in_signals = {}
         out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         in_sig_types = {}
         for sig, args in in_signals.iteritems():
