@@ -29,26 +29,26 @@ An example directory structure for an experimental rig would be:
 
 2. Compile realtime kernel
 
-   From the top-level LiCoRICE directory, run:
+    From the top-level LiCoRICE directory, run:
 
     ```
     ./docs/rt_kernel_setup.sh
     ```
 
-   This script will take one to two hours to complete.
-   Reboot to finish installation when notified.
-   A USB keyboard will not work after this point (USB support is disabled in this realtime kernel), use a PS/2 keyboard or ssh into the system.
+    This script will take one to two hours to complete.
+    Reboot to finish installation when notified.
+    A USB keyboard will not work after this point (USB support is disabled in this realtime kernel), use a PS/2 keyboard or ssh into the system.
 
 3. Python virtualenv setup
 
-   From the top-level LiCoRICE directory, run:
+    From the top-level LiCoRICE directory, run:
 
 
     ```
     ./docs/venv_setup.sh
     ```
 
-   This script will take 15 to 30 minutes to complete.
+    This script will take 15 to 30 minutes to complete.
 
 4. Bind to the virtualenv:
 
