@@ -45,7 +45,7 @@ paths['output'] = os.path.join(config['paths']['experiments'], 'run/out')
 paths['export'] = os.path.join(config['paths']['experiments'], 'run/export')
 
 paths['tmp_modules'] = os.path.join(config['paths']['experiments'], '.modules')
-paths['tmp_output'] = os.path.join(config['paths']['experiments'], '.out')
+paths['tmp_output'] = os.path.join(config['paths']['experiments'], 'run/.out')
 
 
 if args.generate == True:
