@@ -31,7 +31,7 @@ An example directory structure for an experimental rig would be:
 
     From the top-level LiCoRICE directory, run:
 
-    ```
+    ```bash
     ./docs/rt_kernel_setup.sh
     ```
 
@@ -44,7 +44,7 @@ An example directory structure for an experimental rig would be:
     From the top-level LiCoRICE directory, run:
 
 
-    ```
+    ```bash
     ./docs/venv_setup.sh
     ```
 
@@ -52,12 +52,23 @@ An example directory structure for an experimental rig would be:
 
 4. Bind to the virtualenv:
 
-    ```
+    ```bash
     source ~/venv/bin/activate
     ```
 
 5. Source the LiCoRICE aliases:
 
-    ```
+    ```bash
     source ~/LiCoRICE/.bash_aliases
     ```
+
+### Configuration
+
+LiCoRICE needs a config YAML file that specifies paths.
+
+An example config file appears below:
+```yaml
+paths :
+  experiments : /home/bil/rig
+  licorice : /home/bil/rig/licorice
+```
