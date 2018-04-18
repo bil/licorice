@@ -31,9 +31,7 @@ An example directory structure for an experimental rig would be:
 
    From the top-level LiCoRICE directory, run:
 
-    ```
     ./docs/rt_kernel_setup.sh
-    ```
 
    This script will take one to two hours to complete.
    Reboot to finish installation when notified.
@@ -42,20 +40,15 @@ An example directory structure for an experimental rig would be:
 3. Python virtualenv setup
 
    From the top-level LiCoRICE directory, run:
-    ```
+
     ./docs/venv_setup.sh
-    ```
 
    This script will take 15 to 30 minutes to complete.
 
 4. Bind to the virtualenv:
 
-    ```
     source ~/venv/bin/activate
-    ```
 
 5. Source the LiCoRICE aliases:
 
-    ```
     source ~/LiCoRICE/.bash_aliases
-    ```
