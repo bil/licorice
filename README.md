@@ -17,7 +17,7 @@ LiCoRICE is designed to be a submodule of a larger repository.
 This larger repository is where the configuration, code, and binaries for the models that LiCoRICE are stored.
 An example directory structure for an experimental rig would be:
 
-* rig
+* `rig`
   * `licorice` (this is the licorice repository here)
   * `models` (directory where the YAML files specifying the various LiCoRICE models)
   * `modules` (directory where the code for the various LiCoRICE modules is kept)
@@ -31,7 +31,9 @@ An example directory structure for an experimental rig would be:
 
    From the top-level LiCoRICE directory, run:
 
+    ```
     ./docs/rt_kernel_setup.sh
+    ```
 
    This script will take one to two hours to complete.
    Reboot to finish installation when notified.
@@ -41,14 +43,20 @@ An example directory structure for an experimental rig would be:
 
    From the top-level LiCoRICE directory, run:
 
+    ```
     ./docs/venv_setup.sh
+    ```
 
    This script will take 15 to 30 minutes to complete.
 
 4. Bind to the virtualenv:
 
+    ```
     source ~/venv/bin/activate
+    ```
 
 5. Source the LiCoRICE aliases:
 
+    ```
     source ~/LiCoRICE/.bash_aliases
+    ```
