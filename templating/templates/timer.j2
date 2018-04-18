@@ -353,7 +353,7 @@ int main(int argc, char* argv[]) {
   startStartNSec = startTimer.tv_nsec;
 {% endif %}
 
-  f = fopen("/home/a/output_filename","w");
+  f = fopen("/tmp/output_log","w");
   if (f == NULL) {
     printf("Error opening file!\n");
     handle_exit(1);

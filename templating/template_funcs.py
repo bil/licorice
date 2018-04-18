@@ -319,7 +319,7 @@ def parse(paths, model, confirm):
   num_cores_used = 1 + len(source_names) + topo_max_width + len(sink_names) + num_threaded_sinks # TODO put threaded sink threads on cores w modules
   num_cores_avail = psutil.cpu_count()
 
-#  assert(num_cores_used <= num_cores_avail)
+  assert(num_cores_used <= num_cores_avail)
 
   # process external signals
   print "Inputs: "
