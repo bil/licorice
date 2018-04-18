@@ -100,3 +100,5 @@ The root of the `rig` directory is a good place to store this config file.
     ```bash
     sudo PYTHONPATH=$VIRTUAL_ENV/lib/python2.7/site-packages taskset 0x1 nice -20 ./timer
     ```
+
+    Note: Do not forget to clear out of the shared memory objects in `/dev/shm` before subsequent runs.
