@@ -31,6 +31,7 @@ An example directory structure for an experimental rig would be:
 
    From the top-level LiCoRICE directory, run:
 
+
    ```
    ./docs/rt_kernel_setup.sh
    ```
@@ -42,6 +43,7 @@ An example directory structure for an experimental rig would be:
 3. Python virtualenv setup
 
    From the top-level LiCoRICE directory, run:
+
 
    ```
    ./docs/venv_setup.sh
