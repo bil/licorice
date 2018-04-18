@@ -18,10 +18,10 @@ This larger repository is where the configuration, code, and binaries for the mo
 An example directory structure for an experimental rig would be:
 
 * rig
-  * licorice (this is the licorice repository here)
-  * models (directory where the YAML files specifying the various LiCoRICE models)
-  * modules (directory where the code for the various LiCoRICE modules is kept)
-  * run (output directory where the code and compiled binaries of the LiCoRICE model is output to)
+  * `licorice` (this is the licorice repository here)
+  * `models` (directory where the YAML files specifying the various LiCoRICE models)
+  * `modules` (directory where the code for the various LiCoRICE modules is kept)
+  * `run` (output directory where the code and compiled binaries of the LiCoRICE model is output to)
 
 ### Installation 
 
