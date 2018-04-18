@@ -72,3 +72,31 @@ paths :
   experiments : /home/bil/rig
   licorice : /home/bil/rig/licorice
 ```
+
+The root of the `rig` directory is a good place to store this config file.
+
+## Usage
+
+1. Parsing
+
+    Once a LiCoRICE model is configured, it must be parsed to generate the code.
+    This is done with the following command, and assumes that the shell is bound to the virtualenv:
+
+    ```bash
+    python <path to LiCoRICE repository>/templating/lico_parse.py -c <path to LiCoRICE config file> -m <path to YAML model file to parse>
+    ```
+
+2. Compiling
+
+    Once parsed, the code is ready to be compiled.
+    Compiling is done in the `run/out` directory, where the output of the parsed code lives.
+
+    ```bash
+    make clean && make
+    ```
+3. Running
+
+    After compilation, the model can be run via the following command:
+    ```bash
+    sudo PYTHONPATH=$VIRTUAL_ENV/lib/python2.7/site-packages taskset 0x1 nice -20 ./timer
+    ```
