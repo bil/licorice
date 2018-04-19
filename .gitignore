@@ -1,4 +1,1 @@
-*.db
-lico_tests/*USB*
-lico_tests/jitter_det_data
-lico_test/jitter1
+*.pyc
