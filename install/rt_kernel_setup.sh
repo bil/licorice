@@ -27,7 +27,7 @@ cd $KERNEL_DIR
 tar -zxvf $TMP_DIR/linux-4.4.12.tar.gz
 
 # copy kernel .config file from git
-cp $REPO_DIR/init_scripts/.config $KERNEL_DIR/linux-4.4.12/.config
+cp $REPO_DIR/install/.config $KERNEL_DIR/linux-4.4.12/.config
 
 # patch kernel with realtime patch
 cd $KERNEL_DIR/linux-4.4.12
