@@ -3,13 +3,13 @@
 # this will setup the base packages and venv necessary to make the LiCoRICE system work
 # this should be performed after the realtime kernel is installed
 
-NUM_CPUS=4
+NUM_CPUS=`grep processor /proc/cpuinfo|wc -l`
 
 TMP=/tmp
 SRC_NUMPY=$TMP/numpy
 SRC_SCIPY=$TMP/scipy
 
-VENV_DIR=~/venv
+VENV_DIR=~/lico_venv
 
 
 # install some packages

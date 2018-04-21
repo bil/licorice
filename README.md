@@ -29,53 +29,50 @@ An example directory structure for an experimental rig would be:
 
 2. Compile realtime kernel
 
-    From the top-level LiCoRICE directory, run:
+    From the top-level LiCoRICE repository directory, run:
 
     ```bash
-    ./docs/rt_kernel_setup.sh
+    ./install/kernel_setup.sh
     ```
 
     This script will take one to two hours to complete.
     Reboot to finish installation when notified.
-    A USB keyboard will not work after this point (USB support is disabled in this realtime kernel), use a PS/2 keyboard or ssh into the system.
+    Any USB keyboards will not work after this point (USB support is disabled in this realtime kernel), use a PS/2 keyboard or ssh into the system.
 
 3. Python virtualenv setup
 
     From the top-level LiCoRICE directory, run:
 
-
     ```bash
-    ./docs/venv_setup.sh
+    ./install/venv_setup.sh
     ```
 
     This script will take 15 to 30 minutes to complete.
 
-4. Bind to the virtualenv:
+4. Bind to the newly built virtualenv:
 
     ```bash
-    source ~/venv/bin/activate
+    source ~/lico_venv/bin/activate
     ```
 
-5. Source the LiCoRICE aliases:
+5. Source the LiCoRICE activation script:
 
     ```bash
-    source ~/LiCoRICE/.bash_aliases
+    source licorice_activate.sh
     ```
 
-### Configuration
+    This will make a number of shell functions available, all start with `licorice_`.
 
-LiCoRICE needs a config YAML file that specifies paths.
-
-An example config file appears below:
-```yaml
-paths :
-  experiments : /home/bil/rig
-  licorice : /home/bil/rig/licorice
-```
-
-The root of the `rig` directory is a good place to store this config file.
 
 ## Usage
+
+In general, only one command needs to be issued to parse, compile, and run a model:
+
+```bash
+licorice_go <model_name>
+```
+
+This performs the following actions:
 
 1. Parsing
 
@@ -83,22 +80,20 @@ The root of the `rig` directory is a good place to store this config file.
     This is done with the following command, and assumes that the shell is bound to the virtualenv:
 
     ```bash
-    python <path to LiCoRICE repository>/templating/lico_parse.py -c <path to LiCoRICE config file> -m <path to YAML model file to parse>
+    licorice_parse_model <model_name>
     ```
 
 2. Compiling
 
     Once parsed, the code is ready to be compiled.
-    Compiling is done in the `run/out` directory, where the output of the parsed code lives.
 
     ```bash
-    make clean && make
+    licorice_compile_model
     ```
 3. Running
 
-    After compilation, the model can be run via the following command:
+    After compilation, the model can then be run:
     ```bash
-    sudo PYTHONPATH=$VIRTUAL_ENV/lib/python2.7/site-packages taskset 0x1 nice -20 ./timer
+    licorice_run_model
     ```
 
-    Note: Do not forget to clear out of the shared memory objects in `/dev/shm` before subsequent runs.

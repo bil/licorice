@@ -5,7 +5,6 @@ import template_funcs
 
 # do some argument parsing
 arg_parser = argparse.ArgumentParser(description='LiCoRICE config parser.')
-arg_parser.add_argument('-c', '--config', type=argparse.FileType('r'), help='YAML config file for experiment')
 arg_parser.add_argument('-m', '--model', type=argparse.FileType('r'), help='YAML model file to parse')
 arg_parser.add_argument('-g', '--generate', action='store_true', help='generate user code templates')
 arg_parser.add_argument('-e', '--export', action='store_true', help='export current project')
@@ -18,11 +17,10 @@ if args.export == True:
 
 args = arg_parser.parse_args()
 
-if args.config == None:
-  print "Must specify config file."
+if args.model == None:
+  print "Must specify model file."
   exit()
 
-config = yaml.safe_load(args.config)
 model = yaml.safe_load(args.model)
 
 # this assumes that a top level object with three primary mappings is loaded
@@ -36,16 +34,18 @@ if (set(top_level) != set(model.keys())):
   exit()
 
 # set some paths
+LICORICE_ROOT = os.environ['LICORICE_ROOT']
+RIG_ROOT = os.path.join(LICORICE_ROOT, '..')
 paths = {}
-paths['templates'] = os.path.join(config['paths']['licorice'], 'templating/templates')
-paths['generator'] = os.path.join(config['paths']['licorice'], 'templating/generators')
+paths['templates'] = os.path.join(LICORICE_ROOT, 'templating/templates')
+paths['generator'] = os.path.join(LICORICE_ROOT, 'templating/generators')
 
-paths['modules'] = os.path.join(config['paths']['experiments'], 'modules')
-paths['output'] = os.path.join(config['paths']['experiments'], 'run/out')
-paths['export'] = os.path.join(config['paths']['experiments'], 'run/export')
+paths['modules'] = os.path.join(RIG_ROOT, 'modules')
+paths['output'] = os.path.join(RIG_ROOT, 'run/out')
+paths['export'] = os.path.join(RIG_ROOT, 'run/export')
 
-paths['tmp_modules'] = os.path.join(config['paths']['experiments'], '.modules')
-paths['tmp_output'] = os.path.join(config['paths']['experiments'], 'run/.out')
+paths['tmp_modules'] = os.path.join(RIG_ROOT, '.modules')
+paths['tmp_output'] = os.path.join(RIG_ROOT, 'run/.out')
 
 
 if args.generate == True:
