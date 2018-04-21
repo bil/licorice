@@ -9,13 +9,6 @@ INSTALL_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 KERNEL_DIR=~/rt_kernel
 TMP_DIR=/tmp
 
-# weak sanity check to test if in the correct directory
-if [ ! -d "install" ] || [ ! -d "templating" ] || [ ! -f "LICENSE" ] || [ ! -f "README.md" ] || [ ! -f "licorice_activate.sh" ]
-then
-  printf "%s\n\n" "Not in LiCoRICE repository directory! Run script from LiCoRICE repository root."
-  return
-fi
-
 # update to most recent version of packages, install essentials, do some cleanup
 sudo apt-get update
 sudo apt-get -y upgrade
