@@ -1,40 +1,49 @@
 # run via: source licorice_activate.sh
 # this MUST be run from within the licorice repository directory
 
-LICORICE_DIR=`pwd`
-LICORICE_TEMPLATING_DIR=$LICORICE_DIR/templating
+LICORICE_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+LICORICE_TEMPLATING_DIR=$LICORICE_ROOT/templating
 LICORICE_EXEC_STR="sudo PYTHONPATH=$VIRTUAL_ENV/lib/python2.7/site-packages taskset 0x1 nice -n -20 ./timer"
 LICORICE_PS1_STR=LiCoRICE
 
-# small sanity check to ensure in the correct directory
-if [ ! -f "LICENSE" ] && [ ! -f "README.md" ]
-then
-  echo "Not in LiCoRICE repository directory! Run from LiCoRICE repository root."
-  return
-fi
+EXPERIMENT_DIR=$LICORICE_ROOT/..
+MODEL_DIR=$EXPERIMENT_DIR/models
+BINARY_DIR=$EXPERIMENT_DIR/run/out
+
+FILE_MODEL_NAME=$BINARY_DIR/model_name
 
 # parse LiCoRICE model
 licorice_parse_model() {
-  cd $LICORICE_TEMPLATING_DIR
-  python lico_parse.py -c $LICORICE_DIR/../config.yaml -m $LICORICE_DIR/../models/$1.yaml
+  pushd $LICORICE_TEMPLATING_DIR
+  python lico_parse.py -m $MODEL_DIR/$1.yaml
+  popd
+
+  printf "%s" "$1" > $FILE_MODEL_NAME
 }
 
 # compile LiCoRICE model
 licorice_compile_model() {
-  cd $LICORICE_DIR/../run/out
+  printf 'Compiling: %s\n\n' "`cat $FILE_MODEL_NAME`"
+
+  pushd $BINARY_DIR
   make clean
   make -j 2
+  popd
 }
 
 # run LiCoRICE model
 licorice_run_model() {
+  printf 'Running: %s\n\n' "`cat $FILE_MODEL_NAME`"
+
+  pushd $BINARY_DIR
   licorice_shm_clear
   $LICORICE_EXEC_STR
+  popd
 }
 
 # remove any compiled binaries
 licorice_wipe_binaries() {
-  rm -rf $LICORICE_DIR/../run/out/*
+  rm -rf $BINARY_DIR/*
 }
 
 # remove shm mappings
@@ -52,6 +61,7 @@ licorice_go() {
 
 # deactivate licorice environemnt
 licorice_deactivate() {
+  unset LICORICE_ROOT
   unset -f licorice_parse_model
   unset -f licorice_compile_model
   unset -f licorice_run_model
@@ -62,6 +72,7 @@ licorice_deactivate() {
   PS1=${PS1:(${#LICORICE_PS1_STR}+3)}
 }
 
+export LICORICE_ROOT
 # export shell functions
 export -f licorice_parse_model
 export -f licorice_compile_model

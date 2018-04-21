@@ -1,13 +1,20 @@
 #! /bin/bash
 
-# This works for xenial-lts
+# Kernel patch script for Ubuntu xenial-lts server (16.04)
 
-# This is to be executed from the git repository directory, otherwise change REPO_DIR
+# This is to be executed from the LiCoRICE repository directory
 
 # set some variables
-REPO_DIR=`pwd`
+INSTALL_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 KERNEL_DIR=~/rt_kernel
 TMP_DIR=/tmp
+
+# weak sanity check to test if in the correct directory
+if [ ! -d "install" ] || [ ! -d "templating" ] || [ ! -f "LICENSE" ] || [ ! -f "README.md" ] || [ ! -f "licorice_activate.sh" ]
+then
+  printf "%s\n\n" "Not in LiCoRICE repository directory! Run script from LiCoRICE repository root."
+  return
+fi
 
 # update to most recent version of packages, install essentials, do some cleanup
 sudo apt-get update
@@ -27,7 +34,7 @@ cd $KERNEL_DIR
 tar -zxvf $TMP_DIR/linux-4.4.12.tar.gz
 
 # copy kernel .config file from git
-cp $REPO_DIR/install/.config $KERNEL_DIR/linux-4.4.12/.config
+cp $INSTALL_DIR/install/.config $KERNEL_DIR/linux-4.4.12/.config
 
 # patch kernel with realtime patch
 cd $KERNEL_DIR/linux-4.4.12
@@ -42,7 +49,5 @@ sudo dpkg -i $KERNEL_DIR/linux-image-4.4.12-licorice-rt19_4.4.12-licorice-rt19-1
 sudo dpkg -i $KERNEL_DIR/linux-headers-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
 
 # notify reboot when done
-echo ""
-echo ""
-echo "Kernel installation complete. Please reboot the system."
+printf "\n\n%s\n" "Kernel installation complete. Please reboot the system."
 #sudo reboot
