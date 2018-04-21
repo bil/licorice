@@ -9,6 +9,8 @@ INSTALL_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 KERNEL_DIR=~/rt_kernel
 TMP_DIR=/tmp
 
+NUM_CPUS=`grep processor /proc/cpuinfo|wc -l`
+
 # update to most recent version of packages, install essentials, do some cleanup
 sudo apt-get update
 sudo apt-get -y upgrade
@@ -35,7 +37,7 @@ zcat $TMP_DIR/patch-4.4.12-rt19.patch.gz | patch -p1
 
 # build kernel
 make-kpkg clean
-CONCURRENCY_LEVEL=9 fakeroot make-kpkg --initrd --append-to-version=-licorice binary
+CONCURRENCY_LEVEL=$NUM_CPUS fakeroot make-kpkg --initrd --append-to-version=-licorice binary
 
 # install kernel
 sudo dpkg -i $KERNEL_DIR/linux-image-4.4.12-licorice-rt19_4.4.12-licorice-rt19-10.00.Custom_amd64.deb
