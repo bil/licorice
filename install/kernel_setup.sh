@@ -13,9 +13,9 @@ NUM_CPUS=`grep processor /proc/cpuinfo|wc -l`
 
 # update to most recent version of packages, install essentials, do some cleanup
 sudo apt-get update
-sudo apt-get -y upgrade
-sudo apt-get -y install libncurses5-dev build-essential libssl-dev kernel-package
-sudo apt-get -y autoremove
+sudo apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" upgrade
+sudo apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" install libncurses5-dev build-essential libssl-dev kernel-package
+sudo apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" autoremove
 
 # download kernel and rt-patch if not exists
 cd $TMP_DIR
