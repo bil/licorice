@@ -1,0 +1,70 @@
+# parallel_toggle
+#
+# A very simple model that toggles a parallel port pin up and down every tick
+# This model reads from the parallel port as well, but does not do anything with that value
+#
+#
+# Note: this model configuration is still in alpha stage and subject to cosmetic changes
+#
+#
+# model layout
+#
+#   parallel_in -> parallel_reader -> parallel_source_output -> parallel_toggle -> parallel_sink_input -> parallel_writer -> parallel_out
+#     (signal)     (source module)           (signal)             (module)            (signal)             (sink module)      (signal)
+
+config:
+  verbose_comments: false # currently required key, will later be optional
+
+signals:
+
+  parallel_in: # same as parallel_out, only this is the source signal for the input pins of the parallel port
+    args:
+      type: parport
+      addr: 379
+    parser: false
+    schema: # inputs currently require a schema definition
+      data:
+        shape: 1 # 1D vector, length 1 (per tick)
+        dtype: uint8
+
+  parallel_out: # define the sink signal for the output pins of the parallel port
+    args:
+      type: parport # defines the type of this signal
+      addr: 378 # specifies the I/O address of the parallel port (output)
+    parser: false # this sink signal does not need a dedicated parser
+
+  parallel_source_output: # this is the internal signal that the source block outputs to
+    shape: 1
+    dtype: uint8
+    history: 1 # currently a required parameter, if historical (past ticks) data is desired, increase this number
+
+  parallel_sink_input: # this is the intenral signal that is fed to the sink block 
+    shape: 1
+    dtype: uint8
+    history: 1
+
+
+modules:
+
+  parallel_reader: # define the source
+    language: python # language is currently a required parameter, will later be optional
+    in:
+      - parallel_in
+    out:
+      - parallel_source_output
+
+  parallel_toggler: # define the module
+    language: python
+    constructor: true # this permits the use of constructor code to intialize the module
+                      # constructors only execute once, before the ticks have begun
+    in:
+      - parallel_source_output
+    out:
+      - parallel_sink_input
+
+  parallel_writer: # define the sink
+    language: python
+    in:
+      - parallel_sink_input
+    out:
+      - parallel_out
