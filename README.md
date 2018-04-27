@@ -63,6 +63,8 @@ An example directory structure for an experimental rig would be:
 
     This will make a number of shell functions available, all start with `licorice_`.
 
+    If successful, the prompt should appear in the following manner: `[LiCoRICE] (lico_venv) <user>@<host>:~$`
+
 ## Examples
 
 The examples folder contains instructions on how to get started with LiCoRICE.
