@@ -37,4 +37,4 @@ python setup.py build -j $NUM_CPUS
 python setup.py install
 
 # install remaining python packages from pip
-pip install argparse pyyaml jinja2 toposort psutil portio sharedarray matplotlib numba
+pip install argparse pyyaml jinja2 toposort psutil portio sharedarray==2.0.4 matplotlib numba
