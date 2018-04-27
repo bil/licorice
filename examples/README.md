@@ -5,8 +5,7 @@ This directory contains examples on how to use LiCoRICE.
 ## Directory structure
 
 This examples directory is laid out similarly to how it would be used in a deployed system.
-Note that this directory structure must be placed *OUTSIDE* the LiCoRICE repository.
-Simiarly, this directory does not contain a licorice repository, which is necessary for function.
+Note that this directory structure must be placed **OUTSIDE** the LiCoRICE repository and must **CONTAIN** a LiCoRICE repository.
 
 As a reminder, construct the directory structure in the following manner:
 
@@ -17,6 +16,8 @@ As a reminder, construct the directory structure in the following manner:
   * `run` (output directory where the code and compiled binaries of the LiCoRICE model is output to)
 
 ## Example models
+
+To use these examples, copy the contents of the `models` and `modules` directories to the appropriate directories under the `rig` directory on the target LiCoRICE system.
 
 ### parallel\_toggle
 

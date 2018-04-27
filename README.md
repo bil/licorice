@@ -63,6 +63,11 @@ An example directory structure for an experimental rig would be:
 
     This will make a number of shell functions available, all start with `licorice_`.
 
+## Examples
+
+The examples folder contains instructions on how to get started with LiCoRICE.
+
+It is recommended that first time users work through the examples to become familiar with the basics of the LiCoRICE workflow.
 
 ## Usage
 
