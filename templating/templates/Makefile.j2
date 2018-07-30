@@ -3,10 +3,10 @@ DEFAULTFLAGS = -Wall
 CFLAGS = -O2 $(DEFAULTFLAGS)
 CFLAGSUNOPT = -O0 $(DEFAULTFLAGS)
 CFLAGS+ = -g -O2 $(DEFAULTFLAGS)
-CYFLAGS = -Os -I /usr/include/python2.7 -I {{numpy_incl}}
-LDFLAGS = -levent -lrt -pthread -lsqlite3  #-lasound 
+CYFLAGS = -Os -I {{py_incl}} -I {{numpy_incl}}
+LDFLAGS = -levent -lrt -pthread -lsqlite3
 LDTESTFLAGS = -lsqlite3 -pthread
-CYLDFLAGS = -lpython2.7 -lpthread -lm -lutil -ldl -lrt -lsqlite3
+CYLDFLAGS = -lrt -lsqlite3 {{py_link_flags}} # -lpthread -lm -lutil -ldl should be included in py_link_flags
 
 all: timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in module_names %}{{c}} {% endfor %}
 
@@ -15,9 +15,9 @@ timer: timer.c utilityFunctions.c
 
 {% for source in source_names -%}
 {% if source_types[loop.index0] == 'python' -%}
-{{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c
+{{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c # lineUtilities.c
 	cython --embed -o {{source}}.c {{source}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(CYLDFLAGS) # lineUtilities.c remove not a line source
+	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(CYLDFLAGS) # remove not a line source
 {% else -%}
 {{source}}: {{source}}.c sourceUtils.c utilityFunctions.c
 	$(CC) $(CFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(LDFLAGS)
@@ -25,13 +25,13 @@ timer: timer.c utilityFunctions.c
 {%- endfor %}
 
 {% for sink in sink_names %}
-{{sink}}:  {{sink}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c
+{{sink}}:  {{sink}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c # lineUtilities.c #networkUtilities.c
 	cython --embed -o {{sink}}.c {{sink}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c -o {{sink}} $(CYLDFLAGS) #lineUtilities.c
+	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c -o {{sink}} $(CYLDFLAGS)
 {% endfor %}
 
 {% for child in module_names -%}
-{{child}}: {{child}}.pyx utilityFunctions.c
+{{child}}: {{child}}.pyx utilityFunctions.c #networkUtilities.c
 	cython --embed -o {{child}}.c {{child}}.pyx
 	$(CC) $(CYFLAGS) -Wno-cpp {{child}}.c  utilityFunctions.c -o {{child}} $(CYLDFLAGS) #networkUtilities.c
 {%- endfor %}

@@ -26,14 +26,15 @@
 #define NUM_SOURCES {{num_sources}}
 #define NUM_SINKS {{num_sinks}}
 #define NUM_MODULES {{num_modules}}
+
 #define NUM_TICKS_OFFSET 0
 #define SOURCE_SEM_OFFSET 0
 #define TICK_SEMS_OFFSET 0
 #define SIG_SEMS_OFFSET 0
 #define BUF_VARS_OFFSET 0
 
-{% set test_start_time = (config['config'].has_key('test_start_time') and config['config']['test_start_time']) %}
-{% set test_tick_time = (config['config'].has_key('test_tick_time') and config['config']['test_tick_time']) %}
+{% set test_start_time = ('test_start_time' in config['config'] and config['config']['test_start_time']) %}
+{% set test_tick_time = ('test_tick_time' in config['config'] and config['config']['test_tick_time']) %}
 // process IDs for each child numbered according to the index of the child's name
 // in moduleProcnames
 static pid_t ch_pids[NUM_MODULES];
@@ -45,7 +46,7 @@ static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{
 static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
 {%- endif %}
 {%- if num_source_sigs != 0 %}
-static int sourceOutSigNums[NUM_SOURCE_SIGS] = {{'{'}}{% for sig, num in source_out_sig_nums.iteritems() %}{{num}}{{ "," if not loop.last }}{% endfor %}{{source_out_sig_nums[-1]}}{{'}'}};
+static int sourceOutSigNums[NUM_SOURCE_SIGS] = {{'{'}}{% for sig, num in source_out_sig_nums.items() %}{{num}}{{ "," if not loop.last }}{% endfor %}{{source_out_sig_nums[-1]}}{{'}'}};
 {%- endif %}
 static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source_module_check[:-1] %}{{i}}, {% endfor %}{{non_source_module_check[-1]}}{{'}'}};
 // network pid
@@ -59,7 +60,7 @@ static unsigned char outVal = 0;
 static size_t shm_size;
 static uint8_t *pmem;
 // global tick counter
-static uint64_t *pNumTicks;
+static int64_t *pNumTicks;
 // TODO figure out better synch
 // source buffer offset update synchronization semaphore
 static sem_t *pSourceSem;
@@ -103,11 +104,9 @@ static unsigned long numTicksMeasured = 0;
 {%- endif %}
 
 // INSERTED
-{%- if parport_tick_addr %}
 static struct timespec record_timer;
 static long curTime;
 static time_t curSec;
-{%- endif %}
 static FILE *f;
 
 void handle_exit(int exitStatus) {
@@ -115,35 +114,39 @@ void handle_exit(int exitStatus) {
   printf("%llu time over %lu ticks\n", tickTimeSum, numTicksMeasured);
   printf("%f ns\n", ((float)tickTimeSum) / numTicksMeasured); 
 {%- endif %}
-  printf("exiting...\n");
   rtTimer.it_value.tv_sec = 0;
   rtTimer.it_value.tv_usec = 0;
   rtTimer.it_interval.tv_sec = 0;
   rtTimer.it_interval.tv_usec = 0;
   setitimer(ITIMER_REAL, &rtTimer, NULL);
+  printf("exiting...\n");
   printf("Killing child processes...\n");
-  // send SIGINT to all child processes and wait
-  for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
-    printf("Killing child: %d\n", ch_pids[ex_i]);
-    kill(ch_pids[ex_i], SIGINT);
-    while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
-  }
-  // send SIGINT to logger process and wait
+  // send SIGINT to sinks and wait
   for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
     if (si_pids[ex_i] != -1) {
+      printf("Killing sink: %d\n", si_pids[ex_i]);
       kill(si_pids[ex_i], SIGINT);
       while (waitpid(si_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
-  // send SIGINT to network process and wait
+  // send SIGINT to modules and wait
+  for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
+    if (ch_pids[ex_i] != -1) {
+      printf("Killing module: %d\n", ch_pids[ex_i]);
+      kill(ch_pids[ex_i], SIGINT);
+      while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
+    }
+  }
+  // send SIGINT to sources and wait
   for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
     if (so_pids[ex_i] != -1) {
+      printf("Killing source: %d\n", so_pids[ex_i]);
       kill(so_pids[ex_i], SIGINT);
       while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
   printf("Unmapping shared memory...\n");
-  printf("%lu SIGALRMs sent\n", *pNumTicks);
+  printf("%ld SIGALRMs sent\n", *pNumTicks);
   // close shared memory
   munmap(pmem, shm_size);
   shm_unlink(SMEM0_PATHNAME);
@@ -164,7 +167,8 @@ static void check_children() {
   clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
 {% endif %}
   
-  if (sigalrm_recv > 1)
+  // printf("TIMER tick %ld\n", *pNumTicks);
+  if ((sigalrm_recv > 1))
     die("Timer missed a tick.");
 {% if parport_tick_addr -%}
   // flip bits and output to parallel port
@@ -184,21 +188,27 @@ static void check_children() {
   
   // increment SIGALRM counter
   (*pNumTicks)++;
+  // printf("%ld\n", *pNumTicks);
 
   // only trigger sources on first iterations
-  if (*pNumTicks <= INIT_BUFFER_TICKS) {
+  if (*pNumTicks < 0) {
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
       sem_wait(pSourceSem);
     atomic_thread_fence(memory_order_seq_cst);
     for (al_i = 0; al_i < NUM_INTERNAL_SIGS; al_i++) {
-      pCurBufVars = pBufVars + (8 * al_i);
+      pCurBufVars = pBufVars + (BUF_VARS_LEN * al_i);
       // NON-LATENCY-DEPENDENT BUFFER UPDATE
       *(pCurBufVars + 1) = *(pCurBufVars + 2);
+      // *(pCurBufVars + 9) = *(pCurBufVars + 10);
       *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
-      if ((*(pCurBufVars + 7) - *(pCurBufVars + 2)) < *(pCurBufVars + 6)) {
+      // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
+      if ((*(pCurBufVars + 7) < *(pCurBufVars + 2)) + *(pCurBufVars + 6)) {
         *(pCurBufVars + 2) = 0;
+        *(pCurBufVars + 8) = 0;
+        // *(pCurBufVars + 10) = 0;
       }
       *(pCurBufVars + 3) = 0;
+      *(pCurBufVars + 11) = 0;
     }
     atomic_thread_fence(memory_order_release);
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
@@ -230,45 +240,51 @@ static void check_children() {
 
 
     for (al_i = 0; al_i < NUM_SOURCE_SIGS; al_i++) {
-      pCurBufVars = pBufVars + (8 * sourceOutSigNums[al_i]);
-
-      // debugging
-      // printf("\ntimer: %u %u %u %u %u %u %u %u  \n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
-
-      // NON-LATENCY-DEPENDENT BUFFER UPDATE
+      pCurBufVars = pBufVars + (BUF_VARS_LEN * sourceOutSigNums[al_i]);
 
       // 0: tick start
       // 1: tick end
       // 2: next data location
       // 3: num samples received this tick
       // 4: buffer end offset (samples)
-      // 5: packet size (bytes)
-      // 6: max samples per tick (samples)
+      // 5: source output signal packet size (post parser per signal)/module output tick data size (bytes)
+      // 6: max samples per tick (same as 5 for module ouputs) (samples)
       // 7: buffer size offset (samples)
 
+      // 8: current data nd index start
+      // 9: current data nd index end
+      // 10: next data nd index
+      // 11: num packets received this tick (nd index)
+      // 12: nd 0 axis end offset
+      // 13: none
+      // 14: none
+      // 15: none
+
+      // printf("timer 1: %u %u %u %u %u \n", *(pCurBufVars + 0),*(pCurBufVars + 1),*(pCurBufVars + 2),*(pCurBufVars + 6),*(pCurBufVars + 7));
       *(pCurBufVars + 1) = *(pCurBufVars + 2);
+      // *(pCurBufVars + 9) = *(pCurBufVars + 10);
       *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
-      if ((*(pCurBufVars + 7) - *(pCurBufVars + 2)) < *(pCurBufVars + 6)) {
+      // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
+      if (*(pCurBufVars + 7) < *(pCurBufVars + 2) + *(pCurBufVars + 6)) {
+        *(pCurBufVars + 8) = 0;
         *(pCurBufVars + 2) = 0;
+        // *(pCurBufVars + 10) = 0;
       }
       *(pCurBufVars + 3) = 0;
-
+      // *((uint32_t**)(pCurBufVars + 8)) += 1472;
+      *(pCurBufVars + 11) = 0;
+      // printf("timer 2: %u %u %u %u %u \n", *(pCurBufVars + 0),*(pCurBufVars + 1),*(pCurBufVars + 2),*(pCurBufVars + 6),*(pCurBufVars + 7));
       // if (*(pCurBufVars + 2) == 0) {
-      //   *(pCurBufVars + 1) = *(pCurBufVars + 7);
-      //   *(pCurBufVars + 0) = *(pCurBufVars + 7) - *(pCurBufVars + 3);
+      //   *(pCurBufVars + 1) = *(pCurBufVars + 4);
+      //   *(pCurBufVars + 0) = *(pCurBufVars + 4) - *(pCurBufVars + 3);
       // }
       // else {
       //   *(pCurBufVars + 1) = *(pCurBufVars + 2);
       //   *(pCurBufVars + 0) = (*(pCurBufVars + 1) - *(pCurBufVars + 3));
       // }
-      // if ((*(pCurBufVars + 7) - *(pCurBufVars + 2)) < *(pCurBufVars + 6)) {
-      //   *(pCurBufVars + 2) = 0;
-      // }
       // *(pCurBufVars + 3) = 0;
 
-      // debugging
-      // printf("timer: %u %u %u %u %u %u %u %u  \n\n", *(pCurBufVars + 0), *(pCurBufVars + 1), *(pCurBufVars + 2), *(pCurBufVars + 3), *(pCurBufVars + 4), *(pCurBufVars + 5), *(pCurBufVars + 6), *(pCurBufVars + 7));
-    }
+   }
 
     atomic_thread_fence(memory_order_release);
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
@@ -351,13 +367,16 @@ int main(int argc, char* argv[]) {
   clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
   startStartSec = startTimer.tv_sec;
   startStartNSec = startTimer.tv_nsec;
-{% endif %}
+{%- endif %}
 
-  f = fopen("/tmp/output_log","w");
+{%- if parport_tick_addr %}
+
+  f = fopen("out_ticks","w");
   if (f == NULL) {
     printf("Error opening file!\n");
     handle_exit(1);
   }
+{%- endif %}
 
   // set signal masks
   sigemptyset(&exitMask);
@@ -386,10 +405,10 @@ int main(int argc, char* argv[]) {
   // create shared memory and map it
   printf("Mapping memory...\n");
 
-  shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * 8 * NUM_INTERNAL_SIGS);
+  shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS);
   shm_size = ROUND_UP(shm_size, PAGESIZE);
   open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
-  pNumTicks = (uint64_t *)(pmem);
+  pNumTicks = (int64_t *)(pmem);
   pSourceSem = (sem_t *)(pmem + sizeof(uint64_t));
   pTickUpSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t));
   pTickDownSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)));
@@ -517,7 +536,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     set_sched_prior(PRIORITY);
     char* argv[2] = {"./{{name}}", NULL};
     
-    // execute network process
+    // execute sink process
     // signal handlers and mmap are not preserved on exec
     execvp(argv[0],argv);
     printf("logger exec error. %s \n", strerror(errno));
@@ -530,12 +549,13 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
 {% for name in sink_names -%}
   printf("{{name}}: %d\n", si_pids[{{loop.index0}}]);
 {% endfor %}
+
   make_realtime();
 
   for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
     kill(so_pids[m_i], SIGUSR2);
   }
-  printf("Network process ready.\n");
+  printf("Sources signaled.\n");
 
 {%- if test_start_time %}
   clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);

@@ -115,4 +115,29 @@
 // macro to round X up to nearest multiple of Y
 #define ROUND_UP(X, Y) ((((X) + (Y) - 1) / (Y)) * (Y))
 
+// number of extra ticks-worth of padding required in circular buffers to maintain desired amount of history
+#define HISTORY_PAD_LENGTH {history_pad_length}
+
+// number of elements in each bufVars array
+// set in template_funcs.py
+/*
+  0: tick start
+  1: tick end
+  2: next data location
+  3: num samples received this tick
+  4: buffer end offset (samples)
+  5: packet size (bytes)
+  6: max samples per tick (samples)
+  7: buffer size offset (samples)
+  8: current data nd index start
+  9: current data nd index end
+  10: next data nd index
+  11: num packets received this tick (nd index)
+  12: nd 0 axis end offset
+  13: none
+  14: none
+  15: none
+*/
+#define BUF_VARS_LEN {{buf_vars_len}}
+
 #endif
