@@ -13,12 +13,14 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
+# import pygame # TODO CHANGE LATER
 import SharedArray as sa
 import numpy as np
 cimport numpy as np
 cimport cython
 import ctypes
 import portio
+import time
 
 cdef extern from "utilityFunctions.h" nogil:
   enum: __GNU_SOURCE
@@ -254,6 +256,7 @@ cdef extern from "constants.h":
   enum: NUM_TABLES
   cdef const char *DATALOGGER_SIGNALS_TABLE_NAME
   cdef const char *DATALOGGER_FILENAME
+  enum: BUF_VARS_LEN
 
 #include <stdatomic.h>
 
@@ -298,8 +301,13 @@ cdef char *zErrMsg
 cdef void * retVal
 # numpy signal data structs to hold one millisecond of data 
 ctypedef struct signalsMsData:
-{%- for sig,dtype in sig_types.iteritems() %}
-  {{dtype}} {{sig}}[{{in_signals[sig]['numel']}}]
+{%- for sig,dtype in sig_types.items() %}
+  {%- if sig in source_outputs %}
+  {{dtype}} {{sig}}[{{in_signals[sig]['schema']['data']['size'] * 2}}]
+  uint32_t {{sig}}NumPktsRcvd
+  {%- else %}
+  {{dtype}} {{sig}}[{{in_signals[sig]['tick_numel']}}]
+  {%- endif %}
 {%- endfor %}
 cdef signalsMsData *pSignalsStructCur
 cdef signalsMsData *pSignalsStructFlushStart
@@ -332,7 +340,7 @@ cdef int sigalrm_recv = 0
 
 cdef size_t shm_size
 cdef uint8_t *pmem
-cdef uint64_t *pNumTicks
+cdef int64_t *pNumTicks
 cdef sem_t *pTickUpSems
 cdef sem_t *pTickDownSems
 cdef sem_t *pSigSems
@@ -343,7 +351,7 @@ in_sigs = {}
 {%- if in_signals|length == 1 %}
 in_sig = None
 {%- endif %}
-{%- for sig, dtype in sig_types.iteritems() %}
+{%- for sig, dtype in sig_types.items() %}
 in_sigs['{{sig}}'] = None
 cdef uint32_t *{{sig}}BufVars
 cdef {{dtype}} *{{sig}}StrtPtr
@@ -427,10 +435,14 @@ cdef void* processRequests(void *arg) nogil:
     while (pSignalsStructFlushStart != pSignalsStructFlushEnd):
       sql_prepare(db, signalsQuery, -1, &signalsStmt, NULL)
 
-    {%- for sig, args in in_signals.iteritems() %}
+    {%- for sig, args in in_signals.items() %}
       msgpack_sbuffer_clear(&mpSignals{{sig|capitalize}}Buf)
-      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['numel']}})
-      for i in range({{args['numel']}}):
+      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
+      {%- if sig in source_outputs %}
+      for i in range (pSignalsStructFlushStart.{{sig}}NumPktsRcvd):
+      {%- else %}
+      for i in range({{args['tick_numel']}}):
+      {%- endif %}
         msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
       sql_bind_blob(signalsStmt, {{loop.index}}, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
     {%- endfor %}
@@ -572,10 +584,10 @@ pSignalsStructCur = logBufStrt
 pSignalsStructFlushStart = pSignalsStructCur
 openDatabase(&db, DATALOGGER_FILENAME, currDbName)
 sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
-{%- for sig,args in in_signals.iteritems() %}
+{%- for sig,args in in_signals.items() %}
 signalsTableArr[{{loop.index0}}].colName = "{{sig}}"
 signalsTableArr[{{loop.index0}}].type = "uint64_t"
-signalsTableArr[{{loop.index0}}].number = {{args['numel']}}
+signalsTableArr[{{loop.index0}}].number = {{args['tick_numel']}}
 signalsTableArr[{{loop.index0}}].unit = "TODO"
 signalsTableArr[{{loop.index0}}].data = NULL
 signalsTableArr[{{loop.index0}}].SQLtype = "BLOB"
@@ -589,33 +601,36 @@ sqlite3async_run()
 
 
 # initialize message pack for numpy signals
-{% for sig, args in in_signals.iteritems() %}
+{% for sig, args in in_signals.items() %}
 msgpack_sbuffer_init(&mpSignals{{sig|capitalize}}Buf)
 msgpack_packer_init(&mpSignals{{sig|capitalize}}Pk, &mpSignals{{sig|capitalize}}Buf, msgpack_sbuffer_write)
 # enlarge buffer before main execution
-msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['numel']}})
-for i in range({{args['numel']}}):
+msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
+for i in range({{args['tick_numel']}}):
   msgpack_pack_int16(&mpSignals{{sig|capitalize}}Pk, 0)
 {% endfor %}
 {%- endif %}
 
 # open and map shared parent memory
 
-shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * 8 * NUM_INTERNAL_SIGS)
+shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
 shm_size = ROUND_UP(shm_size, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
-pNumTicks = <uint64_t *>(pmem)
+pNumTicks = <int64_t *>(pmem)
 pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
 pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
 pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
 pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 
 created_mem = sa.list()
-{% for sig,dtype in sig_types.iteritems() %}
-if any(['{{sig}}' == x[0] for x in created_mem]):
+{% for sig,dtype in sig_types.items() %}
+if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
-  sa.mlock(in_sigs['{{sig}}'])
-  {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * 8}}
+  {{sig}} = in_sigs['{{sig}}']
+{%- if py_maj_ver == 2 %}
+  # sa.mlock(in_sigs['{{sig}}'])
+{%- endif %}
+  {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
 else:
   die("numpy signal not created\n")
 {% if sig_type != 'vis' %}
@@ -637,7 +652,7 @@ if (s == -1):
 # zero out the structure
 memset(<char *> &si_other, 0, sizeof(si_other))
 si_other.sin_family = AF_INET
-si_other.sin_port = htons(51004)
+si_other.sin_port = htons({{out_signal['args']['port']}})
 if (inet_aton("{{out_signal['args']['addr']}}", &si_other.sin_addr)==0):
   die("inet_aton() failed\n")
 {% elif sig_type == 'line' %}
@@ -687,8 +702,13 @@ while(True):
 {%- elif sig_type == 'parport' %}
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'disk' %}
-  {%- for sig,dtype in sig_types.iteritems() %}
+  {%- for sig,dtype in sig_types.items() %}
+  {%- if sig in source_outputs %}
+  memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], {{sig}}BufVars[11] * {{sig}}BufVars[5])
+  pSignalsStructCur.{{sig}}NumPktsRcvd = {{sig}}BufVars[11]
+  {%- else %}
   memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], sizeof((<signalsMsData*>0).{{sig}}))
+  {%- endif %}
   {%- endfor %}
   pSignalsStructCur += 1
   if (pSignalsStructCur == logBufEnd):
@@ -708,6 +728,5 @@ while(True):
     pthread_cond_signal(&cv)
     pthread_mutex_unlock(&mutex)
 {%- endif %}
-
   sem_post(&pTickDownSems[{{non_source_num}}])
   sigalrm_recv -= 1

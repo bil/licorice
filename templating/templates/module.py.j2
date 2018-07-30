@@ -16,7 +16,9 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 import sys, signal
 import SharedArray as sa
 from cpython.exc cimport PyErr_CheckSignals
-# TODO allow for imports in constructors
+# import pygame as pygame
+import random as random
+import math
 import numpy as np
 
 cdef extern from "semaphore.h":
@@ -65,6 +67,7 @@ cdef extern from "constants.h":
   enum: NUM_SEM_SIGS
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
+  enum: BUF_VARS_LEN
 
 cdef pid_t pid
 cdef pid_t ppid
@@ -74,15 +77,15 @@ cdef public sigset_t exitMask
 # shared memory vars
 cdef size_t shm_size
 cdef uint8_t *pmem
-cdef uint64_t *pNumTicks
+cdef int64_t *pNumTicks
 cdef sem_t *pTickUpSems
 cdef sem_t *pTickDownSems
 cdef sem_t *pSigSems
 cdef uint32_t *pBufVars
-{%- for sig, dtype in out_sig_types.iteritems() %}
+{%- for sig, dtype in out_sig_types.items() %}
 cdef uint32_t *{{sig}}BufVars
 {% endfor %}
-{%- for sig, dtype in in_sig_types.iteritems() %}
+{%- for sig, dtype in in_sig_types.items() %}
 cdef uint32_t *{{sig}}BufVars
 {% endfor %}
 
@@ -119,10 +122,10 @@ pid = getpid()
 printf("child %d id: %d\n", {{module_num}}, pid)
 
 # open and map shared parent memory
-shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * 8 * NUM_INTERNAL_SIGS)
+shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
 shm_size = ROUND_UP(shm_size, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
-pNumTicks = <uint64_t *>(pmem)
+pNumTicks = <int64_t *>(pmem)
 pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
 pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
 pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
@@ -131,28 +134,32 @@ pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_S
 {#This forces creation of processes one at a time, since otherwise we might get two definitions for the same shared mem #}
 created_mem = sa.list()
 in_sigs = {}
-{% for sig,args in in_signals.iteritems() %}
-if any(['{{sig}}' == x[0] for x in created_mem]):
+{% for sig,args in in_signals.items() %}
+if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
-  {{sig}}BufVars = pBufVars + {{sig_nums[sig] * 8}}
+  {{sig}}Raw = in_sigs["{{sig}}"]
+  {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
 else:
-  print "{{sig}} not created"
+  print("{{sig}} not created")
   die("signal not created")
 {%- endfor %}
-
 out_sigs = {}
-{% for sig, args in out_signals.iteritems() %}
-if any(['{{sig}}' == x[0] for x in created_mem]):
-  print "{{sig}} already created"
+{% for sig, args in out_signals.items() %}
+if any([b'{{sig}}' == x[0] for x in created_mem]):
+  sa.delete("shm://{{sig}}")
   die("numpy signal already created")
-  # out_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
 else:
-  out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['shape']}} * {{args['history']}}, dtype=np.{{args['dtype']}})
+  out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
+{%- if py_maj_ver == 2 %}
   sa.mlock(out_sigs["{{sig}}"])
-  {{sig}}BufVars = pBufVars + {{sig_nums[sig] * 8}}
-  {{sig}}BufVars[7] = {{args['numel']}} * ({{args['history']}}) # don't need extra 2 for buffering since "packet size" is predetermined 
-  {{sig}}BufVars[6] = {{args['numel']}} 
-  {{sig}}BufVars[5] = {{args['numel']}}  # packet size and max sampes per tick are the same since we always get the same nubmer of samples
+{%- endif %}
+  {{sig}}Raw = out_sigs["{{sig}}"]
+  {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  {{sig}}BufVars[7] = {{args['buf_tot_numel']}} * ({{args['history']}})
+  {{sig}}BufVars[6] = {{ args['tick_numel']}}
+  {{sig}}BufVars[5] = {{args['tick_numel']}}
 {% endfor %}
 
 # set signal mask
@@ -165,6 +172,14 @@ set_sighandler(SIGSEGV, &mem_error_handler, &exitMask)
 {% if default_params -%}
 {{default_sig_name}} = {{default_params}}
 {%- endif %}
+
+{% if numba -%}
+
+# Numba constructor
+import {{numba_mod_name}}
+{{numba_mod_name}}.{{numba_func_name}}({{numba_inst_inputs}})
+{%- endif %}
+
 {{construct_code}}
 
 make_realtime()
@@ -176,29 +191,47 @@ while(True):
 {%for dep_on in depends_on %}
   sem_wait(&pSigSems[{{dep_on[1]}}])
 {%endfor%}
-  {#The user can just write a function and expect a dict of inputs and return a dict of outputs #}
-  # {{name}}(in_signals, out_signals)
-  try:
-    {{user_code}}
-  except Exception:
-    die("Module error.")
-{%for dep_name, dep_val in dependencies.iteritems() %}
-
+{% for sig,args in in_signals.items() %}
+  {% if top_level %}
+  # maybe don't do a divide in the future
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]/{{in_signals[sig]['tick_numel']}}]
+  {% else %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  {% endif %}
+  # print
+{% endfor %}
+{% for sig,args in out_signals.items() %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]
+{% endfor %}
+{%- if numba %}
+  {{numba_mod_name}}.{{numba_func_name}}({{numba_func_inputs}})
+{% else %}
+  {{user_code}}
+{%- endif %}
+{%for dep_name, dep_val in dependencies.items() %}
   # printf("module 1 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
   {{dep_name}}BufVars[2] += {{dep_name}}BufVars[5]
-  if ({{dep_name}}BufVars[7] - {{dep_name}}BufVars[2] <= {{dep_name}}BufVars[6]):
+  {{dep_name}}BufVars[10] += 1
+  if ({{dep_name}}BufVars[7] <= ({{dep_name}}BufVars[2] + {{dep_name}}BufVars[6])):
     {{dep_name}}BufVars[4] = {{dep_name}}BufVars[2]
+    {{dep_name}}BufVars[12] = {{dep_name}}BufVars[10]
   elif ({{dep_name}}BufVars[2] > {{dep_name}}BufVars[4]):
     {{dep_name}}BufVars[4] = {{dep_name}}BufVars[2] 
+    {{dep_name}}BufVars[12] = {{dep_name}}BufVars[10]
   {{dep_name}}BufVars[3] += {{dep_name}}BufVars[5]
+  {{dep_name}}BufVars[11] += 1
   # printf("module 2 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
 
   # update bufVars
   {{dep_name}}BufVars[1] = {{dep_name}}BufVars[2]
+  {{dep_name}}BufVars[9] = {{dep_name}}BufVars[10]
   {{dep_name}}BufVars[0] = {{dep_name}}BufVars[1] - {{dep_name}}BufVars[3]
-  if (({{dep_name}}BufVars[7] - {{dep_name}}BufVars[2]) < {{dep_name}}BufVars[6]):
+  {{dep_name}}BufVars[8] = {{dep_name}}BufVars[9] - {{dep_name}}BufVars[11]
+  if ({{dep_name}}BufVars[7] < ({{dep_name}}BufVars[2] + {{dep_name}}BufVars[6])):
     {{dep_name}}BufVars[2] = 0
-  {{dep_name}}BufVars[3] = 0  
+    {{dep_name}}BufVars[10] = 0
+  {{dep_name}}BufVars[3] = 0
+  {{dep_name}}BufVars[11] = 0  
   # printf("module 3 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
 
 {%for i in range(dep_val[0]) %}

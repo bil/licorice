@@ -11,28 +11,6 @@ arg_parser.add_argument('-e', '--export', action='store_true', help='export curr
 arg_parser.add_argument('-Q', '--confirm', action='store_true', help='ask for user confirmation on action')
 args = arg_parser.parse_args()
 
-if args.export == True:
-  export(args.confirm)
-  exit()
-
-args = arg_parser.parse_args()
-
-if args.model == None:
-  print "Must specify model file."
-  exit()
-
-model = yaml.safe_load(args.model)
-
-# this assumes that a top level object with three primary mappings is loaded
-# the only three mappings should be: config, signals, and modules
-# later versions should throw an error if this is not true
-# Relevant note: this entire parser is dangerous and does not have any safety checks
-#    it will break badly for malformed yaml data
-top_level = ['config', 'modules', 'signals']
-if (set(top_level) != set(model.keys())):
-  print("Invalid config file.")
-  exit()
-
 # set some paths
 LICORICE_ROOT = os.environ['LICORICE_ROOT']
 RIG_ROOT = os.path.join(LICORICE_ROOT, '..')
@@ -47,6 +25,25 @@ paths['export'] = os.path.join(RIG_ROOT, 'run/export')
 paths['tmp_modules'] = os.path.join(RIG_ROOT, '.modules')
 paths['tmp_output'] = os.path.join(RIG_ROOT, 'run/.out')
 
+if args.export == True:
+  template_funcs.export(paths, args.confirm)
+  exit()
+
+if args.model == None:
+  print("Must specify model file.")
+  exit()
+
+model = yaml.safe_load(args.model)
+
+# this assumes that a top level object with three primary mappings is loaded
+# the only three mappings should be: config, signals, and modules
+# later versions should throw an error if this is not true
+# Relevant note: this entire parser is dangerous and does not have any safety checks
+#    it will break badly for malformed yaml data
+top_level = ['config', 'modules', 'signals']
+if (set(top_level) != set(model.keys())):
+  print("Invalid config file.")
+  exit()
 
 if args.generate == True:
   template_funcs.generate(paths, model, args.confirm)

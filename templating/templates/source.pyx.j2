@@ -7,7 +7,7 @@ from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, s
 from posix.unistd cimport getppid, pause, close, getpid
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.types cimport pid_t
-from libc.errno cimport errno, EINTR, EPIPE
+from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
 from posix.fcntl cimport O_RDWR
 from libc.string cimport memset
 from posix.ioctl cimport ioctl
@@ -22,10 +22,9 @@ cimport numpy as np
 cimport cython
 import portio
 
-{% set test_throughput = (config['config'].has_key('test_throughput') and config['config']['test_throughput']) %}
+{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %}
 {% set sig_type = in_signal['args']['type'] -%}
 {% if sig_type == 'joystick' -%}
-{% set hand = in_signal['args']['hand'] -%}
 import pygame
 {%- endif %}
 
@@ -51,6 +50,7 @@ cdef extern from "<netinet/in.h>":
 cdef extern from "<sys/socket.h>":
   enum: AF_INET
   enum: SOCK_DGRAM
+  enum: MSG_DONTWAIT
   struct sockaddr:
     unsigned char sa_len
     unsigned char sa_family  
@@ -70,18 +70,18 @@ cdef extern from "zmq.h":
   int zmq_bind(void *s, const char *addr)
   int zmq_recv(void *s, void *buf, size_t len, int flags)
 {% elif sig_type == 'line' %}
-cdef extern from "<alsa/asoundlib.h>":
-  struct _snd_pcm:
-    pass
-  ctypedef _snd_pcm snd_pcm_t
-  ctypedef unsigned long snd_pcm_uframes_t
-  ctypedef long snd_pcm_sframes_t
-  int snd_pcm_prepare(snd_pcm_t* pcm) 
-  snd_pcm_sframes_t snd_pcm_readi (snd_pcm_t *pcm, void *buffer, snd_pcm_uframes_t size)  
+# cdef extern from "<alsa/asoundlib.h>":
+#   struct _snd_pcm:
+#     pass
+#   ctypedef _snd_pcm snd_pcm_t
+#   ctypedef unsigned long snd_pcm_uframes_t
+#   ctypedef long snd_pcm_sframes_t
+#   int snd_pcm_prepare(snd_pcm_t* pcm) 
+#   snd_pcm_sframes_t snd_pcm_readi (snd_pcm_t *pcm, void *buffer, snd_pcm_uframes_t size)  
 
-cdef extern from "lineUtilities.h":
-  int pcm_init_cap()
-  void pcm_close_cap()
+# cdef extern from "lineUtilities.h":
+#   int pcm_init_cap()
+#   void pcm_close_cap()
 {% endif %}
 
 cdef extern from "semaphore.h":
@@ -113,6 +113,7 @@ cdef extern from "constants.h":
   enum: NUM_SEM_SIGS
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
+  enum: BUF_VARS_LEN
 
 #include <stdatomic.h>
 
@@ -120,26 +121,27 @@ cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
 cdef socklen_t recvLen
-{% if in_signal['args']['parser'] -%}
-cdef char buf[{{in_signal['schema']['data']['numel']}}]
-{%- endif %}
 cdef char *outbuf
 cdef int parse_idx
 cdef uint32_t sig_buffer_size
 {%- if sig_type == 'zmq' %}
+{%- if test_throughput %}
 cdef int num_packets = 0
+{%- endif %}
 cdef void *dish
 cdef void *context
 {%- elif sig_type == 'udp' %}
+{%- if test_throughput %}
 cdef int num_packets = 0
+{%- endif %}
 cdef int s
 cdef sockaddr_in si_me, si_other
 cdef socklen_t slen = sizeof(si_other) 
 cdef in_addr interface_ip
 {%- elif sig_type == 'line' %}
-cdef extern snd_pcm_t *cap_handle
-cdef snd_pcm_uframes_t frames
-cdef int ret
+# cdef extern snd_pcm_t *cap_handle
+# cdef snd_pcm_uframes_t frames
+# cdef int ret
 {%- elif sig_type == 'parport' %}
 cdef unsigned char inVal
 readInput = False
@@ -152,7 +154,7 @@ parentSetup = True
 
 cdef size_t shm_size
 cdef uint8_t *pmem
-cdef uint64_t *pNumTicks
+cdef int64_t *pNumTicks
 cdef sem_t *pSourceSem
 cdef uint32_t *pBufVars
 # 0: tick start
@@ -168,24 +170,27 @@ cdef unsigned long numDropped = 0
 cdef int i
 
 out_sigs = {}
-{%- if not parser %}
+{%- if not has_parser %}
 out_sig = None
 {%- endif %}
-cdef uint32_t in_bytes = {{in_signal['schema']['data']['numel']}} * sizeof({{in_dtype}})
+cdef uint32_t packetSize = {{in_signal['schema']['data']['size']}} * sizeof({{in_dtype}})
 cdef {{in_dtype}} *bufStrtPtr
 cdef {{in_dtype}} *bufEndPtr
 cdef {{in_dtype}} *bufCurPtr
-{%- for sig, dtype in sig_types.iteritems() %}
+{%- for sig, dtype in (sig_types.items()) %}
 cdef uint32_t *{{sig}}BufVars
 cdef {{dtype}} *{{sig}}StrtPtr
 {%- endfor %}
 
 cdef void handle_exit(int exitStatus):
-  global pmem, shm_size, num_packets, pNumTicks, numDropped
+  global pmem, shm_size, pNumTicks, numDropped
+  {%- if test_throughput %}
+  global num_packets
+  {%- endif %}
   {{destruct_code}}
   created_mem = sa.list()
-{%- for sig,args in out_signals.iteritems() %}
-  if any(['{{sig}}' == x[0] for x in created_mem]):
+{%- for sig,args in (out_signals.items()) %}
+  if any([b'{{sig}}' == x[0] for x in created_mem]):
     sa.delete("shm://{{sig}}")
 {%- endfor %}
 {%- if sig_type == 'udp' %}
@@ -195,12 +200,12 @@ cdef void handle_exit(int exitStatus):
   zmq_close(dish)
   zmq_ctx_destroy(context)
 {%- elif sig_type == 'line' %}
-  pcm_close_cap()
+  # pcm_close_cap()
 {%- endif %}
-{%- if sig_type == 'udp' or sig_type == 'zmq' %}
+{%- if test_throughput and (sig_type == 'udp' or sig_type == 'zmq') %}
   printf("Received %d packets over %ld ms. Dropped %lu\n", num_packets, pNumTicks[0], numDropped)
 {%- endif %}
-{%- if parser %}
+{%- if has_parser %}
   free(bufStrtPtr)
 {%- endif %}
   munmap(pmem, shm_size)
@@ -242,10 +247,10 @@ set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
-shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * 8 * NUM_INTERNAL_SIGS)
+shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
 shm_size = ROUND_UP(shm_size, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
-pNumTicks = <uint64_t *>(pmem)
+pNumTicks = <int64_t *>(pmem)
 pSourceSem = <sem_t *>(pmem + sizeof(uint64_t))
 pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 
@@ -265,9 +270,9 @@ if(bind(s, <sockaddr *>&si_me, sizeof(si_me))  == -1):
   print errno
   die("bind\n")
 {% elif sig_type == 'line' %}
-# initiliaze line in 
-frames = pcm_init_cap()
-recvLen = frames * BYTES_PER_FRAME / 2
+# # initiliaze line in 
+# frames = pcm_init_cap()
+# recvLen = frames * BYTES_PER_FRAME / 2
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
@@ -293,45 +298,53 @@ assert (rc == 0)
 {%- endif %}
 
 created_mem = sa.list()
-{% for sig,args in out_signals.iteritems() %}
-if any(['{{sig}}' == x[0] for x in created_mem]):
+{% for sig,args in (out_signals.items()) %}
+if any([b'{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
   die("numpy signal already created\n")
 else:
   {%- if sig_type == 'line' %}
-  sig_buffer_size = {{args['history']}} * frames
-  dtype = np.int16 # TODO grab this from alsa
+  # sig_buffer_size = {{args['history']}} * frames
+  # dtype = np.int16 # TODO grab this from alsa
   {% else %}
-  sig_buffer_size = {{args['numel']}} * ({{args['history']}} + 2) # packet size * (2*history) so that at least `history` packets always buffered
+  sig_buffer_size = {{args['buf_tot_numel']}} # tick data size * (2+history) so that at least `history` packets always buffered
   dtype = np.{{args['dtype']}}
   {% endif %}
-  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", sig_buffer_size, dtype=dtype)
+  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=dtype)
+  {{sig}} = out_sigs['{{sig}}']
   {{sig}}StrtPtr = <{{sig_types[sig]}} *><long>out_sigs['{{sig}}'].__array_interface__['data'][0]
-  {%- if not parser %}
+  {%- if not has_parser %}
   out_sig = out_sigs['{{sig}}']
   {%- endif %}
+{%- if py_maj_ver == 2 %}
   sa.mlock(out_sigs['{{sig}}'])
-  {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * 8}})
+{%- endif %}
+  {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
   {{sig}}BufVars[7] = sig_buffer_size
     {%- if sig_type == 'line' %}
-  {{sig}}BufVars[6] = recvLen
-  {{sig}}BufVars[5] = frames # TODO, this right? should be packet size in bytes
-  {{sig}}BufVars[3] = sig_buffer_size
-  {{sig}}BufVars[0] = {{sig}}BufVars[3]
+  # {{sig}}BufVars[6] = recvLen
+  # {{sig}}BufVars[5] = frames # TODO, this right? should be packet size in bytes
+  # {{sig}}BufVars[3] = sig_buffer_size
+  # {{sig}}BufVars[0] = {{sig}}BufVars[3]
     {%- else %}
-  {{sig}}BufVars[6] = {{args['numel']}} 
-  {{sig}}BufVars[5] = {{in_signal['schema']['data']['numel']}}  #* sizeof({{sig_types[sig]}}) # TODO for multiple outputs, user will have to specify packet size per signal (distribution of bytes across signals)
+  {{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
+  {{sig}}BufVars[5] = {{args['schema']['data']['size']}}  
     {%- endif %}
 {%- endfor %}
-{%- if parser %}
-bufStrtPtr = <{{in_dtype}} *>malloc(in_bytes)
+{%- if has_parser %}
+bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
 bufCurPtr = bufStrtPtr
-bufEndPtr = bufStrtPtr + {{in_signal['schema']['data']['numel']}}
+bufEndPtr = bufStrtPtr + packetSize
 {%- else %}
-bufStrtPtr = <{{in_dtype}} *><long>out_sig.__array_interface__['data'][0]
+# bufStrtPtr = <{{in_dtype}} *><long>out_sig.__array_interface__['data'][0]
+# bufCurPtr = bufStrtPtr
+# bufEndPtr = bufStrtPtr + sig_buffer_size
+bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
 bufCurPtr = bufStrtPtr
-bufEndPtr = bufStrtPtr + sig_buffer_size # this must be 1D for no parser
+bufEndPtr = bufStrtPtr + packetSize
 {%- endif %}
+
+print bufEndPtr - bufStrtPtr
 
 {% if default_params -%}
 {{in_sig_name}} = {{default_params}}
@@ -346,37 +359,38 @@ kill(ppid, SIGUSR2) # this source is initialized
 pause()
 
 while(True):
+{%- if not has_parser %}
+  bufCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2]
+{%- endif %}
 {%- if sig_type == 'udp' %}
-  recvLen = recvfrom(s, bufCurPtr, in_bytes, 0, <sockaddr *> &si_other, &slen)
+  recvLen = recvfrom(s, bufStrtPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
   if (recvLen == -1 and errno != EINTR):
     die("NETWORK ERROR: recvfrom()\n")
   if (recvLen == -1):
     die("Read error.\n")
-  tmp = ((<unsigned long *>bufCurPtr)[0]) - packetNum
   {%- if test_throughput %}
+  tmp = ((<unsigned long *>bufStrtPtr)[0]) - packetNum
   if (not parentSetup):
     if (packetNum and (tmp != 1)):
       printf("dropped %lu packets\n", <unsigned long>tmp)
-      printf("%lu\n", packetNum)
-      printf("%lu\n", (<unsigned long *>bufCurPtr)[0])
       numDropped += <unsigned long>tmp
-    packetNum = (<unsigned long *>bufCurPtr)[0]
+    packetNum = (<unsigned long *>bufStrtPtr)[0]
     num_packets += 1
   {%- endif %}
 {% elif sig_type == 'line' %}
-  #read from line in
-  ret = snd_pcm_readi(cap_handle, <char *>bufCurPtr, frames)
-  for i in range(640):
-    pass
-    # printf("%u\n", bufCurPtr[i])
-  if (ret == -EPIPE):
-    # EPIPE means overrun
-    die("pcm overrun")
-    snd_pcm_prepare(cap_handle)
-  elif (ret < 0):
-    die("pcm read error")
-  elif (ret != <int>frames):
-    die("pcm short error")
+  # #read from line in
+  # ret = snd_pcm_readi(cap_handle, <char *>bufCurPtr, frames)
+  # for i in range(640):
+  #   pass
+  #   # printf("%u\n", bufCurPtr[i])
+  # if (ret == -EPIPE):
+  #   # EPIPE means overrun
+  #   die("pcm overrun")
+  #   snd_pcm_prepare(cap_handle)
+  # elif (ret < 0):
+  #   die("pcm read error")
+  # elif (ret != <int>frames):
+  #   die("pcm short error")
 {%- elif sig_type == 'parport' %}
   # recvLen always 1 for parport
   if (readInput):
@@ -387,60 +401,58 @@ while(True):
     pause()
     continue
 {%- elif sig_type == 'zmq' %}
-  recvLen = zmq_recv(dish, bufCurPtr, in_bytes, 0)
+  recvLen = zmq_recv(dish, bufCurPtr, packetSize, 0)
   if (recvLen == -1):
     die("zmq_recv error.\n")
+  {%- if test_throughput %}
   num_packets += 1
+  {%- endif %}
 {%- elif sig_type == 'joystick' %}
-  # TODO: maybe put this in reader parser?
   if (readInput):
     readInput = False
     pygame.event.pump()
-    for axis in range(recvLen): # THIS IS THE LINE TO CHANGE FOR HANDEDNESS
-        {% if hand == 'r' -%}
-          axis += 2
-        {%- endif %}
-        bufCurPtr[axis] = joystick.get_axis(axis)
-        
-    # {%- if hand == 'left' %}
-    #   for axis in range(recvLen): # THIS IS THE LINE TO CHANGE FOR HANDEDNESS
-    #     bufCurPtr[axis] = joystick.get_axis(axis)
-    # {%- else %}
-    #   bufCurPtr[0] = joystick.get_axis(2)
-    #   bufCurPtr[1] = joystick.get_axis(3)
-    # {%- endif %}
+    for axis in range(recvLen):
+      bufCurPtr[axis] = joystick.get_axis(axis)
   else:
     pause()
     continue
 {%- else %}
   pause()
 {%- endif %}
-
   if (parentSetup):
     continue
 
   # sempahore needs to be before parser (unfortunately includes memcpy) so that interrupt doesn't happen between 
   # when {{sig}}BufVars[2] is read by the parser and when it is updated below.
   sem_wait(pSourceSem) 
-{%- if parser %}
+{%- if has_parser %}
   # use user parser
   {{parser_code}}
+{%- else %}
+  memcpy({{out_signal_name}}StrtPtr + {{out_signal_name}}BufVars[2], bufStrtPtr, packetSize)
 {%- endif %}
   # TODO figure out how to step through data for something like line (artificial data packaging per tick)
-{%- for sig, args in out_signals.iteritems() %}
-
-  # debugging
-  # printf("source 1 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
-  {{sig}}BufVars[2] += {{sig}}BufVars[5]
-  if ({{sig}}BufVars[7] - {{sig}}BufVars[2] <= {{sig}}BufVars[6]):
+{%- for sig, args in (out_signals.items()) %}
+  # print "source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
+  {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
+  # {{sig}}BufVars[10] += 1
+  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
+    # {{sig}}BufVars[12] = {{sig}}BufVars[10]
   elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2] 
+    # {{sig}}BufVars[12] = {{sig}}BufVars[10]
   {{sig}}BufVars[3] += {{sig}}BufVars[5]
-  bufCurPtr = bufStrtPtr + {{sig}}BufVars[2] #TODO check this for parser == True
-  # debugging
-  # printf("source 2 : %u %u %u %u %u %u %u %u  \n", {{sig}}BufVars[0], {{sig}}BufVars[1], {{sig}}BufVars[2], {{sig}}BufVars[3], {{sig}}BufVars[4], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7])
+  {{sig}}BufVars[11] += 1
+  {%- if not has_parser %}
+  if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[2] = 0
+  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
+  # if (bufCurPtr >= bufEndPtr):
+  #   bufCurPtr = bufStrtPtr
+  {%- endif %}
+  # print "source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
 {%- endfor %}
 
-  sem_post(pSourceSem)
+  sem_post(pSourceSem) #SOMETHING WEIRDS HAPPENING HERE
 
