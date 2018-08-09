@@ -7,6 +7,7 @@ import psutil
 from ast import literal_eval
 import subprocess
 from sysconfig import get_paths
+import warnings
 
 # available path constants
 # paths['templates']
@@ -353,7 +354,8 @@ def parse(paths, config, confirm):
   num_cores_used = 1 + len(source_names) + topo_max_width + len(sink_names) + num_threaded_sinks # TODO put threaded sink threads on cores w modules
   num_cores_avail = psutil.cpu_count()
 
-  assert(num_cores_used <= num_cores_avail)
+  if num_cores_used > num_cores_avail :
+    warnings.warn('WARNING: Computer running LiCoRICE may not have sufficient cores to execute this model successfully.')
 
   # print("system input and output signals")
   print("Inputs: ")
