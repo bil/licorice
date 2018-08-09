@@ -1,6 +1,9 @@
 # LiCoRICE - Linux Comodular Realtime Interactive Computation Engine
 
-LiCoRICE is an application layer that allows for soft realtime processing of data, but for reliable timing the application layer must be run on a machine that is properly configured and patched with the PREEMPT\_RT kernel patch.
+LiCoRICE is a platform that performs realtime processing of data.
+It is suitable for numerical processing of streaming data into and through a system.
+
+For reliable timing the application layer must be run on a machine that is properly configured and patched with the PREEMPT\_RT kernel patch.
 The instructions here should be applied to a stock install of Ubuntu server 16.04 LTS.
 
 ## Hardware Prerequisites
