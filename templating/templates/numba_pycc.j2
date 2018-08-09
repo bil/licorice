@@ -1,0 +1,15 @@
+import numba.pycc
+import numpy as np
+
+cc = numba.pycc.CC('{{mod_name}}')
+
+# create function signatures for overloaded inputs/ouputs of different types
+@cc.export('{{func_name}}', '{{func_sig}}')
+def {{func_name}}({{func_inputs}}):  
+  {{user_code}}
+
+  return 1
+
+
+if __name__ == "__main__":
+  cc.compile()
