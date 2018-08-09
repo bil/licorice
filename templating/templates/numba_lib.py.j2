@@ -1,0 +1,13 @@
+import numba.pycc
+import numpy as np
+
+cc = numba.pycc.CC('{{lib_name}}')
+
+@cc.export('{{func_name}}', 'i8({{input_signature}})')
+def {{func_name}}({{inputs}}):  
+    {{name}}
+
+    return 1
+
+if __name__ == "__main__":
+    cc.compile()
