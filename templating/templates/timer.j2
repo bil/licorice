@@ -104,10 +104,10 @@ static unsigned long numTicksMeasured = 0;
 {%- endif %}
 
 // INSERTED
-static struct timespec record_timer;
-static long curTime;
-static time_t curSec;
-static FILE *f;
+//static struct timespec record_timer;
+//static long curTime;
+//static time_t curSec;
+//static FILE *f;
 
 void handle_exit(int exitStatus) {
 {%- if test_tick_time %}
@@ -175,10 +175,10 @@ static void check_children() {
   outb(outVal,0x{{parport_tick_addr}});
   outVal = ~outVal;
 
-  clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
-  curTime = record_timer.tv_nsec;
-  curSec = record_timer.tv_sec;
-  fprintf(f, "%ld %ld\n", curTime, curSec);
+//  clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
+//  curTime = record_timer.tv_nsec;
+//  curSec = record_timer.tv_sec;
+//  fprintf(f, "%ld %ld\n", curTime, curSec);
 {%- endif %}
 
 {%- if test_tick_time %}

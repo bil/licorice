@@ -13,7 +13,6 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
-# import pygame # TODO CHANGE LATER
 import SharedArray as sa
 import numpy as np
 cimport numpy as np
@@ -358,7 +357,7 @@ cdef {{dtype}} *{{sig}}StrtPtr
 cdef {{dtype}} *{{sig}}EndPtr
 {%- endfor %}
 
-{%- if sig_type != 'vis' %}
+{%- if sig_type != 'vis_pygame' %}
 # temporary pointer to pass to output APIs
 cdef uint8_t *outBuf
 cdef size_t sentBytes
@@ -471,7 +470,7 @@ cdef void* processRequests(void *arg) nogil:
   global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, zErrMsg, lineWriteOffset, {% for sig,dtype in sig_types %}{{sig}}BufVars, {{sig}}StrtPtr, {{sig}}EndPtr{{"," if not loop.last}} {% endfor %}
   pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
   zErrMsg = <char *>0
-  {%- if has_parser and out_signal['args']['type'] != 'vis' %}
+  {%- if has_parser and out_signal['args']['type'] != 'vis_pygame' %}
   # TODO figure out outBuf stuff for this
   # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
   {%- endif %}
@@ -633,13 +632,13 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
 else:
   die("numpy signal not created\n")
-{% if sig_type != 'vis' %}
+{% if sig_type != 'vis_pygame' %}
 {{sig}}StrtPtr = <{{dtype}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0] 
 {{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
 {% endif %}
 {% endfor %}
 
-{% if has_parser and out_signal['args']['type'] != 'vis' and is_single_threaded -%}
+{% if has_parser and out_signal['args']['type'] != 'vis_pygame' and is_single_threaded -%}
 # TODO malloc outBuf according to yaml config 
 # set outBufLen accordingly
 {%- endif %}
@@ -691,7 +690,7 @@ while(True):
 
   {{parser_code}} 
 
-{%- if not has_parser and out_signal['args']['type'] != 'vis' %}
+{%- if not has_parser and out_signal['args']['type'] != 'vis_pygame' %}
   outBuf = <uint8_t *>({{in_signal_name}}StrtPtr + {{in_signal_name}}BufVars[0])
   outBufLen = {{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0] 
 {%- endif %}

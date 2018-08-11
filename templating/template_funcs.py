@@ -469,7 +469,7 @@ def parse(paths, config, confirm):
         sig_type = out_signal['args']['type']
         has_parser = 'parser' in module_args and module_args['parser']
         if ((not has_parser) and (out_signal['args']['type'] != 'disk')): assert len(in_signals) == 1 
-        # buffer_parser = has_parser and out_signal['args']['type'] != 'vis'
+        # buffer_parser = has_parser and out_signal['args']['type'] != 'vis_pygame'
 
         module_depends_on = []
         for sig,args in iter(in_signals.items()):
@@ -480,7 +480,7 @@ def parse(paths, config, confirm):
             module_depends_on.append((sig, sig_sem_dict[sig]))  
           
         out_dtype = None
-        if has_parser and out_signal['args']['type'] != 'vis':
+        if has_parser and out_signal['args']['type'] != 'vis_pygame':
           out_dtype = out_signal['schema']['data']['dtype']
           out_dtype = fix_dtype(out_dtype)
         in_sig_types = {}
@@ -533,7 +533,7 @@ def parse(paths, config, confirm):
                   sig_types=in_sig_types,
                   out_dtype=out_dtype,
                   sig_type=sig_type,
-                  is_vis=(sig_type == 'vis'),
+                  is_vis=(sig_type == 'vis_pygame'),
                   is_single_threaded=((sig_type != 'disk') and (sig_type != 'line')),
                   buf_vars_len=BUF_VARS_LEN,
                   source_outputs=list(source_outputs)
