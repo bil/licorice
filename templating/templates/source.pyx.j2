@@ -1,37 +1,43 @@
+# cimport C libraries
 from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit, malloc, free
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
-from libc.string cimport memcpy
+from libc.string cimport memset, memcpy
+from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport getppid, pause, close, getpid
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.types cimport pid_t
-from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
 from posix.fcntl cimport O_RDWR
-from libc.string cimport memset
 from posix.ioctl cimport ioctl
 from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 
+# import Python libraries
 import sys
 import os
+import portio
 import SharedArray as sa
+
+# cimport key Python libraries
 import numpy as np
 cimport numpy as np
 cimport cython
-import portio
 
-{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %}
-{% set sig_type = in_signal['args']['type'] -%}
-{% if sig_type == 'joystick' -%}
+# import pygame if this source 
+{% if sig_type == 'usb_joystick' -%}
 import pygame
 {%- endif %}
+
+# declare jinja variables
+{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %} ## What is this?
+{% set sig_type = in_signal['args']['type'] -%}
 
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
 
-{% if sig_type == 'udp' -%}
+{% if sig_type == 'udp' -%} # headers to declare for UDP source
 cdef extern from "<arpa/inet.h>":
   uint16_t htons(uint16_t hostshort)
 
@@ -61,7 +67,8 @@ cdef extern from "<sys/socket.h>":
 
 cdef extern from "sourceUtils.h":
   in_addr get_ip (char* interface_name)
-{% elif sig_type == 'zmq' -%}
+
+{% elif sig_type == 'zmq' -%} # header declaration for zmq source
 cdef extern from "zmq.h":
   int zmq_close(void *s)
   int zmq_ctx_destroy(void *context)
@@ -69,7 +76,7 @@ cdef extern from "zmq.h":
   void *zmq_socket(void *, int type)
   int zmq_bind(void *s, const char *addr)
   int zmq_recv(void *s, void *buf, size_t len, int flags)
-{% elif sig_type == 'line' %}
+#{% elif sig_type == 'line' %}
 # cdef extern from "<alsa/asoundlib.h>":
 #   struct _snd_pcm:
 #     pass
@@ -82,8 +89,9 @@ cdef extern from "zmq.h":
 # cdef extern from "lineUtilities.h":
 #   int pcm_init_cap()
 #   void pcm_close_cap()
-{% endif %}
+{% endif %} # end header declaration
 
+# headers for all sources
 cdef extern from "semaphore.h":
   enum: __SIZEOF_SEM_T
   cdef union sem_union:
@@ -115,8 +123,6 @@ cdef extern from "constants.h":
   size_t ROUND_UP(int X, int Y)
   enum: BUF_VARS_LEN
 
-#include <stdatomic.h>
-
 cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
@@ -124,32 +130,45 @@ cdef socklen_t recvLen
 cdef char *outbuf
 cdef int parse_idx
 cdef uint32_t sig_buffer_size
-{%- if sig_type == 'zmq' %}
+
+# variable initializations
+{%- if sig_type == 'zmq' %} 
+
 {%- if test_throughput %}
 cdef int num_packets = 0
 {%- endif %}
+
 cdef void *dish
 cdef void *context
-{%- elif sig_type == 'udp' %}
+
+{%- elif sig_type == 'udp' %} 
+
 {%- if test_throughput %}
 cdef int num_packets = 0
 {%- endif %}
+
 cdef int s
 cdef sockaddr_in si_me, si_other
 cdef socklen_t slen = sizeof(si_other) 
 cdef in_addr interface_ip
-{%- elif sig_type == 'line' %}
+
+#{%- elif sig_type == 'line' %}
 # cdef extern snd_pcm_t *cap_handle
 # cdef snd_pcm_uframes_t frames
 # cdef int ret
+
 {%- elif sig_type == 'parport' %}
 cdef unsigned char inVal
 readInput = False
 recvLen = 1
-{%- elif sig_type == 'joystick' %}
+
+{%- elif sig_type == 'usb_joystick' %}
 recvLen = 2
 readInput = False
 {%- endif %}
+# end test for variable initializations
+
+# common variable initializations
 parentSetup = True
 
 cdef size_t shm_size
@@ -169,19 +188,22 @@ cdef unsigned long packetNum = 0
 cdef unsigned long numDropped = 0
 cdef int i
 
+# declare output signals
 out_sigs = {}
-{%- if not has_parser %}
+{%- if not has_parser %} # output packing is handled by parser code
 out_sig = None
 {%- endif %}
+
 cdef uint32_t packetSize = {{in_signal['schema']['data']['size']}} * sizeof({{in_dtype}})
 cdef {{in_dtype}} *bufStrtPtr
 cdef {{in_dtype}} *bufEndPtr
 cdef {{in_dtype}} *bufCurPtr
-{%- for sig, dtype in (sig_types.items()) %}
+{%- for sig, dtype in (sig_types.items()) %} # declare signal BufVars pointers (to point into pBufVars)
 cdef uint32_t *{{sig}}BufVars
 cdef {{dtype}} *{{sig}}StrtPtr
 {%- endfor %}
 
+# function to close the source
 cdef void handle_exit(int exitStatus):
   global pmem, shm_size, pNumTicks, numDropped
   {%- if test_throughput %}
@@ -189,25 +211,31 @@ cdef void handle_exit(int exitStatus):
   {%- endif %}
   {{destruct_code}}
   created_mem = sa.list()
+
+# delete the signal's shared memory array
 {%- for sig,args in (out_signals.items()) %}
   if any([b'{{sig}}' == x[0] for x in created_mem]):
     sa.delete("shm://{{sig}}")
 {%- endfor %}
+
 {%- if sig_type == 'udp' %}
   if (s):
     close(s)
 {%- elif sig_type == 'zmq' %}
   zmq_close(dish)
   zmq_ctx_destroy(context)
-{%- elif sig_type == 'line' %}
+#{%- elif sig_type == 'line' %}
   # pcm_close_cap()
 {%- endif %}
+
 {%- if test_throughput and (sig_type == 'udp' or sig_type == 'zmq') %}
   printf("Received %d packets over %ld ms. Dropped %lu\n", num_packets, pNumTicks[0], numDropped)
 {%- endif %}
+
 {%- if has_parser %}
   free(bufStrtPtr)
 {%- endif %}
+
   munmap(pmem, shm_size)
   munlockall()
   exit(exitStatus)
@@ -223,16 +251,20 @@ cdef void segv_handler(int signum):
   printf("Seg Fault\n")
   handle_exit(1)
 
+# sources respond to SIGALRM 
 cdef void alrm_handler(int signum):
   global parentSetup, readInput
   if (parentSetup):
     parentSetup = False
-{%- if sig_type == 'parport' or sig_type == 'joystick' %}
+
+# some are triggered to read based on SIGALRM
+{%- if sig_type == 'parport' or sig_type == 'usb_joystick' %}
   readInput = True
 {%- endif %}
 
 cdef void usr2_handler(int signum):
   pass
+
 
 # main
 sigfillset(&exitMask)
@@ -269,14 +301,17 @@ si_me.sin_addr.s_addr = interface_ip.s_addr
 if(bind(s, <sockaddr *>&si_me, sizeof(si_me))  == -1):
   print errno
   die("bind\n")
-{% elif sig_type == 'line' %}
+
+#{% elif sig_type == 'line' %}
 # # initiliaze line in 
 # frames = pcm_init_cap()
 # recvLen = frames * BYTES_PER_FRAME / 2
+#
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
   die("io permission denied\n")
+
 {% elif sig_type == 'zmq' -%}
 context = zmq_ctx_new()
 if (not context):
@@ -286,15 +321,15 @@ if (not dish):
   die("Could not create ZMQ socket.\n")
 rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
 assert (rc == 0)
-# {% elif sig_type == 'joystick' -%}
+# {% elif sig_type == 'usb_joystick' -%}
 # pygame.init()
-# pygame.joystick.init()
+# pygame.usb_joystick.init()
 
-# if pygame.joystick.get_count() < 1:
-#   die("No joystick detected.\n")
+# if pygame.usb_joystick.get_count() < 1:
+#   die("No usb_joystick detected.\n")
 
-# joystick = pygame.joystick.Joystick(0)
-# joystick.init()
+# usb_joystick = pygame.usb_joystick.Joystick(0)
+# usb_joystick.init()
 {%- endif %}
 
 created_mem = sa.list()
@@ -306,45 +341,50 @@ else:
   {%- if sig_type == 'line' %}
   # sig_buffer_size = {{args['history']}} * frames
   # dtype = np.int16 # TODO grab this from alsa
+  #
   {% else %}
   sig_buffer_size = {{args['buf_tot_numel']}} # tick data size * (2+history) so that at least `history` packets always buffered
   dtype = np.{{args['dtype']}}
   {% endif %}
+
   out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=dtype)
   {{sig}} = out_sigs['{{sig}}']
   {{sig}}StrtPtr = <{{sig_types[sig]}} *><long>out_sigs['{{sig}}'].__array_interface__['data'][0]
+
   {%- if not has_parser %}
   out_sig = out_sigs['{{sig}}']
   {%- endif %}
-{%- if py_maj_ver == 2 %}
+
+  {%- if py_maj_ver == 2 %}
   sa.mlock(out_sigs['{{sig}}'])
-{%- endif %}
+  {%- endif %}
+
   {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
   {{sig}}BufVars[7] = sig_buffer_size
-    {%- if sig_type == 'line' %}
+
+  {%- if sig_type == 'line' %}
   # {{sig}}BufVars[6] = recvLen
   # {{sig}}BufVars[5] = frames # TODO, this right? should be packet size in bytes
   # {{sig}}BufVars[3] = sig_buffer_size
   # {{sig}}BufVars[0] = {{sig}}BufVars[3]
-    {%- else %}
+  {%- else %}
   {{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
   {{sig}}BufVars[5] = {{args['schema']['data']['size']}}  
-    {%- endif %}
+  {%- endif %}
+
 {%- endfor %}
+
 {%- if has_parser %}
 bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
 bufCurPtr = bufStrtPtr
 bufEndPtr = bufStrtPtr + packetSize
 {%- else %}
-# bufStrtPtr = <{{in_dtype}} *><long>out_sig.__array_interface__['data'][0]
-# bufCurPtr = bufStrtPtr
-# bufEndPtr = bufStrtPtr + sig_buffer_size
 bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
 bufCurPtr = bufStrtPtr
 bufEndPtr = bufStrtPtr + packetSize
 {%- endif %}
 
-print bufEndPtr - bufStrtPtr
+print(bufEndPtr - bufStrtPtr)
 
 {% if default_params -%}
 {{in_sig_name}} = {{default_params}}
@@ -377,7 +417,7 @@ while(True):
     packetNum = (<unsigned long *>bufStrtPtr)[0]
     num_packets += 1
   {%- endif %}
-{% elif sig_type == 'line' %}
+#{% elif sig_type == 'line' %}
   # #read from line in
   # ret = snd_pcm_readi(cap_handle, <char *>bufCurPtr, frames)
   # for i in range(640):
@@ -407,12 +447,12 @@ while(True):
   {%- if test_throughput %}
   num_packets += 1
   {%- endif %}
-{%- elif sig_type == 'joystick' %}
+{%- elif sig_type == 'usb_joystick' %}
   if (readInput):
     readInput = False
     pygame.event.pump()
     for axis in range(recvLen):
-      bufCurPtr[axis] = joystick.get_axis(axis)
+      bufCurPtr[axis] = usb_joystick.get_axis(axis)
   else:
     pause()
     continue
