@@ -12,9 +12,6 @@
 #   parallel_reader -> parallel_in -> parallel_toggle -> parallel_out -> parallel_writer
 #   (source module)      (signal)        (module)          (signal)       (sink module)
 
-config:
-  verbose_comments: false # currently required key, will later be optional
-
 signals:
 
   parallel_in:              # the signal written to from the parallel input source

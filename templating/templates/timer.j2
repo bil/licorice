@@ -53,9 +53,7 @@ static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source
 static pid_t so_pids[NUM_SOURCES];
 // logger pid
 static pid_t si_pids[NUM_SINKS];
-{% if parport_tick_addr -%}
-static unsigned char outVal = 0;
-{%- endif %}
+
 // pointer to start of shared memory
 static size_t shm_size;
 static uint8_t *pmem;
@@ -170,16 +168,6 @@ static void check_children() {
   // printf("TIMER tick %ld\n", *pNumTicks);
   if ((sigalrm_recv > 1))
     die("Timer missed a tick.");
-{% if parport_tick_addr -%}
-  // flip bits and output to parallel port
-  outb(outVal,0x{{parport_tick_addr}});
-  outVal = ~outVal;
-
-//  clock_gettime(CLOCK_MONOTONIC_RAW, &record_timer);
-//  curTime = record_timer.tv_nsec;
-//  curSec = record_timer.tv_sec;
-//  fprintf(f, "%ld %ld\n", curTime, curSec);
-{%- endif %}
 
 {%- if test_tick_time %}
   tickStartNSec = tickTimer.tv_nsec;
@@ -369,15 +357,6 @@ int main(int argc, char* argv[]) {
   startStartNSec = startTimer.tv_nsec;
 {%- endif %}
 
-{%- if parport_tick_addr %}
-
-  f = fopen("out_ticks","w");
-  if (f == NULL) {
-    printf("Error opening file!\n");
-    handle_exit(1);
-  }
-{%- endif %}
-
   // set signal masks
   sigemptyset(&exitMask);
   sigaddset(&exitMask, SIGALRM);  
@@ -385,14 +364,6 @@ int main(int argc, char* argv[]) {
   // sigdelset(&alrmMask, SIGINT);
   // initialize utilityFunctions
   init_utils(&handle_exit, &exitMask);
-
-{%- if parport_tick_addr %}
-
-  // make sure parport is writeable
-  if (ioperm(0x{{parport_tick_addr}}, 1, 1)) {
-    die("io permission denied\n");
-  }
-{%- endif %}
 
   // set signal handlers
   set_sighandler(SIGINT, &exit_handler, &exitMask);

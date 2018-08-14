@@ -188,7 +188,6 @@ def generate(paths, config, confirm):
       do_jinja( os.path.join(paths['generator'], G_TEMPLATE_MODULE_CODE_PY),
                 os.path.join(paths['modules'], module_name + '.py'),
                 name=module_name, 
-                verbose_comments=config['config']['verbose_comments'],
                 in_sig=module_args['in'], 
                 out_sig=module_args['out'] )
 
