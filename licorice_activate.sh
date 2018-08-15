@@ -64,11 +64,11 @@ then
   
   # remove any compiled binaries
   licorice_wipe_binaries() {
-    if [-n "$BINARY_DIR"]
+    if [ -n "$BINARY_DIR" ]
     then
       rm -rf $BINARY_DIR/*
     else
-      echo "WARNING: LiCoRICE env is not setup correctly. Not wiping binaries"
+      echo "WARNING: Could not find binaries directory. Not wiping anything."
     fi
   }
   

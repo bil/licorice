@@ -240,11 +240,18 @@ def parse(paths, config, confirm):
   # set up signal helper variables
   internal_signals = list(signals) # list of numpy signal names
   external_signals = []             # list of external signal names
+
   for signal_name, signal_args in iter(signals.items()):
     signal_args['sig_shape'] = str(signal_args['shape']).partition('(')[2]
     if signal_args['sig_shape'] == '':
       signal_args['sig_shape'] = str(signal_args['shape']) + ')'
-    signal_args['sig_shape'] = "({0},".format(signal_args['history'] + HISTORY_PAD_LENGTH) + signal_args['sig_shape']
+
+    if 'history' in signal_args :
+      signal_history = signal_args['history']
+    else:
+      signal_history = 1
+
+    signal_args['sig_shape'] = "({0},".format(signal_history + HISTORY_PAD_LENGTH) + signal_args['sig_shape']
     signal_args['buf_tot_numel'] = np.prod(np.array(literal_eval(str(signal_args['sig_shape']))))
     signal_args['tick_numel'] = np.prod(np.array(literal_eval(str(signal_args['shape']))))
     signal_args['dtype_msgpack'] = fix_dtype_msgpack(signal_args['dtype'])
@@ -253,6 +260,7 @@ def parse(paths, config, confirm):
       ext_sig = None
       if isinstance(module_args['in'], dict) and 'name' in module_args['in']:
         ext_sig = module_args['in']
+
         # need 4 times the average per-tick # of bytes since need double packets_per_tick in the 
         # worst case and two full tick lengths to avoid overlap in wrap. 2 would also likely work, but 4 is very safe
         # TODO, maybe packets_per_tick should default to 1 for some inputs? e.g., default, joystick, parport?
@@ -709,7 +717,7 @@ def parse(paths, config, confirm):
           )
 
   # parse timer parent
-  parport_tick_addr = config['config']['parport_tick_addr'] if 'parport_tick_addr' in config['config'] else None
+  #parport_tick_addr = config['config']['parport_tick_addr'] if 'parport_tick_addr' in config['config'] else None
   non_source_module_check = list(map(lambda x: int(x in module_names), non_source_names))
   do_jinja( os.path.join(paths['templates'], TEMPLATE_TIMER), 
             os.path.join(paths['output'], OUTPUT_TIMER),
@@ -731,11 +739,13 @@ def parse(paths, config, confirm):
             internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
             num_source_sigs=len(list(source_outputs)),
             source_out_sig_nums={x : internal_signals.index(x) for x in list(source_outputs)},
-            parport_tick_addr=parport_tick_addr,
+            #parport_tick_addr=parport_tick_addr,
             non_source_module_check=non_source_module_check
           )
 
   # parse constants.h
+  if not 'config' in config:
+      config['config'] = {}
   if not 'init_buffer_ticks' in config['config']:
     config['config']['init_buffer_ticks'] = 100
   do_jinja( os.path.join(paths['templates'], TEMPLATE_CONSTANTS),

@@ -25,11 +25,6 @@ import numpy as np
 cimport numpy as np
 cimport cython
 
-# import pygame if this source 
-{% if sig_type == 'usb_joystick' -%}
-import pygame
-{%- endif %}
-
 # declare jinja variables
 {% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %} ## What is this?
 {% set sig_type = in_signal['args']['type'] -%}
@@ -159,12 +154,13 @@ cdef in_addr interface_ip
 
 {%- elif sig_type == 'parport' %}
 cdef unsigned char inVal
-readInput = False
+read_source_input = False
 recvLen = 1
 
-{%- elif sig_type == 'usb_joystick' %}
-recvLen = 2
-readInput = False
+{%- elif sig_type == 'usb_input' %}
+
+read_source_input = False
+
 {%- endif %}
 # end test for variable initializations
 
@@ -253,13 +249,13 @@ cdef void segv_handler(int signum):
 
 # sources respond to SIGALRM 
 cdef void alrm_handler(int signum):
-  global parentSetup, readInput
+  global parentSetup, read_source_input
   if (parentSetup):
     parentSetup = False
 
 # some are triggered to read based on SIGALRM
-{%- if sig_type == 'parport' or sig_type == 'usb_joystick' %}
-  readInput = True
+{%- if sig_type == 'parport' or sig_type == 'usb_input' %}
+  read_source_input = True
 {%- endif %}
 
 cdef void usr2_handler(int signum):
@@ -321,15 +317,6 @@ if (not dish):
   die("Could not create ZMQ socket.\n")
 rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
 assert (rc == 0)
-# {% elif sig_type == 'usb_joystick' -%}
-# pygame.init()
-# pygame.usb_joystick.init()
-
-# if pygame.usb_joystick.get_count() < 1:
-#   die("No usb_joystick detected.\n")
-
-# usb_joystick = pygame.usb_joystick.Joystick(0)
-# usb_joystick.init()
 {%- endif %}
 
 created_mem = sa.list()
@@ -433,8 +420,8 @@ while(True):
   #   die("pcm short error")
 {%- elif sig_type == 'parport' %}
   # recvLen always 1 for parport
-  if (readInput):
-    readInput = False
+  if (read_source_input):
+    read_source_input = False
     inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
     bufCurPtr[0] = inVal
   else:
@@ -447,15 +434,7 @@ while(True):
   {%- if test_throughput %}
   num_packets += 1
   {%- endif %}
-{%- elif sig_type == 'usb_joystick' %}
-  if (readInput):
-    readInput = False
-    pygame.event.pump()
-    for axis in range(recvLen):
-      bufCurPtr[axis] = usb_joystick.get_axis(axis)
-  else:
-    pause()
-    continue
+
 {%- else %}
   pause()
 {%- endif %}
