@@ -1,0 +1,55 @@
+# USB Joystick demo
+#
+# A model that outputs values from a joystick axis
+# This model requires the USB kernel to have been compiled
+#
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+signals:
+
+  joystick_axis_out:
+    shape: 1
+    dtype: float
+
+  parallel_in:
+    shape: 1
+    dtype: uint8
+
+modules:
+
+  joystick:
+    language: python
+    in:
+      name: jdev
+      args:
+        type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
+      schema:
+        packets_per_tick: 1
+        data:
+          dtype: float
+          size: 1
+    out:
+      - joystick_axis_out
+    constructor: True # the constructor and parser perform all the USB manipulation through pygame
+    parser: True
+
+  joystick_axis_print:
+    language: python
+    numba: false
+    in:
+      - joystick_axis_out
+    out:
+      - parallel_in
+
+  parallel_writer:          # define the sink (this is only here because at least one sink must exist for now)
+    language: python
+    in:
+      - parallel_in
+    out:
+      name: parport_out     # needs a name, will be removed later
+      args:
+        type: parport
+        addr: 378
+      parser: false
