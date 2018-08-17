@@ -633,7 +633,7 @@ def parse(paths, config, confirm):
             
         sig_nums = {x: internal_signals.index(x) for x in (list(in_signals) + list(out_signals))}
 
-        module_args['numba'] = (not 'numba' in module_args or module_args['numba'])
+        module_args['numba'] = ('numba' in module_args and module_args['numba'])
         mod_func_inst = None
         func_inputs = None
         if module_args['numba']:

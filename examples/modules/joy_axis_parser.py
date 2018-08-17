@@ -6,7 +6,14 @@ if (read_source_input) : # this is a special variable that is set to true every 
 
     pygame.event.pump()
 
-    joystick_axis_out[0] = usb_joystick.get_axis(0)
+    ax1 = usb_joystick.get_axis(0)
+    ax2 = usb_joystick.get_axis(1)
+
+    joystick_axis_out[0, 0] = ax1
+    joystick_axis_out[0, 1] = ax2
+
+#    if not pNumTicks[0] % 15 : 
+#        print( (ax1, ax2) )
 
 else: # if the source is not triggered on this tick (in the case that the prior tick's reading of data is taking longer than a tick), do nothing
 

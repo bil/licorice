@@ -37,7 +37,6 @@ modules:
   # sinks
   pygame_demo:
     language: python
-    numba: false
     in:
       - parallel_in
     out:
