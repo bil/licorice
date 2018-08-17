@@ -69,7 +69,6 @@ modules:
   matmul:                   # define the module
     language: python        # language the module is written in
     numba: true             # compile module using numba.pycc (if true, only a subset of python is permitted, but code is statically compiled with BLAS/LAPACK support)
-    constructor: false      # numba modules cannot have constructors 
     in:
       - m1
       - m2
@@ -78,7 +77,6 @@ modules:
 
   matmul_print:
     language: python
-    constructor: true
 
     in:
       - matmul_out
