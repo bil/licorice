@@ -1,7 +1,4 @@
-if counter < 2000:
-    counter += 1
+if not pNumTicks[0] % 17 :
 
-else:
-    counter = 0
-
+    print(matmul_out.shape)
     print(matmul_out[:,:])
