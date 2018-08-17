@@ -1,7 +1,8 @@
-# USB Joystick demo
+# cursor Pygame demo
 #
-# A model that outputs values from a joystick axis
+# A model that reads from a joystick axis and places the movement as a cursor on a pygame window
 # This model requires the USB kernel to have been compiled
+# This model also requires a working pygame visualization installation
 #
 #
 # Note: model configuration is still in alpha stage and subject to cosmetic changes
@@ -10,15 +11,12 @@
 signals:
 
   joystick_axis_out:
-    shape: 2
+    shape: 2, 1
     dtype: float
-
-  parallel_in:
-    shape: 1
-    dtype: uint8
 
 modules:
 
+  # sources
   joy_axis:
     language: python
     in:
@@ -35,20 +33,15 @@ modules:
     constructor: True # the constructor and parser perform all the USB manipulation through pygame
     parser: True
 
-  joystick_axis_print:
+  # sinks
+  cursor_display:
     language: python
     in:
       - joystick_axis_out
     out:
-      - parallel_in
-
-  parallel_writer:          # define the sink (this is only here because at least one sink must exist for now)
-    language: python
-    in:
-      - parallel_in
-    out:
-      name: parport_out     # needs a name, will be removed later
+      name: viz
       args:
-        type: parport
-        addr: 378
-      parser: false
+        type: vis_pygame    # sink type for pygame
+    parser: true            # most "user code" will live here
+    constructor: true
+    destructor: true

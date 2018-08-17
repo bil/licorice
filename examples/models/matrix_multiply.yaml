@@ -58,7 +58,6 @@ modules:
 
   matmul_init:
     language: python
-    numba: false
     constructor: true       # this permits the use of constructor code to intialize the module
                             # constructors only execute once, before the ticks have begun
     in:
@@ -79,7 +78,6 @@ modules:
 
   matmul_print:
     language: python
-    numba: false
     constructor: true
 
     in:

@@ -20,6 +20,9 @@ class Circle(pygame.sprite.Sprite):
         self.color = color
         self.draw()
 
+    def get_pos(self):
+        return (self.rect.x, self.rect.y)
+
     def set_pos(self, pos):
         self.rect.x, self.rect.y = pos
 
