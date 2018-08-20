@@ -371,8 +371,6 @@ bufCurPtr = bufStrtPtr
 bufEndPtr = bufStrtPtr + packetSize
 {%- endif %}
 
-print(bufEndPtr - bufStrtPtr)
-
 {% if default_params -%}
 {{in_sig_name}} = {{default_params}}
 {%- endif %}
