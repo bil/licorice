@@ -6,7 +6,7 @@
 
 # set some variables
 INSTALL_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
-KERNEL_DIR=~/rt_usb_kernel
+KERNEL_DIR=`pwd`/../rt_usb_kernel
 TMP_DIR=/tmp
 
 NUM_CPUS=`grep processor /proc/cpuinfo|wc -l`

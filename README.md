@@ -28,9 +28,15 @@ An example directory structure for an experimental rig would be:
 
 ### Installation 
 
-1. Clone the LiCoRICE repository and place it in the directory structure as mentioend above
+1. Disable all USB and ACPI support in the BIOS of the target system
 
-2. Compile realtime kernel
+    USB and ACPI features throw CPU interrupts which can interfere with realtime performance.
+
+    If USB support is needed for peripherals, enable only the minimum USB version necessary on as few ports as possible if such options in the BIOS exist.
+
+2. Clone the LiCoRICE repository and place it in the directory structure as mentioend above
+
+3. Compile realtime kernel
 
     From the top-level LiCoRICE repository directory, run:
 
@@ -38,11 +44,13 @@ An example directory structure for an experimental rig would be:
     ./install/kernel_setup.sh
     ```
 
-    This script will take one to two hours to complete.
+    This script will take from one to five hours to complete, depeding on the speed and processor count of the system.
     Reboot to finish installation when notified.
     Any USB keyboards will not work after this point (USB support is disabled in this realtime kernel), use a PS/2 keyboard or ssh into the system.
 
-3. Python virtualenv setup
+    Note: if USB support is necessary (e.g., system requires realtime support for a USB peripheral), install the USB enabled kernel instead via `./install/kernel_setup_usb.sh` instead. Enabling USB support will degrade system performance by a small amount, but may still fit within application tolerances. In general, a limited number of USB devices do not preclude consistently meeting 1ms ticks. Regardless, it is important to always verify timings for a given system deployment.
+
+4. Python virtualenv setup
 
     From the top-level LiCoRICE directory, run:
 
@@ -52,13 +60,13 @@ An example directory structure for an experimental rig would be:
 
     This script will take 15 to 30 minutes to complete.
 
-4. Bind to the newly built virtualenv:
+5. Bind to the newly built virtualenv:
 
     ```bash
     source ~/lico_venv/bin/activate
     ```
 
-5. Source the LiCoRICE activation script:
+6. Source the LiCoRICE activation script:
 
     ```bash
     source licorice_activate.sh
