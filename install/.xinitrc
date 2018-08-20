@@ -1,0 +1,2 @@
+lxterminal &
+openbox
