@@ -17,7 +17,7 @@ LiCoRICE setup:
 ### Directory structure
 
 LiCoRICE is designed to be a submodule of a larger repository.
-This larger repository is where the configuration, code, and binaries for the models that LiCoRICE are stored.
+This larger repository is where the configuration, code, and binaries for the models that LiCoRICE runs are stored.
 An example directory structure for an experimental rig would be:
 
 * `rig`
