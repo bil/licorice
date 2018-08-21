@@ -1,7 +1,7 @@
 # parallel_toggle
 #
 # A simple model that toggles parallel port pin 9 up and down every two seconds
-# This model reads from the parallel port as well, but does not do anything with that value (all modules must have inputs at this time)
+# This model reads from the parallel port as well, but does not do anything with that value (just for demo purposes)
 #
 #
 # Note: model configuration is still in alpha stage and subject to cosmetic changes

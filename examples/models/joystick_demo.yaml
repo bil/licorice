@@ -13,10 +13,6 @@ signals:
     shape: 2
     dtype: float
 
-  parallel_in:
-    shape: 1
-    dtype: uint8
-
 modules:
 
   joy_axis:
@@ -39,16 +35,3 @@ modules:
     language: python
     in:
       - joystick_axis_out
-    out:
-      - parallel_in
-
-  parallel_writer:          # define the sink (this is only here because at least one sink must exist for now)
-    language: python
-    in:
-      - parallel_in
-    out:
-      name: parport_out     # needs a name, will be removed later
-      args:
-        type: parport
-        addr: 378
-      parser: false
