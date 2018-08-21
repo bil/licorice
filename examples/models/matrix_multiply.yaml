@@ -3,24 +3,10 @@
 # A model that demonstrates the math capabilities of LiCoRICE
 # The math operations perfomred by the matmul module are statically compiled against BLAS/LAPACK using numba's pycc
 #
-# This model reads and write to the parallel port, but does not do anything with that data (all modules must have inputs and outputs at this time)
-#
-#
 # Note: model configuration is still in alpha stage and subject to cosmetic changes
-#
 #
 
 signals:
-
-  parallel_in:              # the signal written to from the parallel input source
-    shape: 1
-    dtype: uint8
-    history: 1              # currently a required parameter, if historical (past ticks) data is desired, increase this number
- 
-  parallel_out:             # the signal that the parallel output sink reads from
-    shape: 1
-    dtype: uint8
-    history: 1 
 
   m1:
     shape: (4, 4)
@@ -39,29 +25,10 @@ signals:
 
 modules:
 
-  # sources
-  parallel_reader:          # define the source
-    language: python        # language is currently a required parameter, will later be optional
-    in:
-      name: parport_in      # needs a name, will be removed later
-      args:
-        type: parport       # the type of souce this is
-        addr: 379           # the I/O address of the parallel port
-      parser: false         # whether a parser is used
-      schema:               # define the structure of the data generated from the source
-        data:
-          dtype: uint8      # data type quantization
-          size: 1           # number of units of dtype to read per packet
-        packets_per_tick: 1 # max number of packets to accept per tick (this is not relevant for parallel ports, will be removed for non-appropriate sources later)
-    out:
-      - parallel_in         # signal to write output of source to
-
   matmul_init:
     language: python
     constructor: true       # this permits the use of constructor code to intialize the module
                             # constructors only execute once, before the ticks have begun
-    in:
-      - parallel_in
     out:
       - m1
       - m2
@@ -81,15 +48,3 @@ modules:
     in:
       - matmul_out
     out:
-      - parallel_out
-
-  parallel_writer:          # define the sink
-    language: python
-    in:
-      - parallel_out
-    out:
-      name: parport_out     # needs a name, will be removed later
-      args:
-        type: parport
-        addr: 378
-      parser: false

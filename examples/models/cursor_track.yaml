@@ -11,7 +11,7 @@
 signals:
 
   joystick_axis_out:
-    shape: 2, 1
+    shape: 2
     dtype: float
 
 modules:

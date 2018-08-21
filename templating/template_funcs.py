@@ -270,7 +270,7 @@ def parse(paths, config, confirm):
         # worst case and two full tick lengths to avoid overlap in wrap. 2 would also likely work, but 4 is very safe
         # TODO, maybe packets_per_tick should default to 1 for some inputs? e.g., default, joystick, parport?
         ext_sig['schema']['buf_tot_numel'] = 4 * int(ext_sig['schema']['packets_per_tick']) * int(ext_sig['schema']['data']['size'])
-      elif isinstance(module_args['out'], dict) and 'name' in module_args['out']:
+      elif 'out' in module_args and isinstance(module_args['out'], dict) and 'name' in module_args['out']:
         ext_sig = module_args['out']
       else:
         continue
