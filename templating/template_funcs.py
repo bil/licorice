@@ -206,7 +206,6 @@ def generate(paths, config, confirm):
         do_jinja( os.path.join(paths['generator'], destruct_template), 
                   os.path.join(paths['modules'], module_args['destructor'] + extension))
 
-
 def parse(paths, config, confirm):
   print("Parsing")
   # load yaml config
@@ -242,6 +241,12 @@ def parse(paths, config, confirm):
   external_signals = []             # list of external signal names
 
   for signal_name, signal_args in iter(signals.items()):
+    # store 1D array shape as length of array
+    a = np.empty(literal_eval(str(signal_args['shape'])))
+    a = a.squeeze()
+    if len(a.shape) == 1:
+      signal_args['shape'] = a.shape[0]
+
     signal_args['sig_shape'] = str(signal_args['shape']).partition('(')[2]
     if signal_args['sig_shape'] == '':
       signal_args['sig_shape'] = str(signal_args['shape']) + ')'
@@ -438,6 +443,7 @@ def parse(paths, config, confirm):
           with open(os.path.join(paths['modules'], module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
+
         do_jinja( os.path.join(paths['templates'], template), 
                   os.path.join(paths['output'], name + out_extension),
                   name=name, 
@@ -520,6 +526,78 @@ def parse(paths, config, confirm):
           with open(os.path.join(paths['modules'], module_args['destructor'] + in_extension), 'r') as f:
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
+
+
+        # if logger, group signals in different data structs depending on storage type
+        msgpack_sigs = []         # signals to be wrapped in msgpack
+        raw_vec_sigs = {}         # map signal to number of columns it will use
+        raw_vec_sigs['total'] = 0 # keep track of the total number of extra signal columns in db
+        raw_text_sigs = {}        # int vector signals to be stored as text in SQL
+                                  # map signal to number of bytes in one element of data
+        raw_num_sigs = []         # single number signals
+
+        if out_signal['args']['type'] == 'disk':
+          for sig, args in iter(in_signals.items()):
+            isText = False
+
+            # determine whether signal should be logged or not
+            log = False # if no logging specified
+            if ('log' in args and args['log'] == True) or \
+               ('log_storage' in args and ('enable' not in args['log_storage'] or args['log_storage']['enable'] == True)):
+              log = True
+              
+            if log == True:
+              # automatic determination of optimal signal storage type
+              if 'log_storage' not in args or (args['log_storage']['type'] == 'auto'):
+                if len(str(args['shape'])) == 1: # if 1D signal
+                  if args['shape'] == 1:
+                    raw_num_sigs.append(sig)
+                  else:
+                    if 'int' in args['dtype']:
+                      isText = True
+                    else:
+                      raw_vec_sigs[sig] = args['tick_numel']
+                      raw_vec_sigs['total'] += args['tick_numel'] - 1 # only count *extra* columns
+                else: # shape is matrix
+                  msgpack_sigs.append(sig)
+            
+              # assign specified storage
+              elif ('enable' not in args['log_storage']) or (args['log_storage']['enable'] == True):
+                if args['log_storage']['type'] == 'msgpack':
+                  msgpack_sigs.append(sig)
+                elif len(str(args['shape'])) == 1: # if 1D signal
+                  if args['log_storage']['type'] == 'vector':
+                    raw_vec_sigs[sig] = args['tick_numel']
+                    raw_vec_sigs['total'] += args['tick_numel'] - 1 # only count *extra* columns
+                  elif args['log_storage']['type'] == 'text':
+                    isText = True
+                  elif args['log_storage']['type'] == 'raw':
+                    raw_num_sigs.append(sig)
+                else: # not 1D array, store as msgpack
+                  print "Signal shape for " + sig + " unsupported. Signal must be 1-dimensional array to be stored as " + args['log_storage'] + "."
+                  print sig + " will be wrapped in msgpack."
+                  msgpack_sigs.append(sig)
+
+              # for text signals, determine number of bytes in one signal element
+              if isText:
+                shape = str(args['shape'])
+                if '16' in shape:
+                  numBytes = 2
+                elif '32' in shape:
+                  numBytes = 4
+                elif '64' in shape:
+                  numBytes = 8
+                else: # int8
+                  numBytes = 1
+                raw_text_sigs[sig] = numBytes
+              
+              # store abbreviated dtype for use in colName
+              dt = np.dtype(args['dtype'])
+              args['dtype_short'] = dt.kind + str(dt.itemsize)
+            
+            else: # log = False
+              in_signals.pop(sig)
+              in_sig_types.pop(sig)
             
         do_jinja( os.path.join(paths['templates'], template),
                   os.path.join(paths['output'], name + out_extension),
@@ -532,6 +610,10 @@ def parse(paths, config, confirm):
                   destruct_code=destruct_code, 
                   in_signal_name=(None if (has_parser) else list(in_signals)[0]),
                   in_signals=in_signals,
+                  msgpack_sigs=msgpack_sigs,
+                  raw_vec_sigs=raw_vec_sigs,
+                  raw_text_sigs=raw_text_sigs,
+                  raw_num_sigs=raw_num_sigs,
                   in_sig_nums=in_sig_nums,
                   out_sig_name=module_args['out']['name'],
                   out_signal=out_signal,
@@ -633,7 +715,7 @@ def parse(paths, config, confirm):
             
         sig_nums = {x: internal_signals.index(x) for x in (list(in_signals) + list(out_signals))}
 
-        module_args['numba'] = ('numba' in module_args and module_args['numba'])
+        module_args['numba'] = (not 'numba' in module_args or module_args['numba'])
         mod_func_inst = None
         func_inputs = None
         if module_args['numba']:

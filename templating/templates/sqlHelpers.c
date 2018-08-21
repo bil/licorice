@@ -7,17 +7,42 @@
 
 static int prc;
 
-void sql_bind_int(sqlite3_stmt *stmt, int index, int value) { 
-  prc = sqlite3_bind_int(stmt, index, value);
+void sql_bind_int(sqlite3_stmt *stmt, int index, const char* dtype, const void* value) { 
+  int val;
+  if (strstr(dtype, "8") != NULL) {
+    // int8
+    val = *(char *)value;
+  } else if (strstr(dtype, "16") != NULL) {
+    // int16
+    val = *(short *)value;
+  } else {
+    // int32
+    val = *(long *)value;
+  }
+  prc = sqlite3_bind_int(stmt, index, val);
   if (prc != SQLITE_OK) {
     die("sqlite3_bind_int failed \n");
   }
 }
 
-void sql_bind_double(sqlite3_stmt *stmt, int index, double value) { 
-  prc = sqlite3_bind_double(stmt, index, value);
+void sql_bind_int64(sqlite3_stmt *stmt, int index, const void* value) {
+  prc = sqlite3_bind_int64(stmt, index, *(sqlite3_int64 *)value);
   if (prc != SQLITE_OK) {
-    die("sqlite3_bind_int failed \n");
+    die("sqlite3_bind_int64 failed \n");
+  }
+}
+
+void sql_bind_double(sqlite3_stmt *stmt, int index, const void* value) { 
+  prc = sqlite3_bind_double(stmt, index, *(double *)value);
+  if (prc != SQLITE_OK) {
+    die("sqlite3_bind_double failed \n");
+  }
+}
+
+void sql_bind_text(sqlite3_stmt *stmt, int index, const void* value, int numBytes, void(*destructor)(void*)) {
+  prc = sqlite3_bind_text(stmt, index, (const char *)value, numBytes, destructor);
+  if (prc != SQLITE_OK) {
+    die("sqlite3_bind_text failed \n");
   }
 }
 
@@ -55,15 +80,23 @@ void sql_finalize(sqlite3_stmt *stmt) {
 }
 
 static char buf[64];
+static char db_index_str[DB_INDEX_PAD_LENGTH];
 static int rc;
 static int tempVal = 0;
 static char tempBuf[16];
-void openDatabase(sqlite3 **db, char* startName, char* newNameLocation) {
-  if(strlen(startName) > 48) {
+void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLocation) {
+  if(strlen(startName) > 48 - DB_INDEX_PAD_LENGTH) { // was > 48, but now need to leave room for db index
     sprintf(buf, "Name %s too long.\n", startName);
     die(buf);
   }
   strcpy(buf, startName);
+  strcat(buf, "_");
+  sprintf(db_index_str, "%d", db_index);
+  // add preceding zeros for db index
+  for (int i = 0; i < DB_INDEX_PAD_LENGTH - strlen(db_index_str); i++) {
+    strcat(buf, "0");
+  }
+  strcat(buf, db_index_str);
   strcat(buf,".db");
   rc = sqlite3_open_v2(buf, db, SQLITE_OPEN_READWRITE, NULL);
   while(!rc) {
@@ -95,8 +128,10 @@ void createTables(sqlite3 *db, SQLTable* databaseArr) {
       len += strlen(SPACE);
       len += strlen(databaseArr[i].columns[j].SQLtype);
       len += strlen(COMMA);
+      len += strlen(SPACE);
     }
     len -= strlen(COMMA);
+    len -= strlen(SPACE);
     //+1 for null terminator
     cmd = (char*) malloc(len + 1);
     strcpy(cmd, CREATE_TABLE_STR);
@@ -108,6 +143,7 @@ void createTables(sqlite3 *db, SQLTable* databaseArr) {
       strcat(cmd, databaseArr[i].columns[j].SQLtype);
       if(j < (databaseArr[i].numCol - 1)) {
         strcat(cmd, COMMA);
+        strcat(cmd, SPACE);
       }
     } 
     strcat(cmd, CLOSE_BRACE_SEMI);
@@ -115,6 +151,7 @@ void createTables(sqlite3 *db, SQLTable* databaseArr) {
     rc = sqlite3_exec(db, cmd, NULL, NULL, &zErrMsg);
       if (rc != SQLITE_OK) {
         // print zErrMsg
+        printf("zErrMsg: %s\n", zErrMsg);
         sqlite3_free(zErrMsg);
         die("SQL error");
       }
