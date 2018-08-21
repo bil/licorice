@@ -177,13 +177,15 @@ cdef extern from "sqlite3async.h" nogil:
   enum: SQLITEASYNC_HALT_IDLE
 
 cdef extern from "sqlHelpers.h" nogil:
-  void sql_bind_int(sqlite3_stmt *stmt, int index, int value)
-  void sql_bind_double(sqlite3_stmt *stmt, int index, double value)
+  void sql_bind_int(sqlite3_stmt *stmt, int index, const char* dtype, const void* value)
+  void sql_bind_int64(sqlite3_stmt *stmt, int index, const void* value)
+  void sql_bind_double(sqlite3_stmt *stmt, int index, const void* value)
+  void sql_bind_text(sqlite3_stmt *stmt, int index, const void* value, int numBytes, destructor destruct)
   void sql_bind_blob(sqlite3_stmt *stmt, int index, const void* value, int numBytes, destructor destruct)
   void sql_prepare(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
   void sql_step(sqlite3_stmt *stmt)
   void sql_finalize(sqlite3_stmt *stmt)
-  void openDatabase(sqlite3 **db, char *startName, char* newNameLocation)
+  void openDatabase(sqlite3 **db, char *startName, int db_index, char* newNameLocation)
   void createTables(sqlite3 *db, SQLTable* databaseArr)
   enum: NUM_BUF_S
   enum: NUM_MS_IN_S
@@ -255,6 +257,7 @@ cdef extern from "constants.h":
   enum: NUM_TABLES
   cdef const char *DATALOGGER_SIGNALS_TABLE_NAME
   cdef const char *DATALOGGER_FILENAME
+  enum: NEW_DB_NUM_S
   enum: BUF_VARS_LEN
 
 #include <stdatomic.h>
@@ -287,6 +290,7 @@ cdef void * retVal
 cdef uint32_t lineWriteOffset = 0
 cdef bool lineWrapped
 {%- elif sig_type == 'disk' %}
+cdef bool newDB = False
 cdef int ret
 cdef int rc
 # threading variables
@@ -322,13 +326,13 @@ cdef sqlite3 *db
 cdef sqlite3_stmt *contStmt
 cdef sqlite3_stmt *signalsStmt
 cdef SQLTable databaseArray[NUM_TABLES]
-cdef SQLTableElement signalsTableArr[{{in_signals|length}}]
+cdef SQLTableElement signalsTableArr[{{in_signals|length}} + {{raw_vec_sigs['total']}}]
 
 # sqlite helper variables
 cdef char *signalsQuery
 
 # message pack
-{%- for sig in in_signals %}
+{%- for sig in msgpack_sigs %}
 cdef msgpack_sbuffer mpSignals{{sig|capitalize}}Buf
 cdef msgpack_packer mpSignals{{sig|capitalize}}Pk
 {%- endfor %}
@@ -385,7 +389,7 @@ cdef void handle_exit(int exitStatus):
   pthread_cond_signal(&cv) 
   pthread_mutex_unlock(&mutex)
   pthread_join(tid, &retVal)
-{% for sig in in_signals %}
+{% for sig in msgpack_sigs %}
   msgpack_sbuffer_destroy(&mpSignals{{sig|capitalize}}Buf)
 {%- endfor %}
   free(logBufStrt)
@@ -411,13 +415,26 @@ cdef void usr2_handler(int signum):
   pass
 
 {% if sig_type == 'disk' -%}
+cdef int db_index = 0
+cdef int num_extra_cols = 0 # counter for extra columns added to db
+
 cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, shouldDie, zErrMsg, db, exitMask, signalsQuery, signalsStmt, {% for sig in in_signals %}mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}, pSignalsStructFlushStart, pSignalsStructFlushEnd, pSignalsStructCur
+  global mutex, cv, shouldDie, zErrMsg, db, newDB, db_index, num_extra_cols, exitMask, signalsQuery, signalsStmt\
+         {% for sig in msgpack_sigs %}, mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}, \
+         pSignalsStructFlushStart, pSignalsStructFlushEnd, pSignalsStructCur
+
   pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
 
   while (True):
     pthread_mutex_lock(&mutex)
     pthread_cond_wait(&cv, &mutex)
+
+    # create new database if time limit reached
+    if (newDB):
+      db_index += 1
+      openDatabase(&db, DATALOGGER_FILENAME, db_index, currDbName)
+      sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
+      createTables(db, databaseArray)
 
     if (shouldDie):
       retVal = NULL  
@@ -434,7 +451,12 @@ cdef void* processRequests(void *arg) nogil:
     while (pSignalsStructFlushStart != pSignalsStructFlushEnd):
       sql_prepare(db, signalsQuery, -1, &signalsStmt, NULL)
 
+      num_extra_cols = 0 # restart counter for each row logged
+
     {%- for sig, args in in_signals.items() %}
+
+    {%- if sig in msgpack_sigs %}
+      # msgpack signal
       msgpack_sbuffer_clear(&mpSignals{{sig|capitalize}}Buf)
       msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
       {%- if sig in source_outputs %}
@@ -443,7 +465,36 @@ cdef void* processRequests(void *arg) nogil:
       for i in range({{args['tick_numel']}}):
       {%- endif %}
         msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
-      sql_bind_blob(signalsStmt, {{loop.index}}, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
+      sql_bind_blob(signalsStmt, {{loop.index}} + num_extra_cols, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
+    
+    {%- elif sig in raw_vec_sigs %}
+      # vector signal
+      for i in range({{raw_vec_sigs[sig]}}):
+        if 'int' in '{{args['dtype']}}':
+          if '64' in '{{args['dtype']}}':
+            sql_bind_int64(signalsStmt, {{loop.index}} + num_extra_cols, &(pSignalsStructFlushStart.{{sig}}[i]))
+          else:
+            sql_bind_int(signalsStmt, {{loop.index}} + num_extra_cols, '{{args['dtype']}}', &(pSignalsStructFlushStart.{{sig}}[i]))
+        else: # float
+          sql_bind_double(signalsStmt, {{loop.index}} + num_extra_cols, &(pSignalsStructFlushStart.{{sig}}[i]))
+        num_extra_cols += 1
+      num_extra_cols -= 1
+
+    {%- elif sig in raw_text_sigs %}
+      # text signal
+      sql_bind_text(signalsStmt, {{loop.index}} + num_extra_cols, pSignalsStructFlushStart.{{sig}}, {{raw_text_sigs[sig]}} * {{args['tick_numel']}}, SQLITE_STATIC)
+
+    {%- elif sig in raw_num_sigs %}
+      # raw number signal
+      if 'int' in '{{args['dtype']}}':
+        if '64' in '{{args['dtype']}}':
+          sql_bind_int64(signalsStmt, {{loop.index}} + num_extra_cols, pSignalsStructFlushStart.{{sig}})
+        else:
+          sql_bind_int(signalsStmt, {{loop.index}} + num_extra_cols, '{{args['dtype']}}', pSignalsStructFlushStart.{{sig}})
+      else: # float
+        sql_bind_double(signalsStmt, {{loop.index}} + num_extra_cols, pSignalsStructFlushStart.{{sig}})
+
+    {%- endif %}
     {%- endfor %}
 
       sql_step(signalsStmt)
@@ -459,6 +510,9 @@ cdef void* processRequests(void *arg) nogil:
       # print sql error msg
       sqlite3_free(zErrMsg)
       die("SQL error")
+
+    if (newDB == True):
+      newDB = False
 
     sqlite3async_run()
 
@@ -546,8 +600,8 @@ CPU_ZERO(&mask)
 CPU_SET(4, &mask)
 pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
 {%- endif %}
-{% if sig_type == 'disk' %}
 
+{% if sig_type == 'disk' %}
 # SQLITE INIT
 # initialize sqlite3async
 rc = sqlite3async_initialize(NULL, 1)
@@ -574,6 +628,11 @@ strcat(signalsQuery, QUESTION)
 strcat(signalsQuery, COMMA)
 {%- endif %}
 {%- endfor %}
+# don't forget extra columns for vector signals
+{%- for i in range(raw_vec_sigs['total']) %}
+strcat(signalsQuery, COMMA)
+strcat(signalsQuery, QUESTION)
+{%- endfor %}
 strcat(signalsQuery, CLOSE_BRACE_SEMI)
 # signals buffer
 signalsBufSize = NUM_BUF_S * NUM_MS_IN_S
@@ -581,32 +640,77 @@ logBufStrt = <signalsMsData *>malloc(signalsBufSize * sizeof(signalsMsData))
 logBufEnd = logBufStrt + signalsBufSize
 pSignalsStructCur = logBufStrt
 pSignalsStructFlushStart = pSignalsStructCur
-openDatabase(&db, DATALOGGER_FILENAME, currDbName)
+openDatabase(&db, DATALOGGER_FILENAME, db_index, currDbName)
 sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
+
+# prepare SQL database table
+num_extra_cols = 0 # counter for number of extra added columns
 {%- for sig,args in in_signals.items() %}
-signalsTableArr[{{loop.index0}}].colName = "{{sig}}"
-signalsTableArr[{{loop.index0}}].type = "uint64_t"
-signalsTableArr[{{loop.index0}}].number = {{args['tick_numel']}}
-signalsTableArr[{{loop.index0}}].unit = "TODO"
-signalsTableArr[{{loop.index0}}].data = NULL
-signalsTableArr[{{loop.index0}}].SQLtype = "BLOB"
+# signalsTableArr[{{loop.index0}}].type = "uint64_t"
+# signalsTableArr[{{loop.index0}}].number = {{args['tick_numel']}}
+# signalsTableArr[{{loop.index0}}].unit = "TODO"
+# signalsTableArr[{{loop.index0}}].data = NULL
+
+{%- if sig in msgpack_sigs %}
+
+  # msgpack sigs
+signalsTableArr[{{loop.index0}} + num_extra_cols].colName = "m_{{args['dtype_short']}}_{{sig}}"
+signalsTableArr[{{loop.index0}} + num_extra_cols].SQLtype = "BLOB"
+
+{%- elif sig in raw_vec_sigs %}
+
+  # vector sigs
+curr_index = {{loop.index0}}
+{%- for i in range(raw_vec_sigs[sig]) %}
+{%- if args['log_storage'] and ('suffixes' in args['log_storage']) %} # if suffixes specified
+signalsTableArr[curr_index + num_extra_cols].colName = "v_{{args['dtype_short']}}_{{sig}}_{{args['log_storage']['suffixes'][i]}}"
+{%- else %}
+signalsTableArr[curr_index + num_extra_cols].colName = "v_{{args['dtype_short']}}_{{sig}}_{{i}}"
+{%- endif %}
+if 'int' in '{{args['dtype']}}':
+  signalsTableArr[curr_index + num_extra_cols].SQLtype = "INTEGER"
+else: # float
+  signalsTableArr[curr_index + num_extra_cols].SQLtype = "REAL"
+num_extra_cols += 1
+{%- endfor %}
+num_extra_cols -= 1 # only count *extra* added cols
+
+{%- elif sig in raw_text_sigs %}
+
+  # text sigs
+signalsTableArr[{{loop.index0}} + num_extra_cols].colName = "t_{{args['dtype_short']}}_{{sig}}"
+signalsTableArr[{{loop.index0}} + num_extra_cols].SQLtype = "TEXT"
+
+{%- elif sig in raw_num_sigs %}
+
+  # raw number sigs
+signalsTableArr[{{loop.index0}} + num_extra_cols].colName = "r_{{args['dtype_short']}}_{{sig}}"
+if 'int' in '{{args['dtype']}}':
+  signalsTableArr[{{loop.index0}} + num_extra_cols].SQLtype = "INTEGER"
+else: # float
+  signalsTableArr[{{loop.index0}} + num_extra_cols].SQLtype = "REAL"
+{%- endif %}
+
 {%- endfor %} 
 databaseArray[0].tableName = DATALOGGER_SIGNALS_TABLE_NAME
-databaseArray[0].numCol = {{in_signals|length}}
+databaseArray[0].numCol = {{in_signals|length}} + {{raw_vec_sigs['total']}}
 databaseArray[0].columns = signalsTableArr
 createTables(db, databaseArray)
+
 # flush sqlite buffer before execution start
 sqlite3async_run()
 
 
 # initialize message pack for numpy signals
 {% for sig, args in in_signals.items() %}
+{% if sig in msgpack_sigs %}
 msgpack_sbuffer_init(&mpSignals{{sig|capitalize}}Buf)
 msgpack_packer_init(&mpSignals{{sig|capitalize}}Pk, &mpSignals{{sig|capitalize}}Buf, msgpack_sbuffer_write)
 # enlarge buffer before main execution
 msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
 for i in range({{args['tick_numel']}}):
   msgpack_pack_int16(&mpSignals{{sig|capitalize}}Pk, 0)
+{% endif %}
 {% endfor %}
 {%- endif %}
 
@@ -722,10 +826,13 @@ while(True):
     pthread_cond_signal(&cv)
     pthread_mutex_unlock(&mutex)
 {%- elif sig_type == 'disk' %}
+  if (pNumTicks[0] > 0) and (pNumTicks[0] % (NEW_DB_NUM_S * 1000) == 0):
+    newDB = True
   if (pNumTicks[0] % 1000 == 0):
     pthread_mutex_lock(&mutex)
     pthread_cond_signal(&cv)
     pthread_mutex_unlock(&mutex)
 {%- endif %}
+
   sem_post(&pTickDownSems[{{non_source_num}}])
   sigalrm_recv -= 1
