@@ -34,7 +34,7 @@ An example directory structure for an experimental rig would be:
 
     If USB support is needed for peripherals, enable only the minimum USB version necessary on as few ports as possible if such options in the BIOS exist.
 
-2. Clone the LiCoRICE repository and place it in the directory structure as mentioend above
+2. Clone the LiCoRICE repository and place it in the directory structure as mentioned above
 
 3. Compile realtime kernel
 
