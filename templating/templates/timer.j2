@@ -48,7 +48,7 @@ static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
 {%- if num_source_sigs != 0 %}
 static int sourceOutSigNums[NUM_SOURCE_SIGS] = {{'{'}}{% for sig, num in source_out_sig_nums.items() %}{{num}}{{ "," if not loop.last }}{% endfor %}{{source_out_sig_nums[-1]}}{{'}'}};
 {%- else %}
-static int *sourceOutSigNums
+static int *sourceOutSigNums;
 {%- endif %}
 static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source_module_check[:-1] %}{{i}}, {% endfor %}{{non_source_module_check[-1]}}{{'}'}};
 // network pid
