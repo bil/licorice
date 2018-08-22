@@ -1,0 +1,12 @@
+# jitter_demo
+#
+# A model that simply runs the timer process with no child processes
+# Timer outputs a 1-ms tick to the specified parallel port address
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+config:
+  # change this address to your parallel port data out address
+  # can locate this with: `cat /proc/ioports | grep parport` 
+  parport_tick_addr: 0x0000
