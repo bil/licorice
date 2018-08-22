@@ -11,7 +11,8 @@ signals:
 
   joystick_axis_out:
     shape: 2
-    dtype: float
+    dtype: float64
+    log: True
 
 modules:
 
@@ -35,3 +36,13 @@ modules:
     language: python
     in:
       - joystick_axis_out
+
+
+  logger:
+    language: python
+    in:
+      - joystick_axis_out
+    out:
+      name: sqllog
+      args:
+        type: disk

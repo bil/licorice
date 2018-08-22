@@ -22,6 +22,7 @@ signals:
     shape: (4, 4)
     dtype: float64
     history: 1
+    log: True
 
 modules:
 
@@ -48,3 +49,12 @@ modules:
     in:
       - matmul_out
     out:
+
+  logger:
+    language: python
+    in:
+      - matmul_out
+    out:
+      name: sqllog
+      args:
+        type: disk
