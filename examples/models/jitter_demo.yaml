@@ -10,8 +10,3 @@ config:
   # change this address to your parallel port data out address
   # can locate this with: `cat /proc/ioports | grep parport` 
   parport_tick_addr: 0x0000
-
-# either (or both) of these headers may be removed
-signals:
-
-modules:
