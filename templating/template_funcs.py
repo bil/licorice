@@ -732,7 +732,9 @@ def parse(paths, config, confirm):
           )
 
   # parse timer parent
-  parport_tick_addr = config['config']['parport_tick_addr'] if 'parport_tick_addr' in config['config'] else None
+  parport_tick_addr = None
+  if 'config' in config and 'parport_tick_addr' in config['config']:
+    parport_tick_addr = config['config']['parport_tick_addr']
   non_source_module_check = list(map(lambda x: int(x in module_names), non_source_names))
   do_jinja( os.path.join(paths['templates'], TEMPLATE_TIMER), 
             os.path.join(paths['output'], OUTPUT_TIMER),
