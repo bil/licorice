@@ -13,7 +13,7 @@ VENV_DIR=~/lico_venv
 
 
 # install some packages
-sudo apt-get -y install libpython-dev python-virtualenv libopenblas-base libopenblas-dev sqlite libsqlite3-dev libevent-dev htop
+sudo apt-get -y install libpython-dev python-virtualenv libopenblas-base libopenblas-dev sqlite libmsgpack-dev libsqlite3-dev libevent-dev htop
 
 # make venv
 virtualenv -p python2 $VENV_DIR
@@ -37,4 +37,4 @@ python setup.py build -j $NUM_CPUS
 python setup.py install
 
 # install remaining python packages from pip
-pip install argparse pyyaml jinja2 toposort psutil portio sharedarray==2.0.4 matplotlib numba
+pip install argparse pyyaml jinja2 toposort psutil portio sharedarray==2.0.4 matplotlib numba msgpack
