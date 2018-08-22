@@ -99,8 +99,13 @@ def generate(paths, config, confirm):
   os.mkdir(paths['modules'])
 
   print("Generated modules:")
-  modules = config['modules']
-  signals = config['signals']
+  modules = {}
+  if 'modules' in config and config['modules']:
+    modules = config['modules']
+  external_signals = []
+  signals = {}
+  if 'signals' in config and config['signals']:
+    signals = config['signals']
   external_signals = []
   for signal_name, signal_args in iter(signals.items()):
     if 'args' in signal_args:
@@ -209,9 +214,14 @@ def generate(paths, config, confirm):
 
 def parse(paths, config, confirm):
   print("Parsing")
-  # load yaml config
-  signals = config['signals']
-  modules = config['modules']
+  modules = {}
+  if 'modules' in config and config['modules']:
+    modules = config['modules']
+  external_signals = []
+  signals = {}
+  if 'signals' in config and config['signals']:
+    signals = config['signals']
+  external_signals = []
 
   # set up output directory
   if os.path.exists(paths['output']):
@@ -238,7 +248,7 @@ def parse(paths, config, confirm):
   shutil.copytree(paths['templates'], paths['output'], ignore=shutil.ignore_patterns(('*.j2')))
   
   # set up signal helper variables
-  internal_signals = list(signals) # list of numpy signal names
+  internal_signals = list(signals or []) # list of numpy signal names
   external_signals = []             # list of external signal names
 
   for signal_name, signal_args in iter(signals.items()):
@@ -256,21 +266,20 @@ def parse(paths, config, confirm):
     signal_args['tick_numel'] = np.prod(np.array(literal_eval(str(signal_args['shape']))))
     signal_args['dtype_msgpack'] = fix_dtype_msgpack(signal_args['dtype'])
   for module_name, module_args in iter(modules.items()):
-    if 'in' in module_args:
-      ext_sig = None
-      if isinstance(module_args['in'], dict) and 'name' in module_args['in']:
-        ext_sig = module_args['in']
+    ext_sig = None
+    if 'in' in module_args and isinstance(module_args['in'], dict) and 'name' in module_args['in']:
+      ext_sig = module_args['in']
 
-        # need 4 times the average per-tick # of bytes since need double packets_per_tick in the 
-        # worst case and two full tick lengths to avoid overlap in wrap. 2 would also likely work, but 4 is very safe
-        # TODO, maybe packets_per_tick should default to 1 for some inputs? e.g., default, joystick, parport?
-        ext_sig['schema']['buf_tot_numel'] = 4 * int(ext_sig['schema']['packets_per_tick']) * int(ext_sig['schema']['data']['size'])
-      elif isinstance(module_args['out'], dict) and 'name' in module_args['out']:
-        ext_sig = module_args['out']
-      else:
-        continue
-      external_signals.append(ext_sig['name'])
-      signals[ext_sig['name']] = ext_sig
+      # need 4 times the average per-tick # of bytes since need double packets_per_tick in the 
+      # worst case and two full tick lengths to avoid overlap in wrap. 2 would also likely work, but 4 is very safe
+      # TODO, maybe packets_per_tick should default to 1 for some inputs? e.g., default, joystick, parport?
+      ext_sig['schema']['buf_tot_numel'] = 4 * int(ext_sig['schema']['packets_per_tick']) * int(ext_sig['schema']['data']['size'])
+    elif 'out' in module_args and isinstance(module_args['out'], dict) and 'name' in module_args['out']:
+      ext_sig = module_args['out']
+    else:
+      continue
+    external_signals.append(ext_sig['name'])
+    signals[ext_sig['name']] = ext_sig
 
   sigkeys = set(signals)
 
@@ -470,7 +479,9 @@ def parse(paths, config, confirm):
           template = TEMPLATE_SINK_C
           in_extension = '.c'
           out_extension = '.c'
-        in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
+        in_signals = {}
+        if 'in' in module_args:
+          in_signals = {x: signals[x] for x in (sigkeys & set(module_args['in']))}
         in_sig_nums = {x: internal_signals.index(x) for x in list(in_signals)}
         out_signal = signals[module_args['out']['name']]
         sig_type = out_signal['args']['type']
@@ -699,10 +710,14 @@ def parse(paths, config, confirm):
 
                 )
 
-  # parse Makefile
-
+  # parse Makefile 
   py_paths = get_paths()
-  py_link_flags = subprocess.check_output(["python-config","--ldflags"])
+  py_conf_str = "python-config"
+  if sys.version_info.major == 3:
+    py_conf_str = "python3.6m-config"
+  py_link_flags = subprocess.check_output([py_conf_str,"--ldflags"]).decode("utf-8")
+  if sys.version_info.major == 3:
+    py_link_flags = re.sub("-L[^\s]+config-[^\s]+", "", py_link_flags) # TODO, make this less sketchy
   assert(x in py_link_flags for x in ["-ldl", "-lutil" "-lm", "-lpthread"])
   do_jinja( os.path.join(paths['templates'], TEMPLATE_MAKEFILE),
             os.path.join(paths['output'], OUTPUT_MAKEFILE),
@@ -717,7 +732,7 @@ def parse(paths, config, confirm):
           )
 
   # parse timer parent
-  #parport_tick_addr = config['config']['parport_tick_addr'] if 'parport_tick_addr' in config['config'] else None
+  parport_tick_addr = config['config']['parport_tick_addr'] if 'parport_tick_addr' in config['config'] else None
   non_source_module_check = list(map(lambda x: int(x in module_names), non_source_names))
   do_jinja( os.path.join(paths['templates'], TEMPLATE_TIMER), 
             os.path.join(paths['output'], OUTPUT_TIMER),
@@ -739,7 +754,7 @@ def parse(paths, config, confirm):
             internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
             num_source_sigs=len(list(source_outputs)),
             source_out_sig_nums={x : internal_signals.index(x) for x in list(source_outputs)},
-            #parport_tick_addr=parport_tick_addr,
+            parport_tick_addr=parport_tick_addr,
             non_source_module_check=non_source_module_check
           )
 
