@@ -40,8 +40,8 @@ model = yaml.safe_load(args.model)
 # later versions should throw an error if this is not true
 # Relevant note: this entire parser is dangerous and does not have any safety checks
 #    it will break badly for malformed yaml data
-top_level = ['modules', 'signals']
-if (set(top_level) != set(model.keys())):
+top_level = ['config', 'modules', 'signals']
+if (not set(model.keys()).issubset(set(top_level))):
   print("Invalid config file.")
   exit()
 
