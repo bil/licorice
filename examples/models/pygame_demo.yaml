@@ -5,6 +5,7 @@
 # Note: model configuration is still in alpha stage and subject to cosmetic changes
 #
 
+# this header may be removed
 signals:
 
 #    parallel_in:              # the signal written to from the parallel input source
