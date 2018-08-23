@@ -235,6 +235,9 @@ cdef void handle_exit(int exitStatus):
   munlockall()
   exit(exitStatus)
 
+cdef void int_handler(int signum):
+  pass
+
 cdef void exit_handler(int signum):
   printf("EXIT HANDLER for %s\n", "{{name}}")
   handle_exit(0)
@@ -270,7 +273,8 @@ cdef int pid = getpid()
 ppid = getppid()
 
 set_sighandler(SIGALRM, &alrm_handler, NULL)
-set_sighandler(SIGINT, &exit_handler, &exitMask)
+set_sighandler(SIGINT, &int_handler, &exitMask)
+set_sighandler(SIGUSR1, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
