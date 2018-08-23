@@ -16,7 +16,7 @@ VENV_DIR=~/lico_venv
 sudo apt-get -y install libpython-dev python-virtualenv libopenblas-base libopenblas-dev sqlite libsqlite3-dev libevent-dev htop
 
 # make venv
-virtualenv -p python2 $VENV_DIR
+virtualenv -p python2 $VENV_DIR # change to python3.6m for python 3
 source $VENV_DIR/bin/activate
 
 # install cython
