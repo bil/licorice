@@ -519,7 +519,6 @@ init_utils(&handle_exit, &exitMask)
 cdef int pid = getpid()
 ppid = getppid()
 
-# set_sighandler(SIGINT, &int_handler, &exitMask)
 set_sighandler(SIGINT, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
