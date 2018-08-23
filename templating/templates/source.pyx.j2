@@ -124,7 +124,6 @@ cdef char pathName[MAX_PATH_LEN]
 cdef socklen_t recvLen
 cdef char *outbuf
 cdef int parse_idx
-cdef uint32_t sig_buffer_size
 
 # variable initializations
 {%- if sig_type == 'zmq' %} 
@@ -237,6 +236,7 @@ cdef void handle_exit(int exitStatus):
   exit(exitStatus)
 
 cdef void exit_handler(int signum):
+  printf("EXIT HANDLER for %s\n", "{{name}}")
   handle_exit(0)
 
 cdef void bus_handler(int signum):
@@ -326,11 +326,10 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   die("numpy signal already created\n")
 else:
   {%- if sig_type == 'line' %}
-  # sig_buffer_size = {{args['history']}} * frames
+  # sig_buffer_size = {{args['history']}} * frames # sig_buffer_size no longer being used
   # dtype = np.int16 # TODO grab this from alsa
   #
   {% else %}
-  sig_buffer_size = {{args['buf_tot_numel']}} # tick data size * (2+history) so that at least `history` packets always buffered
   dtype = np.{{args['dtype']}}
   {% endif %}
 
@@ -342,17 +341,16 @@ else:
   out_sig = out_sigs['{{sig}}']
   {%- endif %}
 
-  {%- if py_maj_ver == 2 %}
+  # make sure SharedArray==2.0.4
   sa.mlock(out_sigs['{{sig}}'])
-  {%- endif %}
 
   {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
-  {{sig}}BufVars[7] = sig_buffer_size
+  {{sig}}BufVars[7] = {{args['buf_tot_numel']}}
 
   {%- if sig_type == 'line' %}
   # {{sig}}BufVars[6] = recvLen
   # {{sig}}BufVars[5] = frames # TODO, this right? should be packet size in bytes
-  # {{sig}}BufVars[3] = sig_buffer_size
+  # {{sig}}BufVars[3] = {{args['buf_tot_numel']}}
   # {{sig}}BufVars[0] = {{sig}}BufVars[3]
   {%- else %}
   {{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
@@ -366,9 +364,11 @@ bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
 bufCurPtr = bufStrtPtr
 bufEndPtr = bufStrtPtr + packetSize
 {%- else %}
-bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
+bufStrtPtr = <{{out_signal_type}} *><long>out_sig.__array_interface__['data'][0]   
+# bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
 bufCurPtr = bufStrtPtr
-bufEndPtr = bufStrtPtr + packetSize
+bufEndPtr = bufStrtPtr + {{out_signal_name}}BufVars[7]
+# bufEndPtr = bufStrtPtr + packetSize
 {%- endif %}
 
 {% if default_params -%}
