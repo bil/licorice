@@ -8,6 +8,7 @@ from ast import literal_eval
 import subprocess
 from sysconfig import get_paths
 import warnings
+import re
 
 # available path constants
 # paths['templates']
