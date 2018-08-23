@@ -388,18 +388,18 @@ while(True):
   bufCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2]
 {%- endif %}
 {%- if sig_type == 'udp' %}
-  recvLen = recvfrom(s, bufStrtPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
+  recvLen = recvfrom(s, bufCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
   if (recvLen == -1 and errno != EINTR):
     die("NETWORK ERROR: recvfrom()\n")
   if (recvLen == -1):
     die("Read error.\n")
   {%- if test_throughput %}
-  tmp = ((<unsigned long *>bufStrtPtr)[0]) - packetNum
+  tmp = ((<unsigned long *>bufCurPtr)[0]) - packetNum
   if (not parentSetup):
     if (packetNum and (tmp != 1)):
       printf("dropped %lu packets\n", <unsigned long>tmp)
       numDropped += <unsigned long>tmp
-    packetNum = (<unsigned long *>bufStrtPtr)[0]
+    packetNum = (<unsigned long *>bufCurPtr)[0]
     num_packets += 1
   {%- endif %}
 #{% elif sig_type == 'line' %}
@@ -446,7 +446,7 @@ while(True):
   # use user parser
   {{parser_code}}
 {%- else %}
-  memcpy({{out_signal_name}}StrtPtr + {{out_signal_name}}BufVars[2], bufStrtPtr, packetSize)
+  # memcpy({{out_signal_name}}StrtPtr + {{out_signal_name}}BufVars[2], bufStrtPtr, packetSize)
 {%- endif %}
   # TODO figure out how to step through data for something like line (artificial data packaging per tick)
 {%- for sig, args in (out_signals.items()) %}
