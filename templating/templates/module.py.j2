@@ -100,6 +100,9 @@ cdef void handle_exit(int exitStatus):
   munlockall()
   exit(exitStatus)
 
+cdef void int_handler(int signum):
+  pass
+
 cdef void exit_handler(int signum):
   printf("EXIT HANDLER for %s\n", "{{name}}")
   handle_exit(0)
@@ -165,7 +168,8 @@ else:
 # set signal mask
 sigfillset(&exitMask)
 # handle signals
-set_sighandler(SIGINT, &exit_handler, &exitMask)
+set_sighandler(SIGINT, &int_handler, &exitMask)
+set_sighandler(SIGUSR1, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &mem_error_handler, &exitMask)
 set_sighandler(SIGSEGV, &mem_error_handler, &exitMask)
 

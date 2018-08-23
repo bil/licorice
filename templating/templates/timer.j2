@@ -127,7 +127,7 @@ void handle_exit(int exitStatus) {
   for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
     if (si_pids[ex_i] != -1) {
       printf("Killing sink: %d\n", si_pids[ex_i]);
-      // kill(si_pids[ex_i], SIGINT); // children already receive SIGINT
+      kill(si_pids[ex_i], SIGUSR1); // children already receive SIGINT
       while (waitpid(si_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
@@ -135,7 +135,7 @@ void handle_exit(int exitStatus) {
   for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
     if (ch_pids[ex_i] != -1) {
       printf("Killing module: %d\n", ch_pids[ex_i]);
-      // kill(ch_pids[ex_i], SIGINT); // children already receive SIGINT
+      kill(ch_pids[ex_i], SIGUSR1); // children already receive SIGINT
       while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
@@ -143,7 +143,7 @@ void handle_exit(int exitStatus) {
   for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
     if (so_pids[ex_i] != -1) {
       printf("Killing source: %d\n", so_pids[ex_i]);
-      // kill(so_pids[ex_i], SIGINT); // children already receive SIGINT
+      kill(so_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
       while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
