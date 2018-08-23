@@ -151,20 +151,13 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   die("numpy signal already created")
 else:
   out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
-{%- if py_maj_ver == 2 %}
+  # make sure SharedArray==2.0.4
   sa.mlock(out_sigs["{{sig}}"])
-{%- endif %}
-
-  # sig_history_str = "{{args['history']}}"
-  # if not sig_history_str :
-  #   sig_history = 1
-  # else:
-  #   sig_history = int(sig_history_str)
 
   {{sig}}Raw = out_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {{sig}}BufVars[7] = {{args['buf_tot_numel']}} # * sig_history
+  {{sig}}BufVars[7] = {{args['buf_tot_numel']}}
   {{sig}}BufVars[6] = {{ args['tick_numel']}}
   {{sig}}BufVars[5] = {{args['tick_numel']}}
 {% endfor %}

@@ -257,10 +257,9 @@ def parse(paths, config, confirm):
     if signal_args['sig_shape'] == '':
       signal_args['sig_shape'] = str(signal_args['shape']) + ')'
 
-    if 'history' in signal_args :
-      signal_history = signal_args['history']
-    else:
-      signal_history = 1
+    if not 'history' in signal_args :
+      signal_args['history'] = 1
+    signal_history = signal_args['history']
 
     signal_args['sig_shape'] = "({0},".format(signal_history + HISTORY_PAD_LENGTH) + signal_args['sig_shape']
     signal_args['buf_tot_numel'] = np.prod(np.array(literal_eval(str(signal_args['sig_shape']))))
@@ -461,6 +460,7 @@ def parse(paths, config, confirm):
                   in_signal=in_signal,
                   out_signals=out_signals,
                   out_signal_name=(None if (has_parser) else list(out_signals)[0]),
+                  out_signal_type=(None if (has_parser) else out_sig_types[list(out_signals)[0]]),
                   out_sig_nums=out_sig_nums,
                   default_params=default_params,
                   num_sem_sigs=num_sem_sigs,
