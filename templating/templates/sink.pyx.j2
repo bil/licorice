@@ -366,7 +366,12 @@ cdef size_t outBufLen
 
 cdef void handle_exit(int exitStatus):
   global cv, mutex, retVal, tid, radio, context, s, shm_size, pmem
+{%- if sig_type == 'disk' %}
+  global shouldDie
+{%- endif %}
+
   {{destruct_code}}
+
 {%- if sig_type == 'udp' %}
   close(s)
 {%- elif sig_type == 'zmq' %}
