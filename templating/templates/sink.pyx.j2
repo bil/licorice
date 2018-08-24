@@ -284,20 +284,20 @@ cdef const char *FIFOFILE = '{{out_signal['args']['filepath']}}'
 cdef void *radio
 cdef void *context
 {%- elif sig_type == 'line' %}
-cdef extern snd_pcm_t *play_handle
-cdef snd_pcm_uframes_t frames
-cdef int ret
-cdef int rc
-# threading variables
-cdef pthread_t tid
-cdef pthread_cond_t cv
-cdef pthread_mutex_t mutex
-cdef bool shouldDie = False
-# worker thread vars
-cdef char *zErrMsg
-cdef void * retVal
-cdef uint32_t lineWriteOffset = 0
-cdef bool lineWrapped
+# cdef extern snd_pcm_t *play_handle
+# cdef snd_pcm_uframes_t frames
+# cdef int ret
+# cdef int rc
+# # threading variables
+# cdef pthread_t tid
+# cdef pthread_cond_t cv
+# cdef pthread_mutex_t mutex
+# cdef bool shouldDie = False
+# # worker thread vars
+# cdef char *zErrMsg
+# cdef void * retVal
+# cdef uint32_t lineWriteOffset = 0
+# cdef bool lineWrapped
 {%- elif sig_type == 'disk' %}
 cdef int ret
 cdef int rc
@@ -378,7 +378,12 @@ cdef size_t outBufLen
 
 cdef void handle_exit(int exitStatus):
   global cv, mutex, retVal, tid, radio, context, s, shm_size, pmem
+{%- if sig_type == 'disk' %}
+  global shouldDie
+{%- endif %}
+
   {{destruct_code}}
+
 {%- if sig_type == 'udp' %}
   close(s)
 {%- elif sig_type == 'pipe' %}
@@ -388,12 +393,12 @@ cdef void handle_exit(int exitStatus):
   zmq_close(radio)
   zmq_ctx_destroy(context)
 {%- elif sig_type == 'line' %}
-  pthread_mutex_lock(&mutex)
-  shouldDie = True
-  pthread_cond_signal(&cv) 
-  pthread_mutex_unlock(&mutex)
-  pthread_join(tid, &retVal)
-  pcm_close_play()
+  # pthread_mutex_lock(&mutex)
+  # shouldDie = True
+  # pthread_cond_signal(&cv) 
+  # pthread_mutex_unlock(&mutex)
+  # pthread_join(tid, &retVal)
+  # pcm_close_play()
 {%- elif sig_type == 'disk' %}
   pthread_mutex_lock(&mutex)
   shouldDie = True
@@ -411,7 +416,11 @@ cdef void handle_exit(int exitStatus):
   munlockall()
   exit(exitStatus)
 
+cdef void int_handler(int signum):
+  pass
+
 cdef void exit_handler(int signum):
+  printf("EXIT HANDLER for %s\n", "{{name}}")
   handle_exit(0)
 
 cdef void bus_handler(int signum):
@@ -481,49 +490,49 @@ cdef void* processRequests(void *arg) nogil:
 {%- endif %}
 
 {% if sig_type == 'line' -%}
-cdef void* processRequests(void *arg) nogil:
-  global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, zErrMsg, lineWriteOffset, {% for sig,dtype in sig_types %}{{sig}}BufVars, {{sig}}StrtPtr, {{sig}}EndPtr{{"," if not loop.last}} {% endfor %}
-  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
-  zErrMsg = <char *>0
-  {%- if has_parser and out_signal['args']['type'] != 'vis_pygame' %}
-  # TODO figure out outBuf stuff for this
-  # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
-  {%- endif %}
-  while (True):
-    pthread_mutex_lock(&mutex)
-    pthread_cond_wait(&cv, &mutex) 
+# cdef void* processRequests(void *arg) nogil:
+#   global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, zErrMsg, lineWriteOffset, {% for sig,dtype in sig_types %}{{sig}}BufVars, {{sig}}StrtPtr, {{sig}}EndPtr{{"," if not loop.last}} {% endfor %}
+#   pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+#   zErrMsg = <char *>0
+#   {%- if has_parser and out_signal['args']['type'] != 'vis_pygame' %}
+#   # TODO figure out outBuf stuff for this
+#   # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
+#   {%- endif %}
+#   while (True):
+#     pthread_mutex_lock(&mutex)
+#     pthread_cond_wait(&cv, &mutex) 
 
-    if (shouldDie):
-      retVal = NULL  
-      pthread_exit(retVal)
+#     if (shouldDie):
+#       retVal = NULL  
+#       pthread_exit(retVal)
 
-    if ({{sig}}BufVars[1] < lineWriteOffset):
-      lineWrapped = True
+#     if ({{sig}}BufVars[1] < lineWriteOffset):
+#       lineWrapped = True
 
-    while (lineWrapped or ((lineWriteOffset + frames * 2) < {{sig}}BufVars[1])):
-      ret = snd_pcm_writei(play_handle, <void *>({{sig}}StrtPtr + lineWriteOffset), frames)
-      if (ret == -EPIPE):
-        # EPIPE means underrun
-        printf("underrun occurred\n")
-        snd_pcm_prepare(play_handle)
-      elif (ret < 0):
-       die("writei failed")
-      elif (ret != <int>frames):
-        die("short write")
+#     while (lineWrapped or ((lineWriteOffset + frames * 2) < {{sig}}BufVars[1])):
+#       ret = snd_pcm_writei(play_handle, <void *>({{sig}}StrtPtr + lineWriteOffset), frames)
+#       if (ret == -EPIPE):
+#         # EPIPE means underrun
+#         printf("underrun occurred\n")
+#         snd_pcm_prepare(play_handle)
+#       elif (ret < 0):
+#        die("writei failed")
+#       elif (ret != <int>frames):
+#         die("short write")
 
-      # z = 0
-      # while (z < frames * 2):
-      #   printf("%d ", (sigStrtPtr)[lineWriteOffset + z])
-      #   z += 1
-      # printf("\n\n")
-      lineWriteOffset += (frames * 2)
-      if (lineWriteOffset >= ({{sig}}EndPtr - {{sig}}StrtPtr)):
-        lineWriteOffset = 0
-        lineWrapped = False
+#       # z = 0
+#       # while (z < frames * 2):
+#       #   printf("%d ", (sigStrtPtr)[lineWriteOffset + z])
+#       #   z += 1
+#       # printf("\n\n")
+#       lineWriteOffset += (frames * 2)
+#       if (lineWriteOffset >= ({{sig}}EndPtr - {{sig}}StrtPtr)):
+#         lineWriteOffset = 0
+#         lineWrapped = False
 
-    # why is this all the way down here?  won't the mutex be locked until it gets here (or its unlocking twice,
-    # which isn't good either)? 
-    pthread_mutex_unlock(&mutex)
+#     # why is this all the way down here?  won't the mutex be locked until it gets here (or its unlocking twice,
+#     # which isn't good either)? 
+#     pthread_mutex_unlock(&mutex)
 {%- endif %}
 
 # main
@@ -534,7 +543,8 @@ init_utils(&handle_exit, &exitMask)
 cdef int pid = getpid()
 ppid = getppid()
 
-set_sighandler(SIGINT, &exit_handler, &exitMask)
+set_sighandler(SIGINT, &int_handler, &exitMask)
+set_sighandler(SIGUSR1, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
@@ -675,8 +685,8 @@ if (named_pipe == -1):
   die("Could not open pipe \n")
 
 {% elif sig_type == 'line' %}
-# initiliaze line in 
-frames = pcm_init_play()
+# # initiliaze line in 
+# frames = pcm_init_play()
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{out_signal['args']['addr']}}, 1, 1)):
@@ -739,12 +749,12 @@ while(True):
 {%- endif %}
 
 {%- if sig_type == 'line' %}
-  # Output handled in async thread
+  # # Output handled in async thread
 
-  if (pNumTicks[0] % 25 == 0):
-    pthread_mutex_lock(&mutex)
-    pthread_cond_signal(&cv)
-    pthread_mutex_unlock(&mutex)
+  # if (pNumTicks[0] % 25 == 0):
+  #   pthread_mutex_lock(&mutex)
+  #   pthread_cond_signal(&cv)
+  #   pthread_mutex_unlock(&mutex)
 {%- elif sig_type == 'disk' %}
   if (pNumTicks[0] % 1000 == 0):
     pthread_mutex_lock(&mutex)
