@@ -1,7 +1,7 @@
 import math
 
 import pygame
-pygame.init()
+pygame.display.init()
 
 class Circle(pygame.sprite.Sprite):
 
