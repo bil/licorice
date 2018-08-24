@@ -1,11 +1,11 @@
-from libc.stdio cimport printf, stdout, fflush
+from libc.stdio cimport printf, stdout, fflush, remove
 from libc.stdlib cimport exit, malloc, free
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
-from posix.unistd cimport getppid, pause, close, getpid
+from posix.unistd cimport getppid, pause, close, getpid, write
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
-from posix.fcntl cimport O_RDWR
+from posix.fcntl cimport O_RDWR, O_WRONLY, open
 from posix.types cimport pid_t
 from libc.errno cimport errno, EINTR, EPIPE
 from libc.string cimport memset, strcpy, strcat, strlen, memcpy
@@ -38,6 +38,13 @@ cdef extern from "<pthread.h>":
 {% endif %}
 
 {% if sig_type == 'parport' -%}
+
+{% elif sig_type == 'pipe' -%}
+cdef extern from "<sys/types.h>":
+  ctypedef unsigned short mode_t
+cdef extern from "<sys/stat.h>":
+  int mkfifo(const char *, mode_t)
+
 {% elif sig_type == 'udp' -%}
 cdef extern from "<arpa/inet.h>":
   uint16_t htons(uint16_t hostshort)
@@ -268,6 +275,11 @@ cdef char pathName[MAX_PATH_LEN]
 cdef int s
 cdef sockaddr_in si_other
 cdef socklen_t slen=sizeof(si_other)
+
+{% elif sig_type == 'pipe' -%}
+cdef int named_pipe
+cdef const char *FIFOFILE = '{{out_signal['args']['filepath']}}'
+
 {% elif sig_type == 'zmq' -%}
 cdef void *radio
 cdef void *context
@@ -369,6 +381,9 @@ cdef void handle_exit(int exitStatus):
   {{destruct_code}}
 {%- if sig_type == 'udp' %}
   close(s)
+{%- elif sig_type == 'pipe' %}
+  close(named_pipe)
+  remove(FIFOFILE)
 {%- elif sig_type == 'zmq' %}
   zmq_close(radio)
   zmq_ctx_destroy(context)
@@ -654,6 +669,11 @@ si_other.sin_family = AF_INET
 si_other.sin_port = htons({{out_signal['args']['port']}})
 if (inet_aton("{{out_signal['args']['addr']}}", &si_other.sin_addr)==0):
   die("inet_aton() failed\n")
+{% elif sig_type == 'pipe' %}
+named_pipe = open(FIFOFILE, O_RDWR)
+if (named_pipe == -1):
+  die("Could not open pipe \n")
+
 {% elif sig_type == 'line' %}
 # initiliaze line in 
 frames = pcm_init_play()
@@ -698,6 +718,10 @@ while(True):
   for sentBytes in range(0,outBufLen,1472): # TODO read in MTU or make constant for user. or could use sendto max
     if (sendto(s, outBuf + sentBytes, 1472, 0, <sockaddr *>&si_other, slen)==-1):
       die("sendto() failed")
+{%- elif sig_type == 'pipe' %}
+  if(outBufLen > 0):
+    if(write(named_pipe, outBuf, outBufLen) == -1):
+      die("Pipe Write Failed \n") 
 {%- elif sig_type == 'parport' %}
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
 {%- elif sig_type == 'disk' %}
