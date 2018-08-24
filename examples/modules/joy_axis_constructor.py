@@ -2,7 +2,7 @@
 
 import pygame
 
-pygame.init()
+pygame.display.init()
 pygame.joystick.init()
 
 if pygame.joystick.get_count() < 1:
