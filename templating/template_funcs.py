@@ -63,8 +63,10 @@ def fix_dtype(dtype):
 
 # change dtype to msgpack format
 def fix_dtype_msgpack(dtype):
-  if 'float' in dtype or 'double' in dtype:
+  if dtype in ['float32', 'float']:
     dtype = 'float'
+  if dtype in ['float64', 'double']:
+    dtype = 'double'
   return dtype
 
 # load, setup, and write template
@@ -301,6 +303,8 @@ def parse(paths, config, confirm):
   all_names = list(modules)
   assert (len(all_names) == len(set(all_names)))
 
+  logger_defined = False
+  logger_database_filename = ""
   module = False
   for module_name, module_args in iter(modules.items()):
     if 'in' in module_args and isinstance(module_args['in'], dict) and \
@@ -330,6 +334,9 @@ def parse(paths, config, confirm):
       out_signals[out_sig_name] = signals[out_sig_name]['args']['type'] 
       if out_signals[out_sig_name] in ['line', 'disk']:
         num_threaded_sinks += 1
+      if out_signals[out_sig_name] in ['disk']:
+        logger_defined = True
+        logger_database_filename = signals[out_sig_name]['args']['save_file']
     else:
       # module
       if not 'in' in module_args or not module_args['in']:
@@ -774,7 +781,8 @@ def parse(paths, config, confirm):
             num_internal_sigs=len(internal_signals),
             num_source_sigs=len(list(source_outputs)),
             buf_vars_len=BUF_VARS_LEN,
-            history_pad_length=HISTORY_PAD_LENGTH
+            history_pad_length=HISTORY_PAD_LENGTH,
+            db_name = logger_database_filename
           )
 
 

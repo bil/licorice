@@ -456,18 +456,19 @@ while(True):
 {%- for sig, args in (out_signals.items()) %}
   # print "source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
   {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
-  # {{sig}}BufVars[10] += 1
+  {{sig}}BufVars[10] += 1
   if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
-    # {{sig}}BufVars[12] = {{sig}}BufVars[10]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
   elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2] 
-    # {{sig}}BufVars[12] = {{sig}}BufVars[10]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
   {{sig}}BufVars[3] += {{sig}}BufVars[5]
   {{sig}}BufVars[11] += 1
   {%- if not has_parser %}
   if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[2] = 0
+    {{sig}}BufVars[10] = 0
   # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
   # if (bufCurPtr >= bufEndPtr):
   #   bufCurPtr = bufStrtPtr

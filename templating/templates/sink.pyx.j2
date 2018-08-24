@@ -118,6 +118,7 @@ cdef extern from "<msgpack.h>" nogil:
   int msgpack_pack_int32(msgpack_packer* pk, int32_t d)
   int msgpack_pack_int64(msgpack_packer* pk, int64_t d)
   int msgpack_pack_float(msgpack_packer* pk, float d)
+  int msgpack_pack_double(msgpack_packer* pk, double d)
 
 
 cdef extern from "loggingStruct.h" nogil:
@@ -445,10 +446,12 @@ cdef void* processRequests(void *arg) nogil:
 
     {%- for sig, args in in_signals.items() %}
       msgpack_sbuffer_clear(&mpSignals{{sig|capitalize}}Buf)
-      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
       {%- if sig in source_outputs %}
+      # printf("%lf %lf\n", pSignalsStructFlushStart.{{sig}}[0],pSignalsStructFlushStart.{{sig}}[1])
+      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}NumPktsRcvd)
       for i in range (pSignalsStructFlushStart.{{sig}}NumPktsRcvd):
       {%- else %}
+      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
       for i in range({{args['tick_numel']}}):
       {%- endif %}
         msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
@@ -614,10 +617,17 @@ sqlite3async_run()
 msgpack_sbuffer_init(&mpSignals{{sig|capitalize}}Buf)
 msgpack_packer_init(&mpSignals{{sig|capitalize}}Pk, &mpSignals{{sig|capitalize}}Buf, msgpack_sbuffer_write)
 # enlarge buffer before main execution
+{%- if sig in source_outputs %}
+# this should really be on a packet level
+msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{2 * args['tick_numel']}})
+for i in range({{2 * args['tick_numel']}}):
+  msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, 0)
+{%- else %}
 msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
 for i in range({{args['tick_numel']}}):
-  msgpack_pack_int16(&mpSignals{{sig|capitalize}}Pk, 0)
-{% endfor %}
+  msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, 0)
+{%- endif %}
+{%- endfor %}
 {%- endif %}
 
 # open and map shared parent memory
@@ -713,7 +723,16 @@ while(True):
 {%- elif sig_type == 'disk' %}
   {%- for sig,dtype in sig_types.items() %}
   {%- if sig in source_outputs %}
-  memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], {{sig}}BufVars[11] * {{sig}}BufVars[5])
+  print(sizeof({{sig}}StrtPtr[0]))
+  memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], sizeof({{dtype}}) * {{sig}}BufVars[11] * {{sig}}BufVars[5])
+  print({{sig}}BufVars[0])
+  print(({{sig}}StrtPtr + {{sig}}BufVars[0])[0])
+  print(pSignalsStructCur.{{sig}}[0])
+  print(({{sig}}StrtPtr + {{sig}}BufVars[0])[1])
+  print(pSignalsStructCur.{{sig}}[1])
+  assert(({{sig}}StrtPtr + {{sig}}BufVars[0])[0] - pSignalsStructCur.{{sig}}[0] < 1e-15)
+  assert(({{sig}}StrtPtr + {{sig}}BufVars[0])[1] - pSignalsStructCur.{{sig}}[1] < 1e-15)
+  print
   pSignalsStructCur.{{sig}}NumPktsRcvd = {{sig}}BufVars[11]
   {%- else %}
   memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], sizeof((<signalsMsData*>0).{{sig}}))
