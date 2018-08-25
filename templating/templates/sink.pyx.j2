@@ -304,7 +304,7 @@ ctypedef struct signalsMsData:
 {%- for sig,dtype in sig_types.items() %}
   {%- if sig in source_outputs %}
   {{dtype}} {{sig}}[{{in_signals[sig]['schema']['data']['size'] * 2}}]
-  uint32_t {{sig}}NumPktsRcvd
+  uint32_t {{sig}}NumSamplesRecvd
   {%- else %}
   {{dtype}} {{sig}}[{{in_signals[sig]['tick_numel']}}]
   {%- endif %}
@@ -429,10 +429,6 @@ cdef void* processRequests(void *arg) nogil:
     pthread_mutex_lock(&mutex)
     pthread_cond_wait(&cv, &mutex)
 
-    if (shouldDie):
-      retVal = NULL  
-      pthread_exit(retVal)
-
     ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
     if (ret != SQLITE_OK):
       # print sql error msg
@@ -447,9 +443,8 @@ cdef void* processRequests(void *arg) nogil:
     {%- for sig, args in in_signals.items() %}
       msgpack_sbuffer_clear(&mpSignals{{sig|capitalize}}Buf)
       {%- if sig in source_outputs %}
-      # printf("%lf %lf\n", pSignalsStructFlushStart.{{sig}}[0],pSignalsStructFlushStart.{{sig}}[1])
-      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}NumPktsRcvd)
-      for i in range (pSignalsStructFlushStart.{{sig}}NumPktsRcvd):
+      msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}NumSamplesRecvd)
+      for i in range (pSignalsStructFlushStart.{{sig}}NumSamplesRecvd):
       {%- else %}
       msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
       for i in range({{args['tick_numel']}}):
@@ -473,6 +468,10 @@ cdef void* processRequests(void *arg) nogil:
       die("SQL error")
 
     sqlite3async_run()
+
+    if (shouldDie):
+      retVal = NULL  
+      pthread_exit(retVal)
 
     pthread_mutex_unlock(&mutex)
 {%- endif %}
@@ -723,17 +722,14 @@ while(True):
 {%- elif sig_type == 'disk' %}
   {%- for sig,dtype in sig_types.items() %}
   {%- if sig in source_outputs %}
-  print(sizeof({{sig}}StrtPtr[0]))
-  memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], sizeof({{dtype}}) * {{sig}}BufVars[11] * {{sig}}BufVars[5])
-  print({{sig}}BufVars[0])
-  print(({{sig}}StrtPtr + {{sig}}BufVars[0])[0])
-  print(pSignalsStructCur.{{sig}}[0])
-  print(({{sig}}StrtPtr + {{sig}}BufVars[0])[1])
-  print(pSignalsStructCur.{{sig}}[1])
-  assert(({{sig}}StrtPtr + {{sig}}BufVars[0])[0] - pSignalsStructCur.{{sig}}[0] < 1e-15)
-  assert(({{sig}}StrtPtr + {{sig}}BufVars[0])[1] - pSignalsStructCur.{{sig}}[1] < 1e-15)
-  print
-  pSignalsStructCur.{{sig}}NumPktsRcvd = {{sig}}BufVars[11]
+  # can use this once BufVars[11] is fixed (see note in timer)
+  # memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], sizeof({{dtype}}) * {{sig}}BufVars[11] * {{sig}}BufVars[5])
+  memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], sizeof({{dtype}}) * outBufLen)
+  assert(({{sig}}StrtPtr + {{sig}}BufVars[0])[0] == pSignalsStructCur.{{sig}}[0])
+  assert(({{sig}}StrtPtr + {{sig}}BufVars[0])[1] == pSignalsStructCur.{{sig}}[1])
+  # can use this once BufVars[11] is fixed (see note in timer)
+  # pSignalsStructCur.{{sig}}NumSamplesRecvd = {{sig}}BufVars[11]
+  pSignalsStructCur.{{sig}}NumSamplesRecvd = outBufLen
   {%- else %}
   memcpy(pSignalsStructCur.{{sig}}, {{sig}}StrtPtr + {{sig}}BufVars[0], sizeof((<signalsMsData*>0).{{sig}}))
   {%- endif %}
