@@ -11,11 +11,7 @@ signals:
 
   joystick_axis_out:
     shape: 2
-    dtype: float
-
-  parallel_in:
-    shape: 1
-    dtype: uint8
+    dtype: float64
 
 modules:
 
@@ -28,7 +24,7 @@ modules:
       schema:
         packets_per_tick: 1
         data:
-          dtype: float
+          dtype: float64
           size: 2
     out:
       - joystick_axis_out
@@ -39,16 +35,13 @@ modules:
     language: python
     in:
       - joystick_axis_out
-    out:
-      - parallel_in
 
-  parallel_writer:          # define the sink (this is only here because at least one sink must exist for now)
+  logger:
     language: python
     in:
-      - parallel_in
-    out:
-      name: parport_out     # needs a name, will be removed later
+      - joystick_axis_out
+    out: 
+      name: log_sqlite
       args:
-        type: parport
-        addr: 378
-      parser: false
+        type: 'disk'
+        save_file: '/tmp/data' # 48 character limit on db name
