@@ -11,8 +11,7 @@ signals:
 
   joystick_axis_out:
     shape: 2
-    dtype: float64
-    log: True
+    dtype: double
 
 modules:
 
@@ -25,7 +24,7 @@ modules:
       schema:
         packets_per_tick: 1
         data:
-          dtype: float
+          dtype: float64
           size: 2
     out:
       - joystick_axis_out
@@ -37,12 +36,12 @@ modules:
     in:
       - joystick_axis_out
 
-
   logger:
     language: python
     in:
       - joystick_axis_out
-    out:
-      name: sqllog
+    out: 
+      name: log_sqlite
       args:
-        type: disk
+        type: 'disk'
+        save_file: './data' # 48 character limit on db name

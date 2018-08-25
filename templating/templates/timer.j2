@@ -55,6 +55,9 @@ static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source
 static pid_t so_pids[NUM_SOURCES];
 // logger pid
 static pid_t si_pids[NUM_SINKS];
+{%- if parport_tick_addr %}
+static unsigned char outVal = 0;
+{%- endif %}
 
 // pointer to start of shared memory
 static size_t shm_size;
@@ -120,28 +123,27 @@ void handle_exit(int exitStatus) {
   rtTimer.it_interval.tv_usec = 0;
   setitimer(ITIMER_REAL, &rtTimer, NULL);
   printf("exiting...\n");
-  printf("Killing child processes...\n");
-  // send SIGINT to sinks and wait
+  printf("Killing sinks...\n");
   for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
     if (si_pids[ex_i] != -1) {
       printf("Killing sink: %d\n", si_pids[ex_i]);
-      kill(si_pids[ex_i], SIGINT);
+      kill(si_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
       while (waitpid(si_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
-  // send SIGINT to modules and wait
+  printf("Killing modules...\n");
   for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
     if (ch_pids[ex_i] != -1) {
       printf("Killing module: %d\n", ch_pids[ex_i]);
-      kill(ch_pids[ex_i], SIGINT);
+      kill(ch_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
       while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
-  // send SIGINT to sources and wait
+  printf("Killing sources...\n");
   for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
     if (so_pids[ex_i] != -1) {
       printf("Killing source: %d\n", so_pids[ex_i]);
-      kill(so_pids[ex_i], SIGINT);
+      kill(so_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
       while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
@@ -166,6 +168,11 @@ static void check_children() {
 {%- if test_tick_time %}
   clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
 {% endif %}
+{%- if parport_tick_addr %}
+  // flip bits and output to parallel port
+  outb(outVal,0x{{parport_tick_addr}});
+  outVal = ~outVal;
+{%- endif %}
   
   // printf("TIMER tick %ld\n", *pNumTicks);
   if ((sigalrm_recv > 1))
@@ -194,8 +201,8 @@ static void check_children() {
       // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
       if ((*(pCurBufVars + 7) < *(pCurBufVars + 2)) + *(pCurBufVars + 6)) {
         *(pCurBufVars + 2) = 0;
-        *(pCurBufVars + 8) = 0;
-        // *(pCurBufVars + 10) = 0;
+        *(pCurBufVars + 10) = 0;
+        // *(pCurBufVars + 8) = 0;
       }
       *(pCurBufVars + 3) = 0;
       *(pCurBufVars + 11) = 0;
@@ -237,14 +244,14 @@ static void check_children() {
       // 2: next data location
       // 3: num samples received this tick
       // 4: buffer end offset (samples)
-      // 5: source output signal packet size (post parser per signal)/module output tick data size (bytes)
+      // 5: source output signal packet size (post parser per signal)/module output tick data size (samples)
       // 6: max samples per tick (same as 5 for module ouputs) (samples)
       // 7: buffer size offset (samples)
 
       // 8: current data nd index start
       // 9: current data nd index end
       // 10: next data nd index
-      // 11: num packets received this tick (nd index)
+      // 11: num packets received this tick (nd index) # don't use this for now. TODO: for 'fixed' sources (e.g., parallel, usb), set this to a constant value
       // 12: nd 0 axis end offset
       // 13: none
       // 14: none
@@ -256,9 +263,9 @@ static void check_children() {
       *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
       // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
       if (*(pCurBufVars + 7) < *(pCurBufVars + 2) + *(pCurBufVars + 6)) {
-        *(pCurBufVars + 8) = 0;
         *(pCurBufVars + 2) = 0;
-        // *(pCurBufVars + 10) = 0;
+        *(pCurBufVars + 10) = 0;
+        // *(pCurBufVars + 8) = 0;
       }
       *(pCurBufVars + 3) = 0;
       // *((uint32_t**)(pCurBufVars + 8)) += 1472;
@@ -357,6 +364,14 @@ int main(int argc, char* argv[]) {
   clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
   startStartSec = startTimer.tv_sec;
   startStartNSec = startTimer.tv_nsec;
+{%- endif %}
+
+{%- if parport_tick_addr %}
+
+  // make sure parport is writeable
+  if (ioperm(0x{{parport_tick_addr}}, 1, 1)) {
+    die("io permission denied\n");
+  }
 {%- endif %}
 
   // set signal masks
