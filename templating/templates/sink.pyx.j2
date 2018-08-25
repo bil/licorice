@@ -733,8 +733,8 @@ sqlite3async_run()
 
 
 # initialize message pack for numpy signals
-{% for sig, args in in_signals.items() %}
-{% if sig in msgpack_sigs %}
+{%- for sig, args in in_signals.items() %}
+{%- if sig in msgpack_sigs %}
 msgpack_sbuffer_init(&mpSignals{{sig|capitalize}}Buf)
 msgpack_packer_init(&mpSignals{{sig|capitalize}}Pk, &mpSignals{{sig|capitalize}}Buf, msgpack_sbuffer_write)
 # enlarge buffer before main execution
@@ -747,6 +747,7 @@ for i in range({{2 * args['tick_numel']}}):
 msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
 for i in range({{args['tick_numel']}}):
   msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, 0)
+{%- endif %}
 {%- endif %}
 {%- endfor %}
 {%- endif %}
