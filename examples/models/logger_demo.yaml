@@ -1,0 +1,74 @@
+# Logger demo
+#
+# This model demonstates the SQLite logger features of LiCoRICE
+# 
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+signals:
+
+  scalar_out:
+    shape: 1
+    dtype: uint8
+    log: true
+    history: 1
+    # scalars are stored raw
+
+  vector_ints:
+    shape: 3
+    dtype: int16
+    log: true
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+        - z
+    history: 1
+    # by default, vectors of ints are byte packed and stored as a string, this can be overwritten by the log_storage parameter
+
+  vector_floats:
+    shape: 4
+    dtype: double
+    log: true
+    history: 1
+    # vectors of floats are broken up into separate columns
+
+  matrix_out:
+    shape: (2,2)
+    dtype: double
+    log: true
+    history: 1
+    # matrices are flattened, msgpacked, and stored as a blob
+
+modules:
+
+  logger_sigout:
+    language: python
+    constructor: true
+    out:
+      - scalar_out
+      - vector_ints
+      - vector_floats
+      - matrix_out
+
+  print_sig:
+    language: python
+    in:
+      - matrix_out
+
+  logger:
+    language: python
+    in:
+      - scalar_out
+      - vector_ints
+      - vector_floats
+      - matrix_out
+    out: 
+      name: log_sqlite
+      args:
+        type: 'disk'
+        save_file: './data' # 48 character limit on db name
+                            # relative path files are saved relative to the run/out directory
+                            # new db file auto increments every minute (set in constants.j2)
