@@ -1,0 +1,103 @@
+# radial8_demo
+#
+# A simple model that implements a "radial8" target acquisition task
+#
+# Targets appear in one of eight peripheral positions around a circle and the cursor must be moved among them
+#
+# reads from a joystick axis to control the cursor
+#
+# This model requires the USB kernel to have been compiled
+# This model also requires a working pygame visualization installation
+#
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+signals:
+
+  joystick_axis:
+    shape: 2
+    dtype: double
+
+  joystick_buttons:
+    shape: 6
+    dtype: double
+
+  pos_cursor:
+    shape: 2
+    dtype: double
+
+  pos_target:
+    shape: 2
+    dtype: double
+
+  size_cursor:
+    shape: 1
+    dtype: uint16
+
+  size_target:
+    shape: 1
+    dtype: uint16
+
+  color_cursor:
+    shape: 3
+    dtype: uint8
+
+  color_target:
+    shape: 3
+    dtype: uint8
+
+
+modules:
+
+  # sources
+  joystick_out:
+    language: python
+    in:
+      name: jdev
+      args:
+        type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
+      schema:
+        packets_per_tick: 1
+        data:
+          dtype: float
+          size: 8
+    out:
+      - joystick_axis
+      - joystick_buttons
+    constructor: True # the constructor and parser perform all the USB manipulation through pygame
+    parser: True
+
+
+  # modules
+  radial8_task:
+    language: python
+    constructor: true
+    in:
+      - joystick_axis
+      - joystick_buttons
+    out:
+      - pos_cursor
+      - pos_target
+      - size_target
+      - size_cursor
+      - color_cursor
+      - color_target
+
+  # sinks
+  radial8_pygame:
+    language: python
+    in:
+      - pos_cursor
+      - pos_target
+      - size_cursor
+      - size_target
+      - color_cursor
+      - color_target
+    out:
+      name: viz
+      args:
+        type: vis_pygame    # sink type for pygame
+    parser: true            # most "user code" will live here
+    constructor: true
+    destructor: true
