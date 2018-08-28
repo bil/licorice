@@ -11,6 +11,7 @@ counter_hold = 0
 counter_begin = 0
 counter_fail = 0
 counter_end = 0
+counter_duration = 0
 
 pos_cursor[:] = [0, 0]
 pos_target[:] = [0, 0]
@@ -19,10 +20,10 @@ size_target[:] = int(50)
 color_cursor[:] = [255, 255, 255]
 color_target[:] = [0, 255, 0]
 
-def cursor_on_target(cursor, target, window) :
-    return ( (cursor[0] - target[0])**2 + (cursor[1] - target[1])**2 )**(1/2) <= window
+def is_cursor_on_target(cursor, target, window) :
+    return ( (cursor[0] - target[0])**2 + (cursor[1] - target[1])**2 )**(0.5) <= window
 
-def new_target() :
+def gen_new_target() :
 
     pos_max = 1000
 
@@ -32,7 +33,7 @@ def new_target() :
 # PARAMS
 
 time_hold = 500
-time_duration = 5000
+time_duration = 10000
 
 time_fail = 1000
 time_begin = 5
