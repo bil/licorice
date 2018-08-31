@@ -1,5 +1,6 @@
+scalar_out[0] = scalar_outRaw[scalar_outBufVars[8]][0]
 if scalar_out[0] < 255:
-    scalar_out[:] += 1
+    scalar_out[0] += 1
 else:
     scalar_out[0] = 0
 

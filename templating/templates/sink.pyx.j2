@@ -460,11 +460,7 @@ cdef void* processRequests(void *arg) nogil:
       openDatabase(&db, DATALOGGER_FILENAME, db_index, currDbName)
       sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
       createTables(db, databaseArray)
-
-    if (shouldDie):
-      retVal = NULL  
-      pthread_exit(retVal)
-
+      
     ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
     if (ret != SQLITE_OK):
       # print sql error msg
