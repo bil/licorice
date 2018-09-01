@@ -44,11 +44,7 @@ screen.fill(black)
 
 refresh_rate = 15 # ticks (1 ms)
 
-#sprite_cursor = Circle(color_cursor[:], size_cursor[:], np.round(pos_cursor[:]).astype('int16') )
-#sprite_target = Circle(color_target[:], size_target[:], np.round(pos_target[:]).astype('int16') )
-
-print(pos_cursor[0])
-sprite_cursor = Circle(color_cursor[0], size_cursor[0][0], pos_cursor[0] )
-sprite_target = Circle(color_target[0], size_target[0][0], pos_target[0] )
+sprite_cursor = Circle(color_cursor[0, :], size_cursor[0], pos_cursor[0, :] )
+sprite_target = Circle(color_target[0, :], size_target[0], pos_target[0, :] )
 
 sprites = pygame.sprite.Group([sprite_cursor, sprite_target])
