@@ -1,8 +1,6 @@
-# radial8_demo
+# pinball_demo
 #
-# A simple model that implements a "radial8" target acquisition task
-#
-# Targets appear in one of eight peripheral positions around a circle and the cursor must be moved among them
+# A simple model that implements a random target acquisition task
 #
 # reads from a joystick axis to control the cursor
 #
@@ -88,7 +86,7 @@ modules:
 
 
   # modules
-  radial8_task:
+  pinball_task:
     language: python
     constructor: true
     in:
@@ -103,7 +101,7 @@ modules:
       - color_target
 
   # sinks
-  radial8_pygame:
+  pinball_pygame:
     language: python
     in:
       - pos_cursor
