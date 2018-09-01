@@ -1,0 +1,73 @@
+# Logger demo
+#
+# This model demonstates the SQLite logger features of LiCoRICE
+# 
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+signals:
+
+  scalar_out:
+    shape: 1
+    dtype: int8
+    log: true
+    # scalars are stored raw
+    # this will receive the column name r_i1_scalar_out in the SQLite database
+
+  vector_ints:
+    shape: 3
+    dtype: int16
+    log: true
+    log_storage:
+      type: vector
+    # by default, 1D vectors stored one element per column, this can be overwritten to a different type by the log_storage parameter
+    # this signal will receive columns named v_i2_vector_ints_0, v_i2_vector_ints_1, and v_i2_vector_ints_2
+
+  vector_floats:
+    shape: 4
+    dtype: double
+    log: true
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+        - z
+        - z2
+    # 1D vectors of floats are also broken up into separate columns
+    # the suffixes key permits labels to be added to these columns instead of automatically assigning an index
+    # this signal will receive columns named v_f8_vector_floats_x, v_f8_vector_floats_y, ...
+
+  matrix_out:
+    shape: (2,2)
+    dtype: double
+    log: true
+    # matrices are flattened, packed through msgpack, and stored as a blob in a single column
+    # this signal will receive columns named m_f8_matrix_out
+
+modules:
+
+  logger_sigout:
+    language: python
+    constructor: true
+    out:
+      - scalar_out
+      - vector_ints
+      - vector_floats
+      - matrix_out
+
+  logger:
+    language: python
+    in:
+      - scalar_out
+      - vector_ints
+      - vector_floats
+      - matrix_out
+    out: 
+      name: log_sqlite
+      args:
+        type: 'disk'
+        save_file: './data' # 48 character limit on db name
+                            # relative path files are saved relative to the run/out directory
+                            # new db file auto increments every minute (set in constants.j2)

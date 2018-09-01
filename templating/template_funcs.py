@@ -593,8 +593,8 @@ def parse(paths, config, confirm):
                   elif args['log_storage']['type'] == 'raw':
                     raw_num_sigs.append(sig)
                 else: # not 1D array, store as msgpack
-                  print "Signal shape for " + sig + " unsupported. Signal must be 1-dimensional array to be stored as " + args['log_storage'] + "."
-                  print sig + " will be wrapped in msgpack."
+                  print("Signal shape for " + sig + " unsupported. Signal must be 1-dimensional array to be stored as " + args['log_storage'] + ".")
+                  print(sig + " will be wrapped in msgpack.")
                   msgpack_sigs.append(sig)
 
               # for text signals, determine number of bytes in one signal element
