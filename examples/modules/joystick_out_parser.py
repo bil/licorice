@@ -9,7 +9,7 @@ if (read_source_input) : # this is a special variable that is set to true every 
     ax0 = usb_joystick.get_axis(0)
     ax1 = usb_joystick.get_axis(1)
 
-    buttons = [ usb_joystick.get_button(i) for i in range(6) ]
+    buttons = [ usb_joystick.get_button(i) for i in range(joystick_buttons.shape[1]) ]
 
     joystick_axis[0, 0] = ax0
     joystick_axis[0, 1] = ax1

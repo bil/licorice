@@ -9,13 +9,17 @@
 
 signals:
 
-  joystick_axis_out:
+  joystick_axis:
     shape: 2
     dtype: double
 
+  joystick_buttons:
+    shape: 6 # set this to the number of buttons on the joystick
+    dtype: uint8
+
 modules:
 
-  joy_axis:
+  joystick_out:
     language: python
     in:
       name: jdev
@@ -27,21 +31,12 @@ modules:
           dtype: float64
           size: 2
     out:
-      - joystick_axis_out
+      - joystick_axis
+      - joystick_buttons
     constructor: True # the constructor and parser perform all the USB manipulation through pygame
     parser: True
 
   joystick_axis_print:
     language: python
     in:
-      - joystick_axis_out
-
-  logger:
-    language: python
-    in:
-      - joystick_axis_out
-    out: 
-      name: log_sqlite
-      args:
-        type: 'disk'
-        save_file: './data' # 48 character limit on db name
+      - joystick_axis
