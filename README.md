@@ -3,14 +3,16 @@
 LiCoRICE is a platform that performs realtime processing of data.
 It is suitable for numerical processing of streaming data into and through a system.
 
-For reliable timing the application layer must be run on a machine that is properly configured and patched with the PREEMPT\_RT kernel patch.
-The instructions here should be applied to a stock install of Ubuntu server 16.04 LTS.
+## System Prerequisites
 
-## Hardware Prerequisites
-
-LiCoRICE setup:
 * x86\_64 system
-* at least 2 CPU cores with hyperthreading (ideally 4 or more)
+* Modern UNIX environment (Linux, MacOS)
+* Python (both Python 2 and 3 are supported)
+* gcc toolchain
+
+**NOTE**: The setup scripts here only work for Ubuntu Server Xenial 16.04 LTS.
+We recommend starting with a stock install of Ubuntu Server Xenial 16.04 LTS.
+Use of any other UNIX platform requires manual installation of packages.
 
 ## Setup
 
@@ -36,7 +38,40 @@ An example directory structure for an experimental rig would be:
 
 2. Clone the LiCoRICE repository and place it in the directory structure as mentioned above
 
-3. Compile realtime kernel
+3. Python virtualenv setup
+
+    From the top-level LiCoRICE directory, run:
+
+    ```bash
+    ./install/venv_setup.sh
+    ```
+
+    This script will take 15 to 30 minutes to complete.
+
+4. Bind to the newly built virtualenv:
+
+    ```bash
+    source ~/lico_venv/bin/activate
+    ```
+
+5. Source the LiCoRICE activation script:
+
+    ```bash
+    source licorice_activate.sh
+    ```
+
+    This will make a number of shell functions available, all start with `licorice_`.
+
+    If successful, the prompt should appear in the following manner: `[LiCoRICE] (lico_venv) <user>@<host>:~$`
+
+6. Optional - Compile realtime kernel
+
+    Compiling a realtime kernel is not a requirement to run LiCoRICE, but realtime performance is one of the central features of the platform.
+    Without a realtime kernel, timing assurances are harder to deliver.
+    Tick violations are more likely to occur as model complexity grows.
+    For basic platform testing and evaluation, a realtime kernel is not necessary, but for any production deployments, realtime kernel compilation is strongly advised.
+
+    The instructions for realtime kernel compilation here should be applied to a stock install of Ubuntu server 16.04 LTS.
 
     From the top-level LiCoRICE repository directory, run:
 
@@ -50,31 +85,6 @@ An example directory structure for an experimental rig would be:
 
     Note: if USB support is necessary (e.g., system requires realtime support for a USB peripheral), install the USB enabled kernel instead via `./install/kernel_setup_usb.sh` instead. Enabling USB support will degrade system performance by a small amount, but may still fit within application tolerances. In general, a limited number of USB devices do not preclude consistently meeting 1ms ticks. Regardless, it is important to always verify timings for a given system deployment.
 
-4. Python virtualenv setup
-
-    From the top-level LiCoRICE directory, run:
-
-    ```bash
-    ./install/venv_setup.sh
-    ```
-
-    This script will take 15 to 30 minutes to complete.
-
-5. Bind to the newly built virtualenv:
-
-    ```bash
-    source ~/lico_venv/bin/activate
-    ```
-
-6. Source the LiCoRICE activation script:
-
-    ```bash
-    source licorice_activate.sh
-    ```
-
-    This will make a number of shell functions available, all start with `licorice_`.
-
-    If successful, the prompt should appear in the following manner: `[LiCoRICE] (lico_venv) <user>@<host>:~$`
 
 ## Examples
 
@@ -114,4 +124,3 @@ This performs the following actions:
     ```bash
     licorice_run_model
     ```
-
