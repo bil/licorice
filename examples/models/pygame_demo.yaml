@@ -10,10 +10,10 @@ modules:
   # sinks
   pygame_demo:
     language: python
+    constructor: true
+    parser: true            # most "user code" will live here for a sink
+    destructor: true
     out:
       name: viz
       args:
         type: vis_pygame    # sink type for pygame
-    parser: true            # most "user code" will live here
-    constructor: true
-    destructor: true

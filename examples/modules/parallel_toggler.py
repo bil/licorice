@@ -1,9 +1,6 @@
 # Toggle pin 9 of the parallel port every two seconds
 
-if counter < 2000 :
-    counter += 1
-else:
-    counter = 0
+if not pNumTicks[0] % 2000 : # pNumTicks[0] is value of the current timer tick
 
     if toggle_state == 0:
         toggle_state = 1
