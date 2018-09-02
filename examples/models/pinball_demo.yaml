@@ -69,6 +69,8 @@ modules:
   # sources
   joystick_out:
     language: python
+    constructor: True # the constructor and parser perform all the USB manipulation through pygame
+    parser: True
     in:
       name: jdev
       args:
@@ -81,8 +83,6 @@ modules:
     out:
       - joystick_axis
       - joystick_buttons
-    constructor: True # the constructor and parser perform all the USB manipulation through pygame
-    parser: True
 
 
   # modules
@@ -103,6 +103,9 @@ modules:
   # sinks
   pinball_pygame:
     language: python
+    constructor: true
+    parser: true
+    destructor: true
     in:
       - pos_cursor
       - pos_target
@@ -114,9 +117,6 @@ modules:
       name: viz
       args:
         type: vis_pygame    # sink type for pygame
-    parser: true            # most "user code" will live here
-    constructor: true
-    destructor: true
 
   logger:
     language: python

@@ -10,15 +10,21 @@
 
 signals:
 
-  joystick_axis_out:
+  joystick_axis:
     shape: 2
-    dtype: float
+    dtype: double
+
+  joystick_buttons:
+    shape: 6
+    dtype: uint8
 
 modules:
 
   # sources
-  joy_axis:
+  joystick_out:
     language: python
+    constructor: True # the constructor and parser perform all the USB manipulation through pygame
+    parser: True
     in:
       name: jdev
       args:
@@ -26,22 +32,21 @@ modules:
       schema:
         packets_per_tick: 1
         data:
-          dtype: float
+          dtype: double
           size: 2
     out:
-      - joystick_axis_out
-    constructor: True # the constructor and parser perform all the USB manipulation through pygame
-    parser: True
+      - joystick_axis
+      - joystick_buttons
 
   # sinks
   cursor_display:
     language: python
+    constructor: true
+    parser: true            # "user code" for the sink lives here
+    destructor: true
     in:
-      - joystick_axis_out
+      - joystick_axis
     out:
       name: viz
       args:
         type: vis_pygame    # sink type for pygame
-    parser: true            # most "user code" will live here
-    constructor: true
-    destructor: true

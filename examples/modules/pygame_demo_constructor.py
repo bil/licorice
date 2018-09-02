@@ -42,13 +42,12 @@ black = (0,0,0)
 screen = pygame.display.set_mode((1280,1024))
 screen.fill(black)
 
-theta = 0
-r = 200
-offset = [500, 500]
-pos = (0, 0)
+color = [200, 200, 0]
+pos = [0, 0]
 size = 30
+vel_scale = 1
 
-cir1 = Circle([200,200,0], size, pos)
+cir1 = Circle(color, size, pos)
 
 sprites = pygame.sprite.Group(cir1)
 

@@ -48,13 +48,3 @@ modules:
 
     in:
       - matmul_out
-    out:
-
-  logger:
-    language: python
-    in:
-      - matmul_out
-    out:
-      name: sqllog
-      args:
-        type: disk

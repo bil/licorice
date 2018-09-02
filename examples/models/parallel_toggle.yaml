@@ -17,12 +17,10 @@ signals:
   parallel_in:              # the signal written to from the parallel input source
     shape: 1
     dtype: uint8
-    history: 1              # currently a required parameter, if historical (past ticks) data is desired, increase this number
  
   parallel_out:             # the signal that the parallel output sink reads from
     shape: 1
     dtype: uint8
-    history: 1 
 
 modules:
 
@@ -34,7 +32,6 @@ modules:
       args:
         type: parport       # the type of souce this is
         addr: 379           # the I/O address of the parallel port
-      parser: false         # whether a parser is used
       schema:               # define the structure of the data generated from the source
         data:
           dtype: uint8      # data type quantization
@@ -45,9 +42,8 @@ modules:
 
   parallel_toggler:         # define the module
     language: python        # language the module is written in
-    numba: false            # whether to compile module using numba or not (if true, only a subset of python is permitted, but code is statically compiled with BLAS/LAPACK support)
     constructor: true       # this permits the use of constructor code to intialize the module
-                            # constructors only execute once, before the ticks have begun
+                            # constructors only execute once, before any ticks have begun
     in:
       - parallel_in         # input signal(s) to module
     out:
@@ -62,4 +58,3 @@ modules:
       args:
         type: parport
         addr: 378
-      parser: false

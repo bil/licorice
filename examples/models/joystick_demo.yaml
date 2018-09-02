@@ -1,6 +1,6 @@
 # USB Joystick demo
 #
-# A model that outputs values from a joystick axis
+# A model that outputs values from a joystick axis and buttons
 # This model requires the USB kernel to have been compiled
 #
 #
@@ -14,13 +14,15 @@ signals:
     dtype: double
 
   joystick_buttons:
-    shape: 6 # set this to the number of buttons on the joystick
+    shape: 6 # set this to the number of buttons to extract from the joystick
     dtype: uint8
 
 modules:
 
   joystick_out:
     language: python
+    constructor: True # the constructor and parser perform all USB manipulation through pygame
+    parser: True
     in:
       name: jdev
       args:
@@ -28,15 +30,14 @@ modules:
       schema:
         packets_per_tick: 1
         data:
-          dtype: float64
+          dtype: double
           size: 2
     out:
       - joystick_axis
       - joystick_buttons
-    constructor: True # the constructor and parser perform all the USB manipulation through pygame
-    parser: True
 
-  joystick_axis_print:
+  joystick_print:
     language: python
     in:
       - joystick_axis
+      - joystick_buttons
