@@ -19,15 +19,24 @@ As a reminder, construct the directory structure in the following manner:
 
 To use these examples, copy the contents of the `models` and `modules` directories to the appropriate directories under the `rig` directory on the target LiCoRICE system.
 
-### parallel\_toggle
+These demos are listed in order of increasing model feature complexity.
+If a specific demo does not work, it is advised to try a less complex one to assist with debugging.
 
-The `parallel_toggle` model is a simple example that toggles an output pin of the parallel port every tick (default ticks are 1ms).
+### jitter\_demo
+
+This is the simplest demo with no sources, modules, or sinks.
+It is helpful to measure core timing performance of the operating system (e.g., validating the realtime kernel).
 
 Once the directory structure is in place and the environments have been properly bound, the model can be executed with the following command:
 
-`licorice_go parallel_toggle`
+`licorice_go jitter_demo`
 
 An oscilloscope tapping pin 9 of the parallel port should show a square wave with a 2ms period on 3.3V or 5V rails.
+
+### parallel\_toggle
+
+The `parallel_toggle` model is like the `jitter_demo`, but leverages the platform infrastructure.
+It implements a simple model that again toggles an output pin of the parallel port every tick (default ticks are 1ms).
 
 ### matrix\_multiply
 
@@ -35,10 +44,14 @@ The `matrix_multiply` model demonstrates `numba.pycc` BLAS optimized numerical o
 
 The `matmul` module performs matrix multiplication on two 4x4 matrices.
 
+### logger\_demo
+
+The `logger_demo` model demonstrates the SQLite signal (data) logging features of the platform.
+
 ### joystick\_demo
 
 The `joystick_demo` model demonstrates how to bring two axes from a USB joystick in as inputs to the system.
-This model requires the compilation of a realtime usb kernel (see the `kernel_setup_usb.sh` script in the install directory) and requires pygame for joystick control.
+This model requires the compilation of a realtime USB kernel (see the `kernel_setup_usb.sh` script in the install directory) and requires pygame for joystick control.
 Install pygame into the venv via `pip install pygame`.
 
 Any USB joystick device will work so long as pygame detects a joystick with at least two analog axes.
@@ -58,4 +71,12 @@ Then repeat the steps from the main README to source the venv and source `licori
 
 ### cursor\_track
 
-The `cursor_track` model demonstrates a simple closed loop system where the input of two axes of a USB joystick are read and used to control a cursor on the screen using pygame. It is recommended that this model be run only after `joystick_demo` and `pygame_demo` have been confirmed working.
+The `cursor_track` model demonstrates a simple closed loop model where the input of two axes of a USB joystick are read and used to control a cursor on the screen using pygame.
+It is recommended that this model be run only after `joystick_demo` and `pygame_demo` have been confirmed working.
+
+### pinball\_demo
+
+The `pinball_demo` model combines several of the features of the prior demos into a simple random target acquisition task, often referred to as a "pinball task" in the literature.
+A USB joystick is again used an input to control a cursor that is displayed on the screen through pygame.
+A green target is randomly placed on the screen and must be acquired and held with the cursor within an allotted time.
+Relevant model signals are saved into the SQLite database by the datalogger.
