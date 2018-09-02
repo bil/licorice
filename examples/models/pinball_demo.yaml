@@ -16,7 +16,7 @@ signals:
   joystick_axis:
     shape: 2
     dtype: double
-    log: true
+    log: false
     log_storage:
       type: vector
       suffixes:
@@ -63,6 +63,11 @@ signals:
     shape: 3
     dtype: uint8
 
+  state_task:
+    shape: 1
+    dtype: int8
+    log: true
+
 
 modules:
 
@@ -99,6 +104,7 @@ modules:
       - size_cursor
       - color_cursor
       - color_target
+      - state_task
 
   # sinks
   pinball_pygame:
@@ -118,12 +124,24 @@ modules:
       args:
         type: vis_pygame    # sink type for pygame
 
+  pinball_audio:
+    language: python
+    constructor: true
+    parser: true
+    destructor: true
+    in: 
+      - state_task
+    out:
+      name: viz_audio
+      args:
+        type: vis_pygame
+
   logger:
     language: python
     in:
-      - joystick_axis
       - pos_cursor
       - pos_target
+      - state_task
     out:
       name: sqlite_logger
       args:
