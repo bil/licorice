@@ -21,6 +21,7 @@ light_blue = [150, 200, 255]
 task_state = 1
 counter_hold = 0
 counter_begin = 0
+counter_success = 0
 counter_fail = 0
 counter_end = 0
 counter_duration = 0
@@ -48,6 +49,7 @@ def gen_new_target() :
 time_hold = 500
 time_duration = 4000
 
+time_success = 5
 time_fail = 1000
 time_begin = 5
 time_end = 10

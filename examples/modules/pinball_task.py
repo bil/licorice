@@ -56,8 +56,12 @@ elif task_state == task_states['hold'] :
 
 elif task_state == task_states['success'] :
 
-    task_state = task_states['end']
-    counter_end += 1
+    counter_success += 1
+
+    if counter_success >= time_success :
+
+      task_state = task_states['end']
+      counter_end += 1
 
 elif task_state == task_states['fail'] :
 
@@ -71,6 +75,7 @@ elif task_state == task_states['end'] :
 
     counter_hold = 0
     counter_begin = 0
+    counter_success = 0
     counter_fail = 0
     counter_duration = 0
 
@@ -88,3 +93,4 @@ size_cursor[:] = size_cursor_i
 size_target[:] = size_target_i
 color_cursor[:] = color_cursor_i
 color_target[:] = color_target_i
+state_task[:] = task_state
