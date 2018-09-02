@@ -42,9 +42,16 @@ black = (0,0,0)
 screen = pygame.display.set_mode((1280,1024))
 screen.fill(black)
 
+# used in both pygame_demo and cursor_track
 color = [200, 200, 0]
 pos = [0, 0]
 size = 30
+
+# these variables only used for pygame demo
+r = 200
+theta = 0
+offset = [500, 500]
+
 vel_scale = 1
 
 cir1 = Circle(color, size, pos)
