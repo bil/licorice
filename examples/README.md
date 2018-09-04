@@ -38,7 +38,8 @@ The `matmul` module performs matrix multiplication on two 4x4 matrices.
 ### joystick\_demo
 
 The `joystick_demo` model demonstrates how to bring two axes from a USB joystick in as inputs to the system.
-This model requires the compilation of a realtime usb kernel (see the `kernel_setup_usb.sh` script in the install directory).
+This model requires the compilation of a realtime usb kernel (see the `kernel_setup_usb.sh` script in the install directory) and requires pygame for joystick control.
+Install pygame into the venv via `pip install pygame`.
 
 Any USB joystick device will work so long as pygame detects a joystick with at least two analog axes.
 An example verified working joystick is the Logitech F310 Gamepad.

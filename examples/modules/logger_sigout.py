@@ -1,21 +1,30 @@
-if scalar_out[0] < 255:
-    scalar_out[:] += 1
-else:
-    scalar_out[0] = 0
+# update internal/persistent variables
 
-if vector_ints[0] < 0 :
-    vector_ints[:] += 5
+if scalar <= 127:
+    scalar += 1
 else:
-    vector_ints[0] = -32767 
-    vector_ints[1] = -20000
-    vector_ints[2] = -10000
+    scalar = -128
 
-if vector_floats[0] < 1e9 :
-    vector_floats[:] *= 2
+if vector_i[0] < 0 :
+    vector_i[:] += 5
 else:
-    vector_floats[:] = [1, 2, 3, 4]
+    vector_i[0] = -32767 
+    vector_i[1] = -20000
+    vector_i[2] = -10000
 
-if matrix_out[0, 0] < 1e10 :
-    matrix_out *= 3
+if vector_f[0] < 1e9 :
+    vector_f[:] *= 2
 else:
-    matrix_out[:, :] = [ [1, 2], [3, 4] ]
+    vector_f[:] = [1, 2, 3, 4]
+
+if matrix[0, 0] < 1e10 :
+    matrix *= 3
+else:
+    matrix[:, :] = [ [1, 2], [3, 4] ]
+
+
+# write to outputs
+scalar_out[:] = scalar
+vector_ints[:] = vector_i
+vector_floats[:] = vector_f
+matrix_out[:, :] = matrix

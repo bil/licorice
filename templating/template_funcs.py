@@ -557,7 +557,6 @@ def parse(paths, config, confirm):
 
         if out_signal['args']['type'] == 'disk':
           for sig, args in iter(in_signals.items()):
-            isText = False
 
             # determine whether signal should be logged or not
             log = False # if no logging specified
@@ -571,12 +570,9 @@ def parse(paths, config, confirm):
                 if len(str(args['shape'])) == 1: # if 1D signal
                   if args['shape'] == 1:
                     raw_num_sigs.append(sig)
-                  else:
-                    if 'int' in args['dtype']:
-                      isText = True
-                    else:
-                      raw_vec_sigs[sig] = args['tick_numel']
-                      raw_vec_sigs['total'] += args['tick_numel'] - 1 # only count *extra* columns
+                  else: # vector
+                    raw_vec_sigs[sig] = args['tick_numel']
+                    raw_vec_sigs['total'] += args['tick_numel'] - 1 # only count *extra* columns
                 else: # shape is matrix
                   msgpack_sigs.append(sig)
             
@@ -589,27 +585,24 @@ def parse(paths, config, confirm):
                     raw_vec_sigs[sig] = args['tick_numel']
                     raw_vec_sigs['total'] += args['tick_numel'] - 1 # only count *extra* columns
                   elif args['log_storage']['type'] == 'text':
-                    isText = True
+                    # determine number of bytes in one signal element
+                    shape = str(args['shape'])
+                    if '16' in shape:
+                      numBytes = 2
+                    elif '32' in shape:
+                      numBytes = 4
+                    elif '64' in shape:
+                      numBytes = 8
+                    else: # int8
+                      numBytes = 1
+                    raw_text_sigs[sig] = numBytes 
                   elif args['log_storage']['type'] == 'raw':
                     raw_num_sigs.append(sig)
                 else: # not 1D array, store as msgpack
-                  print "Signal shape for " + sig + " unsupported. Signal must be 1-dimensional array to be stored as " + args['log_storage'] + "."
-                  print sig + " will be wrapped in msgpack."
+                  print("Signal shape for " + sig + " unsupported. Signal must be 1-dimensional array to be stored as " + args['log_storage'] + ".")
+                  print(sig + " will be wrapped in msgpack.")
                   msgpack_sigs.append(sig)
 
-              # for text signals, determine number of bytes in one signal element
-              if isText:
-                shape = str(args['shape'])
-                if '16' in shape:
-                  numBytes = 2
-                elif '32' in shape:
-                  numBytes = 4
-                elif '64' in shape:
-                  numBytes = 8
-                else: # int8
-                  numBytes = 1
-                raw_text_sigs[sig] = numBytes
-              
               # store abbreviated dtype for use in colName
               dt = np.dtype(args['dtype'])
               args['dtype_short'] = dt.kind + str(dt.itemsize)
