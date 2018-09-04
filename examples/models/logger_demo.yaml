@@ -10,10 +10,10 @@ signals:
 
   scalar_out:
     shape: 1
-    dtype: uint8
+    dtype: int8
     log: true
-    history: 1
     # scalars are stored raw
+    # this will receive the column name r_i1_scalar_out in the SQLite database
 
   vector_ints:
     shape: 3
@@ -21,26 +21,30 @@ signals:
     log: true
     log_storage:
       type: vector
-      suffixes:
-        - x
-        - y
-        - z
-    history: 1
-    # by default, vectors of ints are byte packed and stored as a string, this can be overwritten by the log_storage parameter
+    # by default, 1D vectors stored one element per column, this can be overwritten to a different type by the log_storage parameter
+    # this signal will receive columns named v_i2_vector_ints_0, v_i2_vector_ints_1, and v_i2_vector_ints_2
 
   vector_floats:
     shape: 4
     dtype: double
     log: true
-    history: 1
-    # vectors of floats are broken up into separate columns
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+        - z
+        - z2
+    # 1D vectors of floats are also broken up into separate columns
+    # the suffixes key permits labels to be added to these columns instead of automatically assigning an index
+    # this signal will receive columns named v_f8_vector_floats_x, v_f8_vector_floats_y, ...
 
   matrix_out:
     shape: (2,2)
     dtype: double
     log: true
-    history: 1
-    # matrices are flattened, msgpacked, and stored as a blob
+    # matrices are flattened, packed through msgpack, and stored as a blob in a single column
+    # this signal will receive columns named m_f8_matrix_out
 
 modules:
 
@@ -51,11 +55,6 @@ modules:
       - scalar_out
       - vector_ints
       - vector_floats
-      - matrix_out
-
-  print_sig:
-    language: python
-    in:
       - matrix_out
 
   logger:
