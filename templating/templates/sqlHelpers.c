@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 #include "utilityFunctions.h"
 #include "sqlHelpers.h"
 
@@ -115,6 +116,7 @@ void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLoca
   }
   sqlite3_open(buf, db);
   strcpy(newNameLocation,buf);
+  chown(buf, atoi(getenv("SUDO_UID")), atoi(getenv("SUDO_GID"))); // set db file ownership to user
 }
 
 static char* cmd;
@@ -151,7 +153,6 @@ void createTables(sqlite3 *db, SQLTable* databaseArr) {
     rc = sqlite3_exec(db, cmd, NULL, NULL, &zErrMsg);
       if (rc != SQLITE_OK) {
         // print zErrMsg
-        printf("zErrMsg: %s\n", zErrMsg);
         sqlite3_free(zErrMsg);
         die("SQL error");
       }

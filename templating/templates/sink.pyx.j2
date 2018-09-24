@@ -640,7 +640,6 @@ rc = sqlite3async_control(SQLITEASYNC_HALT, eNewHalt)
 if (rc != SQLITE_OK):
   die("sqlite3async control failed\n")
 
-
 # create numpy signals table sql insert queries
 queryLen = strlen(INSERT_STR) + strlen(DATALOGGER_SIGNALS_TABLE_NAME) + strlen(VALUES_STR) + strlen(OPEN_BRACE) + \
  {%for sig in in_signals%}strlen(QUESTION){{" + strlen(COMMA) + " if not loop.last}}{%endfor%} + strlen(CLOSE_BRACE_SEMI)
@@ -679,13 +678,11 @@ num_extra_cols = 0 # counter for number of extra added columns
 # signalsTableArr[{{loop.index0}}].data = NULL
 
 {%- if sig in msgpack_sigs %}
-
   # msgpack sigs
 signalsTableArr[{{loop.index0}} + num_extra_cols].colName = "m_{{args['dtype_short']}}_{{sig}}"
 signalsTableArr[{{loop.index0}} + num_extra_cols].SQLtype = "BLOB"
 
 {%- elif sig in raw_vec_sigs %}
-
   # vector sigs
 curr_index = {{loop.index0}}
 {%- for i in range(raw_vec_sigs[sig]) %}
@@ -698,12 +695,12 @@ if 'int' in '{{args['dtype']}}':
   signalsTableArr[curr_index + num_extra_cols].SQLtype = "INTEGER"
 else: # float
   signalsTableArr[curr_index + num_extra_cols].SQLtype = "REAL"
+
 num_extra_cols += 1
 {%- endfor %}
 num_extra_cols -= 1 # only count *extra* added cols
 
 {%- elif sig in raw_text_sigs %}
-
   # text sigs
 signalsTableArr[{{loop.index0}} + num_extra_cols].colName = "t_{{args['dtype_short']}}_{{sig}}"
 signalsTableArr[{{loop.index0}} + num_extra_cols].SQLtype = "TEXT"
