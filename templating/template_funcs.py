@@ -567,7 +567,7 @@ def parse(paths, config, confirm):
             if log == True:
               # automatic determination of optimal signal storage type
               if 'log_storage' not in args or (args['log_storage']['type'] == 'auto'):
-                if len(str(args['shape'])) == 1: # if 1D signal
+                if (type(args['shape']) == int) or (len(args['shape']) == 1): # if 1D signal
                   if args['shape'] == 1:
                     raw_num_sigs.append(sig)
                   else: # vector
@@ -580,7 +580,7 @@ def parse(paths, config, confirm):
               elif ('enable' not in args['log_storage']) or (args['log_storage']['enable'] == True):
                 if args['log_storage']['type'] == 'msgpack':
                   msgpack_sigs.append(sig)
-                elif len(str(args['shape'])) == 1: # if 1D signal
+                elif (type(args['shape']) == int) or (len(args['shape']) == 1) : # if 1D signal
                   if args['log_storage']['type'] == 'vector':
                     raw_vec_sigs[sig] = args['tick_numel']
                     raw_vec_sigs['total'] += args['tick_numel'] - 1 # only count *extra* columns
