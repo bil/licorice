@@ -87,7 +87,7 @@ static int sigexit_recv;
 static int sigchld_recv;
 
 // static int num_cores = {{num_cores}};
-static int ex_i, al_i, de_i, m_i;
+static size_t ex_i, al_i, de_i, m_i;
 {%- if topo_height != 0 -%} 
 static int m_j;
 {%- endif %}
@@ -144,7 +144,10 @@ void handle_exit(int exitStatus) {
     if (so_pids[ex_i] != -1) {
       printf("Killing source: %d\n", so_pids[ex_i]);
       kill(so_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
+      //while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
+      while(waitpid(-1, 0, WNOHANG) > 0){
+        printf("waiting for pid: %d\n", so_pids[ex_i]);
+      }
     }
   }
   printf("Unmapping shared memory...\n");
@@ -222,11 +225,11 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems + al_i)) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i);
+          printf("Module timing violation on ms: %lu from non_source number %zu \n", *pNumTicks, al_i);
           die("Module timing violation.\n");
         }
         else
-          printf("Sink timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i); // TODO insert non_source name here
+          printf("Sink timing violation on ms: %lu from non_source number %zu \n", *pNumTicks, al_i); // TODO insert non_source name here
       } 
     }
 

@@ -65,22 +65,40 @@ cdef extern from "sourceUtils.h":
 
 ##############################################################################
 #Headers For UDP Threading
-cdef extern from "<pthread.h>":
+{%- if sig_type == 'udp'%}
+cdef extern from "<sys/types.h>":
   ctypedef int pthread_t
   ctypedef struct pthread_mutex_t:
     pass
-  ctypedef pthread_mutexattr_t:
+  ctypedef struct pthread_mutexattr_t:
     pass
-  ctypedef pthread_cond_t:
+  ctypedef struct pthread_attr_t:
     pass
+  # ctypedef pthread_cond_t:
+  #   pass
+
+cdef extern from "<sched.h>":
+  enum: SCHED_FIFO
+  ctypedef struct cpu_set_t:
+    pass
+  void CPU_ZERO(cpu_set_t *set)
+  void CPU_SET(int cpu, cpu_set_t *set)
+
+cdef extern from "<pthread.h>":
+  struct sched_param:
+    int sched_priority
   int pthread_join(pthread_t, void **retValue)
   int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
   int pthread_mutex_lock(pthread_mutex_t *)
   int pthread_mutex_unlock(pthread_mutex_t *)
   int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg)
+  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
+  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
+  void pthread_exit(void *retval)
   # int pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *);
   # int pthread_cond_init(pthread_cond_t *, const pthread_condattr_t *);
   # int pthread_cond_signal(pthread_cond_t *);
+{%- endif %}
 ###########################################################################
 
 {% elif sig_type == 'zmq' -%} # header declaration for zmq source
@@ -137,9 +155,6 @@ cdef extern from "constants.h":
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
   enum: BUF_VARS_LEN
-####################################################################
-  enum: MAX_NUM_TICKS_PER_MS
-####################################################################
 
 cdef pid_t ppid
 cdef sigset_t exitMask
@@ -170,8 +185,10 @@ cdef socklen_t slen = sizeof(si_other)
 cdef in_addr interface_ip
 
 ##########################################################################
+cdef enum:
+  MAX_NUM_PACKETS_PER_MS = {{in_signal['schema']['packets_per_tick']}}
 cdef int totalPacketsReceived = 0
-cdef int packetSizePerTick[2*MAX_NUM_TICKS_PER_MS] = {0} #Should be configurable
+cdef int packetSizePerTick[2*MAX_NUM_PACKETS_PER_MS] #= {0} #Should be configurable
 cdef pthread_t udpReadThread
 cdef pthread_mutex_t packetsReceivedMutex, udpDataMutex, exitMutex
 cdef {{in_dtype}} *udpCurPtr
@@ -260,7 +277,7 @@ cdef {{dtype}} *{{sig}}StrtPtr
 
 # function to close the source
 cdef void handle_exit(int exitStatus):
-  global pmem, shm_size, pNumTicks, numDropped
+  global pmem, shm_size, pNumTicks, numDropped, udpReadThread, exitMutex, exitRoutine
   {%- if test_throughput %}
   global num_packets
   {%- endif %}
@@ -274,14 +291,21 @@ cdef void handle_exit(int exitStatus):
 {%- endfor %}
 
 {%- if sig_type == 'udp' %}
-#################################################################
+  #################################################################
+  printf("closing udp information.\n")
   pthread_mutex_lock(&exitMutex)
   exitRoutine = 1
   pthread_mutex_unlock(&exitMutex)
-  join_udp_thread()
-#################################################################
+  printf("Joining thread.")
+  if(pthread_join(udpReadThread, NULL) != 0):
+    die("Could not join updReadThread.\n")
+  else:
+    printf("Thread sucessfully joined.")
+  pthread_exit(NULL)
+  #################################################################
   if (s):
     close(s)
+
 
 {%- elif sig_type == 'pipe' %}
   close(named_pipe)
@@ -335,28 +359,28 @@ cdef void usr2_handler(int signum):
   pass
 
 ###########################################################################
-cdef join_udp_threads():
-  if(pthread_join(&udpReadThread, NULL) != 0):
-    die("Could not join updReadThread.\n")
-
-cdef void readUDP():
-  #pthread_mutex_lock(&udpDataMutex) #may not need this lock 
-  while(true):
+cdef void* readUDP(void *arg):
+  #pthread_mutex_lock(&udpDataMutex) #may not need this lock
+  global exitMutex, exitRoutine, totalPacketsReceived, udpCurPtr, si_other, slen, packetSize, packetSizePerTick, s
+  printf("Reading udp data\n")
+  while(True):
     pthread_mutex_lock(&exitMutex)
-      if(exitRoutine == 1):
-        pthread_mutex_unlock(&exitMutex)
-        break
+    if(exitRoutine == 1):
+      printf("exit routine signaled.")
+      pthread_mutex_unlock(&exitMutex)
+      break
     pthread_mutex_unlock(&exitMutex)
-    recvLen = recvfrom(s, udpCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
+    recvLen = recvfrom(s, <void *>udpCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
     if (recvLen == -1 and errno != EINTR):
       die("NETWORK ERROR: recvfrom()\n")
     if (recvLen == -1):
       die("Read error.\n")
     
-    packetSizePerTick[totalRacketsReceived] = recvLen #Updated length per tick
+    packetSizePerTick[totalPacketsReceived] = recvLen #Updated length per tick
     pthread_mutex_lock(&packetsReceivedMutex)
-    totalPacketsReceived +=1
-    udpCurPtr = udpCurPtr + packetSize   ##is this the right update?
+    printf("updating packets\n")
+    totalPacketsReceived = totalPacketsReceived + 1
+    udpCurPtr = udpCurPtr + {{out_signal_name}}BufVars[5] #packetSize  ##is this the right update?
     pthread_mutex_unlock(&packetsReceivedMutex)
     
 
@@ -468,8 +492,16 @@ else:
   # {{sig}}BufVars[3] = {{args['buf_tot_numel']}}
   # {{sig}}BufVars[0] = {{sig}}BufVars[3]
   {%- else %}
+  ##################################################################################
+  {%- if sig_type == 'udp'%}
+  {{sig}}BufVars[6] = 2*MAX_NUM_PACKETS_PER_MS*packetSize #Max size of data that can be received in one tick
+  {{sig}}BufVars[5] = packetSize #size of each packet of data
+  #^^should this be the same update as below? what is the out signal packet size for udp?
+  {%- else %}
   {{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
   {{sig}}BufVars[5] = {{args['schema']['data']['size']}}  
+  {%- endif %}
+  ################################################################################## 
   {%- endif %}
 
 {%- endfor %}
@@ -507,8 +539,20 @@ pause()
 #start the asychronous reacd thread if signal type is udp
 {%- if sig_type == 'udp' %}
 ##############################################################################
+printf("Source has been signaled.\n")
+memset(<char*>packetSizePerTick, 0, sizeof(packetSizePerTick)) #2*MAX_NUM_PACKETS_PER_MS*
 udpCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2] #ask about this...
-pthread_create(&udpReadThread, NULL, &readUDP, NULL)
+if(pthread_create(&udpReadThread, NULL, &readUDP, NULL)):
+  die("pthread_create failed.")
+printf("Finished creating the readThread.\n")
+
+cdef sched_param param
+param.sched_priority = 39
+pthread_setschedparam(udpReadThread, SCHED_FIFO, &param)
+cdef cpu_set_t mask
+CPU_ZERO(&mask)
+CPU_SET(4, &mask)
+pthread_setaffinity_np(udpReadThread, sizeof(cpu_set_t), &mask)
 ##############################################################################
 {%- endif %}
 
@@ -593,9 +637,10 @@ while(True):
   sem_wait(pSourceSem) 
   ###############################################################################
   pthread_mutex_lock(&packetsReceivedMutex)
+  #printf("packetsReceived = %d\n", totalPacketsReceived)
   packetsToTransfer = totalPacketsReceived
   totalPacketsReceived = 0
-  memset(packetSizePerTick, 0, sizeof(packetSizePerTick))
+  memset(<char *>packetSizePerTick, 0, sizeof(packetSizePerTick)) #2*MAX_NUM_PACKETS_PER_MS*
   pthread_mutex_unlock(&packetsReceivedMutex)
   ###############################################################################
 {%- if has_parser %}
@@ -607,14 +652,16 @@ while(True):
   # TODO figure out how to step through data for something like line (artificial data packaging per tick)
 {%- for sig, args in (out_signals.items()) %}
   # print "source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
+  ##########################################################################
   {%- if sig_type == 'udp'%}
   {{sig}}BufVars[2] += packetsToTransfer*packetSize
-  {{sig}}BufVars[3] += packetsToTransfer*packetSize
+  {{sig}}BufVars[3] += packetsToTransfer*{{sig}}BufVars[5]
   if ({{sig}}BufVars[4] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
   elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2] 
   {%- else%}
+  ##########################################################################
   {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
   {{sig}}BufVars[10] += 1
   if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):

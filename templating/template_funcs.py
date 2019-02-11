@@ -416,6 +416,7 @@ def parse(paths, config, confirm):
         out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))}
         out_sig_nums = {x: internal_signals.index(x) for x in list(out_signals)}
         has_parser = 'parser' in module_args and module_args['parser']
+
         if (not has_parser): assert len(out_signals) == 1 
         default_params = in_signal['schema']['default'] if (in_signal['args']['type'] == 'default') else None
 
