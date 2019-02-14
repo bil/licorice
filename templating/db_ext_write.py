@@ -37,7 +37,7 @@ while (True):
   out_dir_path = os.getenv("BINARY_DIR")
 
   # check all existing databases in directory
-  f = glob.glob(os.path.join)out_dir_path, "data", ".db"))
+  f = glob.glob(os.path.join(out_dir_path, "data", ".db"))
   if not f :
     time.sleep(5)
     continue
