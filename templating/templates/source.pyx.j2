@@ -77,6 +77,8 @@ cdef extern from "<sys/types.h>":
   # ctypedef pthread_cond_t:
   #   pass
 
+DEF SIG_BLOCK = 1
+
 cdef extern from "<sched.h>":
   enum: SCHED_FIFO
   ctypedef struct cpu_set_t:
@@ -95,6 +97,7 @@ cdef extern from "<pthread.h>":
   int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
   int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
   void pthread_exit(void *retval)
+  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
   # int pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *);
   # int pthread_cond_init(pthread_cond_t *, const pthread_condattr_t *);
   # int pthread_cond_signal(pthread_cond_t *);
@@ -301,7 +304,7 @@ cdef void handle_exit(int exitStatus):
     die("Could not join updReadThread.\n")
   else:
     printf("Thread sucessfully joined.")
-  pthread_exit(NULL)
+  
   #################################################################
   if (s):
     close(s)
@@ -361,24 +364,30 @@ cdef void usr2_handler(int signum):
 ###########################################################################
 cdef void* readUDP(void *arg):
   #pthread_mutex_lock(&udpDataMutex) #may not need this lock
+
   global exitMutex, exitRoutine, totalPacketsReceived, udpCurPtr, si_other, slen, packetSize, packetSizePerTick, s
   printf("Reading udp data\n")
+  printf("Exit Routine = %d\n", exitRoutine)
+  fflush(stdout)
   while(True):
     pthread_mutex_lock(&exitMutex)
     if(exitRoutine == 1):
       printf("exit routine signaled.")
+      fflush(stdout)
       pthread_mutex_unlock(&exitMutex)
-      break
+      pthread_exit(NULL)
     pthread_mutex_unlock(&exitMutex)
+
     recvLen = recvfrom(s, <void *>udpCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
     if (recvLen == -1 and errno != EINTR):
       die("NETWORK ERROR: recvfrom()\n")
     if (recvLen == -1):
       die("Read error.\n")
-    
+      
     packetSizePerTick[totalPacketsReceived] = recvLen #Updated length per tick
     pthread_mutex_lock(&packetsReceivedMutex)
     printf("updating packets\n")
+    fflush(stdout)
     totalPacketsReceived = totalPacketsReceived + 1
     udpCurPtr = udpCurPtr + {{out_signal_name}}BufVars[5] #packetSize  ##is this the right update?
     pthread_mutex_unlock(&packetsReceivedMutex)
@@ -497,6 +506,7 @@ else:
   {{sig}}BufVars[6] = 2*MAX_NUM_PACKETS_PER_MS*packetSize #Max size of data that can be received in one tick
   {{sig}}BufVars[5] = packetSize #size of each packet of data
   #^^should this be the same update as below? what is the out signal packet size for udp?
+  {{sig}}BufVars[7] = {{6 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
   {%- else %}
   {{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
   {{sig}}BufVars[5] = {{args['schema']['data']['size']}}  
@@ -530,12 +540,10 @@ zeroPtr = bufStrtPtr
 {{construct_code}}
 
 make_realtime()
-
 fflush(stdout)
 kill(ppid, SIGUSR2) # this source is initialized
 
 pause()
-
 #start the asychronous reacd thread if signal type is udp
 {%- if sig_type == 'udp' %}
 ##############################################################################
@@ -546,12 +554,13 @@ if(pthread_create(&udpReadThread, NULL, &readUDP, NULL)):
   die("pthread_create failed.")
 printf("Finished creating the readThread.\n")
 
+
 cdef sched_param param
-param.sched_priority = 39
+param.sched_priority = 50
 pthread_setschedparam(udpReadThread, SCHED_FIFO, &param)
 cdef cpu_set_t mask
 CPU_ZERO(&mask)
-CPU_SET(4, &mask)
+CPU_SET(2, &mask)
 pthread_setaffinity_np(udpReadThread, sizeof(cpu_set_t), &mask)
 ##############################################################################
 {%- endif %}
