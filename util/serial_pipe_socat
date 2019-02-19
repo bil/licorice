@@ -17,4 +17,4 @@ fi
 mkfifo /tmp/fifo_source
 mkfifo /tmp/fifo_sink
 
-socat -u /tmp/fifo_sink - | socat - $SERIAL_PORT,b115200,cr | socat -u - /tmp/fifo_source
+socat -u /tmp/fifo_sink - | socat - $SERIAL_PORT,b115200,cr,ignbrk=1 | socat -u - /tmp/fifo_source
