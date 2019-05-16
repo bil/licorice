@@ -184,6 +184,9 @@ import {{numba_mod_name}}
 {{numba_mod_name}}.{{numba_func_name}}({{numba_inst_inputs}})
 {%- endif %}
 
+#########################################################
+cdef uint8_t* rawStart
+#########################################################
 {{construct_code}}
 
 make_realtime()
@@ -199,6 +202,7 @@ while(True):
   {% if top_level %}
   # maybe don't do a divide in the future
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]/{{in_signals[sig]['tick_numel']}}]
+  
   {% else %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
   {% endif %}

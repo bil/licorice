@@ -59,6 +59,7 @@ static pid_t si_pids[NUM_SINKS];
 static unsigned char outVal = 0;
 {%- endif %}
 
+
 // pointer to start of shared memory
 static size_t shm_size;
 static uint8_t *pmem;
@@ -147,6 +148,7 @@ void handle_exit(int exitStatus) {
       //while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
       while(waitpid(-1, 0, WNOHANG) > 0){
         printf("waiting for pid: %d\n", so_pids[ex_i]);
+        fflush(stdout);
       }
     }
   }
@@ -196,12 +198,14 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
       sem_wait(pSourceSem);
     atomic_thread_fence(memory_order_seq_cst);
+    // printf("Number of internal signals: %d", NUM_INTERNAL_SIGS);
     for (al_i = 0; al_i < NUM_INTERNAL_SIGS; al_i++) {
       pCurBufVars = pBufVars + (BUF_VARS_LEN * al_i);
       // NON-LATENCY-DEPENDENT BUFFER UPDATE
       *(pCurBufVars + 1) = *(pCurBufVars + 2);
       // *(pCurBufVars + 9) = *(pCurBufVars + 10);
       *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
+      // printf("%u\n", pCurBufVars[0]);
       // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
       if ((*(pCurBufVars + 7) < *(pCurBufVars + 2)) + *(pCurBufVars + 6)) {
         *(pCurBufVars + 2) = 0;
@@ -263,6 +267,7 @@ static void check_children() {
 
       // printf("timer 1: %u %u %u %u %u \n", *(pCurBufVars + 0),*(pCurBufVars + 1),*(pCurBufVars + 2),*(pCurBufVars + 6),*(pCurBufVars + 7));
       *(pCurBufVars + 1) = *(pCurBufVars + 2);
+      
       // *(pCurBufVars + 9) = *(pCurBufVars + 10);
       *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
       // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
@@ -360,6 +365,10 @@ void chld_handler(int sig) {
   sigchld_recv++;
 }
 
+void interrupt_handler(int sig){
+  printf("received interrupted system call error\n");
+}
+
 /*
  * Timer parent main
  */
@@ -392,6 +401,7 @@ int main(int argc, char* argv[]) {
   set_sighandler(SIGUSR1, &usr1_handler, NULL);
   set_sighandler(SIGUSR2, &usr2_handler, NULL);
   set_sighandler(SIGCHLD, &chld_handler, NULL);
+  // set_sighandler(SIGINT, interrupt_handler, NULL);
   printf("Handlers installed.\n");
 
   // create shared memory and map it
@@ -435,7 +445,6 @@ int main(int argc, char* argv[]) {
   CPU_ZERO(&mask);
   CPU_SET(1, &mask);
   sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-
 
 {% for name in source_names -%} // TODO write this loop in C
   // fork and exec network process
