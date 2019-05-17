@@ -27,6 +27,10 @@
 #define NUM_SINKS {{num_sinks}}
 #define NUM_MODULES {{num_modules}}
 
+//////////////////////////////////////////////////////////////
+#define NUM_NON_REAL_TIME_SOURCES {{num_non_real_time_sources}}
+//////////////////////////////////////////////////////////////
+
 #define NUM_TICKS_OFFSET 0
 #define SOURCE_SEM_OFFSET 0
 #define TICK_SEMS_OFFSET 0
@@ -86,6 +90,10 @@ static sigset_t alrmMask;
 static int sigalrm_recv;
 static int sigexit_recv;
 static int sigchld_recv;
+
+////////////////////////////////////////////////
+static pid_t nrtSource_pids[NUM_NON_REAL_TIME_SOURCES];
+////////////////////////////////////////////////
 
 // static int num_cores = {{num_cores}};
 static size_t ex_i, al_i, de_i, m_i;
@@ -152,6 +160,23 @@ void handle_exit(int exitStatus) {
       }
     }
   }
+
+ ////////////////////////////////////////////////
+  for(ex_i = 0; ex_i < NUM_NON_REAL_TIME_SOURCES; ex_i++){
+    if(nrtSource_pids[ex_i] != -1){
+      printf("Killing non-real-time source: %d\n", nrtSource_pids[ex_i]);
+      kill(nrtSource_pids[ex_i], SIGTERM); 
+      while(waitpid(-1, 0, WNOHANG) > 0){
+        printf("waiting for pid: %d\n", nrtSource_pids[ex_i]);
+        fflush(stdout);
+      }
+    }
+  }
+  // printf("Killing Non-real time sources...\n");
+  // printf("Killing non real time soucre: %d\n", nrtSource);
+  // kill(nrtSource,SIGTERM);
+  // while(waitpid(-1, 0, WNOHANG) > 0){};
+  ////////////////////////////////////////////////
 
   printf("Unmapping shared memory...\n");
   printf("%ld SIGALRMs sent\n", *pNumTicks);
@@ -357,6 +382,15 @@ void dead_child() {
       ch_pids[de_i] = -1;
     }
   }
+
+  ////////////////////////////////////////////////
+  for (de_i = 0; de_i < NUM_NON_REAL_TIME_SOURCES; de_i++) {
+    if (nrtSource_pids[de_i] == dead_pid) {
+      nrtSource_pids[de_i] = -1;
+    }
+  }
+  ////////////////////////////////////////////////
+  
   errno = saved_errno;
   die("I have lost a child :( \n");
 }
@@ -445,6 +479,27 @@ int main(int argc, char* argv[]) {
   CPU_ZERO(&mask);
   CPU_SET(1, &mask);
   sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+
+////////////////////////////////////////////////
+{% for name in non_real_time_source_names -%}
+  if((nrtSource_pids[{{loop.index0}}] = fork()) == -1 ) die("nrtSource fork failed\n");
+
+  if(nrtSource_pids[{{loop.index0}}] == 0){
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(NETWORK_CPU, &mask);
+    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    setpriority(PRIO_PROCESS, 0, -19);
+    set_sched_prior(PRIORITY);
+    char* argv[3] = {"./{{name}}", "&", NULL};
+    // char* argv[4] = {"python", "nonRealTimeSource.py", "&", NULL};
+    execvp(argv[0],argv);
+    printf("network exec error. %s \n", strerror(errno));
+    exit(1);
+  }
+  pause();
+{%- endfor %}
+////////////////////////////////////////////////
 
 {% for name in source_names -%} // TODO write this loop in C
   // fork and exec network process

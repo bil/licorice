@@ -1,0 +1,162 @@
+# cimport C libraries
+from libc.stdio cimport printf, stdout, fflush
+from libc.stdlib cimport exit, malloc, free
+from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
+from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2, SIGSTOP, SIGCONT
+from libc.string cimport memset, memcpy
+from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
+from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
+from posix.unistd cimport getppid, pause, close, getpid, read
+from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
+from posix.types cimport pid_t
+from posix.fcntl cimport O_RDWR, open, fcntl, O_RDONLY, F_SETFL, O_NONBLOCK
+from posix.ioctl cimport ioctl
+from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
+from libcpp cimport bool
+
+#import python libraries
+import numpy as np
+import SharedArray
+import socket
+import netifaces
+import posix_ipc 
+import time
+import signal
+import os
+import sys
+
+#Import C utility functions 
+cdef extern from "utilityFunctions.h":
+	void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
+	void die(char *errorStr)
+	void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags)
+	void set_sighandler(int signum, void *psh, sigset_t *block_mask)
+	void make_realtime()
+
+#Import constant
+cdef extern from "constants.h":
+	enum: NUM_CHANNELSf
+	enum: MAX_PATH_LEN
+	enum: PAGESIZE
+	enum: INIT_BUFFER_TICKS
+	enum: BYTES_PER_FRAME
+	const char *SMEM0_PATHNAME
+	enum: NUM_NON_SOURCES
+	enum: NUM_SEM_SIGS
+	enum: NUM_INTERNAL_SIGS
+	size_t ROUND_UP(int X, int Y)
+	enum: BUF_VARS_LEN
+
+# cdef public sigset_t exitMask
+
+# cdef void killHandler(int signum):
+#   printf("EXIT HANDLER for %s\n", "{{name}}")
+#   sem.unlink()
+#   s.close()
+#   exit(0)
+
+#Variable Initialization
+{% set sig_type = in_signal['args']['type'] -%}
+
+#Set up Shared Array Path and Semaphore path
+created_mem = SharedArray.list()
+{% for sig,args in (out_signals.items()) %}
+
+SA_PATH = "shm://io.{{sig}}"
+SA_PATH_LEN = "shm://io.{{sig}}.len"
+SEM_NAME = "/{{sig}}.sem"
+
+#Delete shared memory arrays if they already exist
+if any(['io.{{sig}}' == x[0] for x in created_mem]):
+	SharedArray.delete("io.{{sig}}")
+	die("{{sig}} SharedArray already created\n")
+if any(['io.{{sig}}len' == x[0] for x in created_mem]):
+	SharedArray.delete("io.{{sig}}.len")
+
+{%- endfor %}
+
+{% if sig_type == 'udp' -%}
+MAX_NUM_PACKETS_PER_MS = {{in_signal['schema']['packets_per_tick']}}
+PACKET_SIZE = {{in_signal['schema']['data']['size']}}
+k = -1
+
+#setup shared arrays
+udpLen = SharedArray.create(SA_PATH_LEN, shape = 2*MAX_NUM_PACKETS_PER_MS, dtype = np.uint8) #"np.{{in_dtype}}"
+udpRaw = SharedArray.create(SA_PATH, shape = (MAX_NUM_PACKETS_PER_MS, PACKET_SIZE), dtype = np.uint8) #"np.{{in_dtype}}""
+
+#setup shared sempahore
+sem = posix_ipc.Semaphore(name=SEM_NAME, flags = posix_ipc.O_CREX)
+sem.release()
+
+# Set up the udp connection
+UDP_ADDR = "{{in_signal['args']['interface']}}"     #'192.168.137.255'
+UDP_PORT = {{in_signal['args']['port']}}                #51002
+
+#TODO: Do error checking here about connecting to the socket/if it succeeds
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind((UDP_ADDR, UDP_PORT))
+
+{% endif %} 
+
+
+def killHandler(signum, frame):
+	print("Inside Sigterm handler for non real time sources.\n")
+	sem.unlink()	
+	# SharedArray.delete(SA_PATH)
+	# SharedArray.delete(SA_PATH_LEN)
+	# f.close()
+	s.close()
+	exit(0)
+
+def flush_udp():
+	print("Inside udp flush")
+	old_data = np.zeros(shape = (1,1472), dtype = np.uint8)
+	s.setblocking(0)
+	bytes_recv = 1
+	while bytes_recv > 0:
+		try:
+			print("clearing buffer\n")
+			bytes_recv, addr = s.recvfrom_into(old_data,PACKET_SIZE)
+		except socket.error as err:
+			return 
+
+#Set up signal handlers 
+signal.signal(signal.SIGTERM, killHandler)
+# set_sighandler(SIGUSR1, &killHandler, &exitMask)
+
+#clear udp kerel buffer of old_data
+flush_udp()
+
+#set socket back to blocking
+s.setblocking(1)
+
+#signal to parent that setup is done
+os.kill(os.getppid(), signal.SIGUSR2)
+
+#debugging file
+# f = open('udpDataTemp', 'w+b')
+
+
+while True:
+	#Receive buffer for udp data
+	buf = np.zeros(shape = (1,1472), dtype = np.uint8)
+
+	if (k >= 5): #was originally 11
+		k = 0
+	else:
+		k = k+1
+
+	try:
+		# nbytes, clientAddr = s.recvfrom_into(udpRaw[k], PACKET_SIZE)
+		nbytes, clientAddr = s.recvfrom_into(buf, PACKET_SIZE)
+	except InterruptedError as e:
+		print(e)
+		raise
+
+	if(nbytes > 0):
+		sem.acquire()
+		# udpLen[k] = nbytes
+		udpRaw[k] = buf
+	  	# f.write(udpRaw[k])
+		sem.release()
+		time.sleep(0.005)

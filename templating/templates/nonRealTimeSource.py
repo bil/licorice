@@ -77,6 +77,9 @@ flush_udp()
 #set socket back to blocking
 s.setblocking(1)
 
+#signal to parent that setup is done
+os.kill(os.getppid(), signal.SIGUSR2)
+
 #debugging file
 f = open('udpDataTemp', 'w+b')
 

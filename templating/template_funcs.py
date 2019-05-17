@@ -26,6 +26,9 @@ TEMPLATE_SINK_PY='sink.pyx.j2'
 TEMPLATE_SINK_C='sink.c.j2'
 TEMPLATE_SOURCE_PY='source.pyx.j2'
 TEMPLATE_SOURCE_C='source.c.j2'
+
+TEMPLATE_NRT_SOURCE_PY = 'nonRealTimeSource.py.j2'
+
 TEMPLATE_MAKEFILE='Makefile.j2'
 TEMPLATE_TIMER='timer.j2'
 TEMPLATE_CONSTANTS='constants.j2'
@@ -305,6 +308,12 @@ def parse(paths, config, confirm):
   line_source_exists = 0
   num_threaded_sinks = 0
 
+  ################################################
+  non_real_time_source_names = []
+  non_real_time_source_signals = {}
+  num_non_real_time_sources = 0
+  ################################################
+
   all_names = list(modules)
   assert (len(all_names) == len(set(all_names)))
 
@@ -312,24 +321,37 @@ def parse(paths, config, confirm):
   logger_database_filename = ""
   module = False
   for module_name, module_args in iter(modules.items()):
+
     if 'in' in module_args and isinstance(module_args['in'], dict) and \
        module_args['in']['name'] in external_signals:
-      # source
-      source_names.append(module_name)
-      for sig in module_args['out']:
-        source_outputs[sig] = 0
-      in_sig_name = module_args['in']['name']
-      assert 'type' in signals[in_sig_name]['args']
-      in_signals[in_sig_name] = signals[in_sig_name]['args']['type']
-      out_sig_schema_num = 0          
-      for sig, args in iter({x: signals[x] for x in (sigkeys & set(module_args['out']))}.items()):
-        # TODO, should packets_per_tick be copied over?
-        if 'schema' in args:
-          out_sig_schema_num += 1
-        else:
-          args['schema'] = signals[module_args['in']['name']]['schema']
-      if out_sig_schema_num > 0:
-        assert(out_sig_schema_num == len(list(out_signals))) 
+      ################################################
+      if module_args['in']['realTime']:
+        # real time source
+        source_names.append(module_name)
+        for sig in module_args['out']:
+          source_outputs[sig] = 0
+        in_sig_name = module_args['in']['name']
+        assert 'type' in signals[in_sig_name]['args']
+        in_signals[in_sig_name] = signals[in_sig_name]['args']['type']
+
+        out_sig_schema_num = 0          
+        for sig, args in iter({x: signals[x] for x in (sigkeys & set(module_args['out']))}.items()):
+          # TODO, should packets_per_tick be copied over?
+          if 'schema' in args:
+            out_sig_schema_num += 1
+          else:
+            args['schema'] = signals[module_args['in']['name']]['schema']
+        if out_sig_schema_num > 0:
+          assert(out_sig_schema_num == len(list(out_signals)))
+      else: #Non real time source
+      ################################################
+        in_sig_name = module_args['in']['name']
+        non_real_time_source_names.append(module_name) 
+        assert 'type' in signals[in_sig_name]['args']
+        non_real_time_source_signals[in_sig_name] = signals[in_sig_name]
+        num_non_real_time_sources = num_non_real_time_sources + 1
+      ################################################
+
     elif 'out' in module_args and isinstance(module_args['out'], dict) and \
          module_args['out']['name'] in external_signals:
       # sink
@@ -373,7 +395,10 @@ def parse(paths, config, confirm):
             deps = deps.union({dep_idx})
     dependency_graph[idx] = deps
 
-  assert(set(all_names) == set(source_names + module_names + sink_names))
+################################################
+  assert(set(all_names) == set(source_names + module_names + sink_names + non_real_time_source_names))
+################################################
+
   non_source_names = sink_names + module_names
   topo_children = list(map(list, list(toposort(dependency_graph))))
   topo_widths = list(map(len, topo_children)) # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
@@ -461,6 +486,7 @@ def parse(paths, config, confirm):
             destruct_code = f.read()
             destruct_code = destruct_code.replace("\n", "\n  ")
 
+        # if module_args['in']['realTime']:
         do_jinja( os.path.join(paths['templates'], template), 
                   os.path.join(paths['output'], name + out_extension),
                   name=name, 
@@ -481,8 +507,24 @@ def parse(paths, config, confirm):
                   in_dtype=in_dtype,
                   sig_types=out_sig_types,
                   buf_vars_len=BUF_VARS_LEN
-                )
-      
+                  )
+      ################################################
+      elif name in non_real_time_source_names: #Non-Real Time Source
+        if module_language == 'python':
+          template = TEMPLATE_NRT_SOURCE_PY
+          in_extension = '.py'
+          out_extension = '.pyx'
+
+        in_signal = signals[module_args['in']['name']]
+        do_jinja( os.path.join(paths['templates'], template),
+                    os.path.join(paths['output'], name + out_extension),
+                    name=name,
+                    in_signal=in_signal,
+                    out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))},
+                    in_dtype=in_signal['schema']['data']['dtype']
+          )
+      ################################################
+
       # parse sink
       elif name in sink_names:
         print(" - " + name + " (sink)")
@@ -803,11 +845,15 @@ def parse(paths, config, confirm):
   if sys.version_info.major == 3:
     py_link_flags = re.sub("-L[^\s]+config-[^\s]+", "", py_link_flags) # TODO, make this less sketchy
   assert(x in py_link_flags for x in ["-ldl", "-lutil" "-lm", "-lpthread"])
+
   do_jinja( os.path.join(paths['templates'], TEMPLATE_MAKEFILE),
-            os.path.join(paths['output'], OUTPUT_MAKEFILE),
+            os.path.join(paths['output'], OUTPUT_MAKEFILE),  
             module_names=module_names,
             source_names=source_names,
             sink_names=sink_names,
+            #############################################################################
+            non_real_time_source_names=non_real_time_source_names,
+            #############################################################################
             source_types=list(map(lambda x: modules[x]['language'], source_names)),
             numpy_incl=np.get_include(),
             py_incl=py_paths['include'],
@@ -836,6 +882,12 @@ def parse(paths, config, confirm):
             num_modules=len(module_names),
             sink_names=sink_names,
             num_sinks=len(sink_names),
+            ###############################################################
+            # #nonRealTime Source parameters 
+            non_real_time_source_names=non_real_time_source_names,
+            num_non_real_time_sources=len(non_real_time_source_names),
+            # non_real_time_sources = non_real_time_sources,
+            ###############################################################
 
             internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
             num_source_sigs=len(list(source_outputs)),
