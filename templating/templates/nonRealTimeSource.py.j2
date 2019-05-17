@@ -47,13 +47,16 @@ cdef extern from "constants.h":
 	size_t ROUND_UP(int X, int Y)
 	enum: BUF_VARS_LEN
 
-# cdef public sigset_t exitMask
+cdef public sigset_t exitMask
 
-# cdef void killHandler(int signum):
-#   printf("EXIT HANDLER for %s\n", "{{name}}")
-#   sem.unlink()
-#   s.close()
-#   exit(0)
+cdef void handle_exit(int exitStatus):
+	sem.unlink()
+	s.close()
+	exit(exitStatus)
+
+cdef void exit_handler(int signum):
+	printf("EXIT HANDLER for %s\n", "{{name}}")
+	handle_exit(0)
 
 #Variable Initialization
 {% set sig_type = in_signal['args']['type'] -%}
@@ -93,24 +96,20 @@ UDP_ADDR = "{{in_signal['args']['interface']}}"     #'192.168.137.255'
 UDP_PORT = {{in_signal['args']['port']}}                #51002
 
 #TODO: Do error checking here about connecting to the socket/if it succeeds
+#TODO: check for dropped packets
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.bind((UDP_ADDR, UDP_PORT))
 
 {% endif %} 
 
-
-def killHandler(signum, frame):
-	print("Inside Sigterm handler for non real time sources.\n")
-	sem.unlink()	
-	# SharedArray.delete(SA_PATH)
-	# SharedArray.delete(SA_PATH_LEN)
-	# f.close()
-	s.close()
-	exit(0)
+sigfillset(&exitMask)
+init_utils(&handle_exit, &exitMask)
+# handle signals
+set_sighandler(SIGUSR1, &exit_handler, &exitMask)
 
 def flush_udp():
 	print("Inside udp flush")
-	old_data = np.zeros(shape = (1,1472), dtype = np.uint8)
+	old_data = np.zeros(shape = (1,PACKET_SIZE), dtype = np.uint8)
 	s.setblocking(0)
 	bytes_recv = 1
 	while bytes_recv > 0:
@@ -120,10 +119,6 @@ def flush_udp():
 		except socket.error as err:
 			return 
 
-#Set up signal handlers 
-signal.signal(signal.SIGTERM, killHandler)
-# set_sighandler(SIGUSR1, &killHandler, &exitMask)
-
 #clear udp kerel buffer of old_data
 flush_udp()
 
@@ -132,10 +127,6 @@ s.setblocking(1)
 
 #signal to parent that setup is done
 os.kill(os.getppid(), signal.SIGUSR2)
-
-#debugging file
-# f = open('udpDataTemp', 'w+b')
-
 
 while True:
 	#Receive buffer for udp data
@@ -157,6 +148,5 @@ while True:
 		sem.acquire()
 		# udpLen[k] = nbytes
 		udpRaw[k] = buf
-	  	# f.write(udpRaw[k])
 		sem.release()
 		time.sleep(0.005)

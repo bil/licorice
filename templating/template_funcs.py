@@ -886,7 +886,6 @@ def parse(paths, config, confirm):
             # #nonRealTime Source parameters 
             non_real_time_source_names=non_real_time_source_names,
             num_non_real_time_sources=len(non_real_time_source_names),
-            # non_real_time_sources = non_real_time_sources,
             ###############################################################
 
             internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
