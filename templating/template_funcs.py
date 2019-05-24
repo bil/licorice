@@ -515,13 +515,57 @@ def parse(paths, config, confirm):
           in_extension = '.py'
           out_extension = '.pyx'
 
+        has_parser = 'parser' in module_args and module_args['parser']
+
+        parser_code = ""
+        if has_parser:
+          if module_args['parser'] == True:
+            module_args['parser'] = name + "_parser"
+          else:
+            exit("Must specifying a parser for non-real-time source {0}".format(name))
+
+          with open(os.path.join(paths['modules'], module_args['parser'] + in_extension), 'r') as f:
+            parser_code = f.read()
+            # parser_code = parser_code.replace("\n", "\n  ")
+        else:
+          exit("Must specifying a parser for non-real-time source {0}".format(name))
+
+        construct_code = ""
+        if 'constructor' in module_args and module_args['constructor']:
+          if module_args['constructor'] == True:
+            module_args['constructor'] = name + "_constructor"
+          else:
+            exit("Must specifying a constructor for non-real-time source {0}".format(name))
+
+          with open(os.path.join(paths['modules'], module_args['constructor'] + in_extension), 'r') as f:
+            construct_code = f.read()
+        else:
+          exit("Must specifying a constructor for non-real-time source {0}".format(name))
+
+        destruct_code = ""
+        if 'destructor' in module_args and module_args['destructor']:
+          if module_args['destructor'] == True:
+            module_args['destructor'] = name + "_destructor"
+          else:
+            exit("Must specifying a destructor for non-real-time source {0}".format(name))
+
+          with open(os.path.join(paths['modules'], module_args['destructor'] + in_extension), 'r') as f:
+            destruct_code = f.read()
+            destruct_code = destruct_code.replace("\n", "\n  ")
+        else:
+          exit("Must specifying a destructor for non-real-time source {0}".format(name))
+
         in_signal = signals[module_args['in']['name']]
         do_jinja( os.path.join(paths['templates'], template),
                     os.path.join(paths['output'], name + out_extension),
                     name=name,
                     in_signal=in_signal,
                     out_signals = {x: signals[x] for x in (sigkeys & set(module_args['out']))},
-                    in_dtype=in_signal['schema']['data']['dtype']
+                    in_dtype=in_signal['schema']['data']['dtype'],
+                    has_parser=has_parser,
+                    parser_code=parser_code,
+                    construct_code=construct_code,
+                    destruct_code=destruct_code 
           )
       ################################################
 
