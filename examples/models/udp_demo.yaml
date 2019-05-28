@@ -7,6 +7,11 @@ signals:
     dtype: uint8
     log: False
 
+  udp_data_len:
+    shape: 6
+    dtype: uint8
+    log: False
+
 modules:
   #source (non real time)
   udp_source:          # define the source
@@ -35,5 +40,6 @@ modules:
     constructor: True   # needs a constructor 
     out:                # input signals / output signals *(was originally in:)
       - udp_data
+      - udp_data_len
 
 

@@ -16,5 +16,6 @@
 	if(nbytes > 0):
 		sem.acquire()
 		udp_source_raw[k] = buf #must be named "{{module_name}}_raw"
+		udp_source_len[k] = nbytes
 		sem.release()
 		time.sleep(0.005)
