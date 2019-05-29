@@ -73,7 +73,7 @@ created_mem = SharedArray.list()
 {% for sig,args in (out_signals.items()) %}	#Are we guareenteed to have one output signal? or could there be more?
 
 SA_PATH = "shm://io.{{sig}}"
-SA_PATH_LEN = "shm://io.{{sig}}.len"
+SA_PATH_LEN = "shm://io.{{sig}}_len"
 SEM_NAME = "/{{sig}}.sem"
 
 #Delete shared memory arrays if they already exist
@@ -93,7 +93,7 @@ PACKET_SIZE = {{in_signal['schema']['data']['size']}}
 #setup shared arrays
 #Todo: More than one signal in input (is this even a posibility????)
 {{name}}_len = SharedArray.create(SA_PATH_LEN, shape = 2*MAX_NUM_PACKETS_PER_MS, dtype = np.{{in_dtype}}) 
-{{name}}_raw = SharedArray.create(SA_PATH, shape = (MAX_NUM_PACKETS_PER_MS, PACKET_SIZE), dtype = np.{{in_dtype}})
+{{name}}_raw = SharedArray.create(SA_PATH, shape = (2*MAX_NUM_PACKETS_PER_MS, PACKET_SIZE), dtype = np.{{in_dtype}})
 
 #setup shared sempahore
 sem = posix_ipc.Semaphore(name=SEM_NAME, flags = posix_ipc.O_CREX)
@@ -107,7 +107,7 @@ sem.release()
 os.kill(os.getppid(), signal.SIGUSR2)
 
 #k should always start at -1 so that when you do the first +1 in the while loop, it becomes 0 (for the zeroth index)
-k = -1
+
 while True:
 	#Parser code should read in the data from the non-real-time source and update the length and raw data shared arrays 
 	{%- if has_parser %}

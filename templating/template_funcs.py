@@ -852,6 +852,9 @@ def parse(paths, config, confirm):
                   os.path.join(paths['output'], name + out_extension),
                   name=name, 
                   args=module_args,
+                  #################################
+                  non_real_time_parser=module_args['non_real_time_parser'],
+                  #################################
                   config=config, 
                   user_code=user_code,
                   construct_code=construct_code,
