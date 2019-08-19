@@ -17,7 +17,7 @@
 #define QUESTION "?"
 // constants for buffering data
 // number of seconds to buffer
-#define NUM_BUF_S 2
+#define NUM_BUF_S 20
 #define NUM_MS_IN_S 1000
 #define SQL_TEXT_FIELD_LEN 64
 

@@ -6,12 +6,12 @@ from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport getppid, pause, close, getpid
-from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
+from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall, shm_unlink
 from posix.types cimport pid_t
 cimport posix.stat 
-from posix.fcntl cimport O_RDWR
+from posix.fcntl cimport O_RDWR, O_CREAT, O_TRUNC
 from libcpp cimport bool
-from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
+from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec, nanosleep
 
 import sys, signal
 import SharedArray as sa
@@ -73,9 +73,13 @@ cdef pid_t pid
 cdef pid_t ppid
 cdef char pathName[MAX_PATH_LEN]
 cdef public sigset_t exitMask
+cdef timespec ts
 
 # shared memory vars
 cdef size_t shm_size
+{% if name=='bufferer' %}
+cdef size_t mb_shm_size
+{% endif %}
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
 cdef sem_t *pTickUpSems
@@ -97,6 +101,9 @@ cdef void handle_exit(int exitStatus):
   global pmem, shm_size
   {{destruct_code}}
   munmap(pmem, shm_size)
+  {% if name=='bufferer'%}
+  shm_unlink("/mbmem0")
+  {% endif %}
   munlockall()
   exit(exitStatus)
 
@@ -133,6 +140,22 @@ pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
 pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
 pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
 pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+{% if name == 'bufferer' %}
+cdef uint8_t *bmem
+mb_shm_size = {{in_signals.items()|length}} * sizeof(uint32_t) * {{history_pad_length+1}} + {{in_signals.items()|length}} * sizeof(uint8_t) * {{history_pad_length+1}} + sizeof(uint32_t) #[pointer hist(uint*[]), size hist(uint[]), the buffer position(uint[])]
+open_shared_mem(&bmem, "/mbmem0", mb_shm_size,  O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE)
+cdef int t=0
+{% for sig,args in in_signals.items() %}
+cdef uint32_t* p{{sig}}HistoryBuffer[{{history_pad_length+1}}]
+cdef uint8_t* p{{sig}}SizeHistoryBuffer[{{history_pad_length+1}}]
+for t from 0 <= t < {{history_pad_length+1}} by 1:
+  p{{sig}}HistoryBuffer[t] = <uint32_t *> (bmem +{{history_pad_length+1}}*sizeof(uint32_t)*{{loop.index0}} + t*sizeof(uint32_t))
+  p{{sig}}SizeHistoryBuffer[t] = <uint8_t *> (bmem + {{history_pad_length+1}}*sizeof(uint32_t)*{{in_signals.items()|length}} +{{history_pad_length+1}}*sizeof(uint8_t)*{{loop.index0}} + t*sizeof(uint8_t))
+{% endfor %}
+cdef uint32_t* pBufPos
+pBufPos = <uint32_t *> (bmem + {{in_signals.items()|length}} * sizeof(uint32_t) * {{history_pad_length+1}} + {{in_signals.items()|length}} * sizeof(uint8_t) * {{history_pad_length+1}})
+pBufPos[0] = 0
+{% endif %}
 
 {#This forces creation of processes one at a time, since otherwise we might get two definitions for the same shared mem #}
 created_mem = sa.list()
@@ -190,11 +213,17 @@ make_realtime()
 
 kill(ppid,SIGUSR1)
 
+cdef int i, j, sleeps
+cdef int prev_bv=-1
 while(True):
   sem_wait(&pTickUpSems[{{non_source_num}}])
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
+  printf("tick %lu, module {{name}} triggered at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {%for dep_on in depends_on %}
   sem_wait(&pSigSems[{{dep_on[1]}}])
 {%endfor%}
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
+  printf("\ttick %lu, module {{name}} deps ready at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {% for sig,args in in_signals.items() %}
   {% if top_level %}
   # maybe don't do a divide in the future
@@ -210,6 +239,27 @@ while(True):
   {{numba_mod_name}}.{{numba_func_name}}({{numba_func_inputs}})
 {% else %}
   {{user_code}}
+  {%- if name == "bufferer" %}
+  sleeps = 0
+  while (True):
+    {% for sig,args in in_signals.items() %}
+    p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
+    p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
+    {% endfor %}
+    if (prev_bv!={{in_signals.keys()[0]}}BufVars[0]):
+      break;
+    ts.tv_nsec = 500
+    ts.tv_sec = 0
+    nanosleep(&ts, NULL)
+    sleeps+=1
+    printf("waited %lu nanoseconds\n", ts.tv_nsec*sleeps)
+
+  prev_bv = {{in_signals.keys()[0]}}BufVars[0]
+
+  pBufPos[0]+=1
+  if (pBufPos[0] > {{history_pad_length}}):
+    pBufPos[0] = 0
+  {% endif %}
 {%- endif %}
 {%for dep_name, dep_val in dependencies.items() %}
   # printf("module 1 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
@@ -243,5 +293,7 @@ while(True):
 {%endfor%}
   atomic_thread_fence(memory_order_seq_cst)
   sem_post(&pTickDownSems[{{non_source_num}}])
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
+  printf("tick %lu, module {{name}} done at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 
 {% endblock %}

@@ -47,7 +47,7 @@ OUTPUT_TIMER='timer.c'
 OUTPUT_CONSTANTS='constants.h'
 
 BUF_VARS_LEN = 16
-HISTORY_PAD_LENGTH = 3
+HISTORY_PAD_LENGTH = 4999
 
 # change dtype to C format
 def fix_dtype(dtype):
@@ -113,6 +113,13 @@ def generate(paths, config, confirm):
   for signal_name, signal_args in iter(signals.items()):
     if 'args' in signal_args:
       external_signals.append(signal_name)
+
+  if 'logger' in modules:
+    print("Logger detected in model. Adding a bufferer module...")
+    bufferer = {}
+    bufferer['language'] = 'python'
+    bufferer['in'] = modules['logger']['in']
+    modules['bufferer'] = bufferer
 
   for module_name, module_args in iter(modules.items()):
     if all(map(lambda x: x in external_signals, module_args['in'])):
@@ -224,6 +231,13 @@ def parse(paths, config, confirm):
   if 'signals' in config and config['signals']:
     signals = config['signals']
   external_signals = []
+
+  if 'logger' in modules:
+    print("Logger detected in model. Adding a bufferer module...")
+    bufferer = {}
+    bufferer['language'] = 'python'
+    bufferer['in'] = modules['logger']['in']
+    modules['bufferer'] = bufferer
 
   # set up output directory
   if os.path.exists(paths['output']):
@@ -555,7 +569,7 @@ def parse(paths, config, confirm):
                                   # map signal to number of bytes in one element of data
         raw_num_sigs = []         # single number signals
 
-        if out_signal['args']['type'] == 'disk':
+        if out_signal['args']['type'] == 'disk': 
           for sig, args in iter(in_signals.items()):
 
             # determine whether signal should be logged or not
@@ -635,9 +649,10 @@ def parse(paths, config, confirm):
                   out_dtype=out_dtype,
                   sig_type=sig_type,
                   is_vis=(sig_type == 'vis_pygame'),
-                  is_single_threaded=((sig_type != 'disk') and (sig_type != 'line')),
+                  is_single_threaded=(sig_type != 'line'),
                   buf_vars_len=BUF_VARS_LEN,
-                  source_outputs=list(source_outputs)
+                  source_outputs=list(source_outputs),
+                  history_pad_length=HISTORY_PAD_LENGTH
                 )
 
       # parse module
@@ -699,12 +714,13 @@ def parse(paths, config, confirm):
 
         user_code = ""
         file_path = os.path.join(paths['modules'], name + in_extension)
-        if not os.path.isfile(file_path): exit("Error: Module {0} file does not exist.".format(name))
-        with open(file_path, 'r') as f:
-          user_code = f.read()
-          # if module_language == 'python':
-          #   user_code = user_code.replace("def ", "cpdef ")
-          user_code = user_code.replace("\n", "\n  ")
+        if not name=='bufferer': 
+          if not os.path.isfile(file_path): exit("Error: Module {0} file does not exist.".format(name))
+          with open(file_path, 'r') as f:
+            user_code = f.read()
+            # if module_language == 'python':
+            #   user_code = user_code.replace("def ", "cpdef ")
+            user_code = user_code.replace("\n", "\n  ")
 
         construct_code = ""
         if 'constructor' in module_args and module_args['constructor']:
@@ -789,7 +805,8 @@ def parse(paths, config, confirm):
                   numba_func_inputs=func_inputs,
                   numba_inst_inputs=mod_func_inst,
                   top_level=all([k in list(source_outputs) for k in list(in_signals)]),
-                  py_maj_ver=sys.version_info[0]
+                  py_maj_ver=sys.version_info[0],
+                  history_pad_length=HISTORY_PAD_LENGTH
 
                 )
 
@@ -835,6 +852,7 @@ def parse(paths, config, confirm):
             num_modules=len(module_names),
             sink_names=sink_names,
             num_sinks=len(sink_names),
+            non_source_names=non_source_names,
 
             internal_signals={ x: signals[x] for x in (sigkeys & set(internal_signals)) },
             num_source_sigs=len(list(source_outputs)),
