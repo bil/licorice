@@ -460,6 +460,7 @@ cdef int num_extra_cols = 0 # counter for extra columns added to db
 cdef void* printBuffer() nogil:
   printf("BUFFER:\n")
   for i in range({{history_pad_length+1}}):
+    printf("\n")
     {% for sig,args in in_signals.items() %}
     {%if sig=='current_tick'%}
     printf("[%u|%u:%p],",({{sig}}StrtPtr + p{{sig}}HistoryBuffer[i][0])[0], p{{sig}}HistoryBuffer[i][0], p{{sig}}HistoryBuffer[i])
@@ -502,8 +503,8 @@ cdef void* processRequests() nogil:
          {% for sig in msgpack_sigs %}, mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}, \
          pSignalsStructFlushStart, pSignalsStructFlushEnd, pSignalsStructCur
 
-  f=pNumTicks[0]
-  printf("Entered processRequests upto tick %lu...\n",f)
+  #f=pNumTicks[0]
+  #printf("Entered processRequests upto tick %lu...\n",f)
 
   # create new database if time limit reached
   if (newDB):
@@ -588,7 +589,7 @@ cdef void* processRequests() nogil:
     newDB = False
 
   sqlite3async_run()
-  printf("Completed processRequests upto tick %lu...\n",f)
+#  printf("Completed processRequests upto tick %lu...\n",f)
 {%- endif %}
 
 {% if sig_type == 'line' -%}

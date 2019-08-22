@@ -217,13 +217,13 @@ cdef int i, j, sleeps
 cdef int prev_bv=-1
 while(True):
   sem_wait(&pTickUpSems[{{non_source_num}}])
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
-  printf("tick %lu, module {{name}} triggered at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
+  #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
+  #printf("tick %lu, module {{name}} triggered at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {%for dep_on in depends_on %}
   sem_wait(&pSigSems[{{dep_on[1]}}])
 {%endfor%}
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
-  printf("\ttick %lu, module {{name}} deps ready at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
+#  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
+#  printf("\ttick %lu, module {{name}} deps ready at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {% for sig,args in in_signals.items() %}
   {% if top_level %}
   # maybe don't do a divide in the future
@@ -251,8 +251,8 @@ while(True):
     ts.tv_nsec = 500
     ts.tv_sec = 0
     nanosleep(&ts, NULL)
-    sleeps+=1
-    printf("waited %lu nanoseconds\n", ts.tv_nsec*sleeps)
+    #sleeps+=1
+    #printf("waited %lu nanoseconds\n", ts.tv_nsec*sleeps)
 
   prev_bv = {{in_signals.keys()[0]}}BufVars[0]
 
@@ -293,7 +293,7 @@ while(True):
 {%endfor%}
   atomic_thread_fence(memory_order_seq_cst)
   sem_post(&pTickDownSems[{{non_source_num}}])
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
-  printf("tick %lu, module {{name}} done at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
+  #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
+  #printf("tick %lu, module {{name}} done at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 
 {% endblock %}

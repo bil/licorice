@@ -57,7 +57,6 @@ then
     printf 'Running: %s\n\n' "`cat $FILE_MODEL_NAME`"
   
     pushd $BINARY_DIR
-    licorice_shm_clear
     $LICORICE_EXEC_STR
     popd
   }
@@ -74,7 +73,7 @@ then
   
   # remove shm mappings
   licorice_shm_clear() {
-    sudo rm -rf /dev/shm/*
+    sudo rm -f /dev/shm/*
   }
   
   # parse, compile, & run LiCoRICE model
