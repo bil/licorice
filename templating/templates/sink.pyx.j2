@@ -267,6 +267,7 @@ cdef extern from "constants.h":
   cdef const char *DATALOGGER_FILENAME
   enum: NEW_DB_NUM_S
   enum: BUF_VARS_LEN
+  enum: SQL_LOGGER_FLUSH
 
 #include <stdatomic.h>
 
@@ -927,7 +928,7 @@ while(True):
   {% for sig,args in in_signals.items() %}
   #printf("LOGGER SEES [{{sig}}]: (%lu->%u), bufFlushStart=%u, bufFlushStop=%u\n",pNumTicks[0],p{{sig}}HistoryBuffer[pBufPos[0]][0],bufFlushStart, bufFlushStop)
   {% endfor %}
-  if (pNumTicks[0]%1000 == 0 and pNumTicks[0]>0):
+  if (pNumTicks[0] % SQL_LOGGER_FLUSH == 0 and pNumTicks[0]>0):
     bufFlushStop=pBufPos[0]
     #printBuffer()
     copyFromBuffer()

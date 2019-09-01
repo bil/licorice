@@ -73,7 +73,11 @@ cdef pid_t pid
 cdef pid_t ppid
 cdef char pathName[MAX_PATH_LEN]
 cdef public sigset_t exitMask
-cdef timespec ts
+{% if name=='bufferer' %}
+cdef timespec ts_pause
+ts_pause.tv_nsec = 500
+ts_pause.tv_sec = 0
+{% endif %}
 
 # shared memory vars
 cdef size_t shm_size
@@ -213,8 +217,9 @@ make_realtime()
 
 kill(ppid,SIGUSR1)
 
-cdef int i, j, sleeps
-cdef int prev_bv=-1
+#{% if name=='bufferer'%}
+#cdef int prev_bv=-1
+#{% endif %}
 while(True):
   sem_wait(&pTickUpSems[{{non_source_num}}])
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
@@ -240,21 +245,22 @@ while(True):
 {% else %}
   {{user_code}}
   {%- if name == "bufferer" %}
-  sleeps = 0
-  while (True):
-    {% for sig,args in in_signals.items() %}
-    p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
-    p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
-    {% endfor %}
-    if (prev_bv!={{in_signals.keys()[0]}}BufVars[0]):
-      break;
-    ts.tv_nsec = 500
-    ts.tv_sec = 0
-    nanosleep(&ts, NULL)
-    #sleeps+=1
-    #printf("waited %lu nanoseconds\n", ts.tv_nsec*sleeps)
+# #  sleeps = 0
+#   while (True):
+#     {% for sig,args in in_signals.items() %}
+#     p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
+#     p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
+#     {% endfor %}
+# #    if (prev_bv!={{in_signals.keys()[0]}}BufVars[0]):
+# #      break;
+#     nanosleep(&ts_pause, NULL)
+# 
+# #  prev_bv = {{in_signals.keys()[0]}}BufVars[0]
 
-  prev_bv = {{in_signals.keys()[0]}}BufVars[0]
+  {% for sig,args in in_signals.items() %}
+  p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
+  p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
+  {% endfor %}
 
   pBufPos[0]+=1
   if (pBufPos[0] > {{history_pad_length}}):
