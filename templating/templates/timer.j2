@@ -41,6 +41,9 @@ static pid_t ch_pids[NUM_MODULES];
 {%- if num_modules != 0 %}
 static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
 {%- endif %}
+{%- if (num_sinks+num_modules) != 0 %}
+static char nonSourceProcnames[NUM_NON_SOURCES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in non_source_names[:-1] %}"{{n}}", {% endfor %}"{{non_source_names[-1]}}"{{'}'}};
+{%- endif %}
 {%- if topo_height != 0 %}
 static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{{l}}, {% endfor %}{{topo_widths[-1]}}{{'}'}};
 static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
@@ -218,15 +221,34 @@ static void check_children() {
   
   // normal behavior on subsequent iterations
   else {
+    {#printf("NUM_MODULES: %d, NUM_SOURCES: %d, NUM_SINKS: %d, NUM_NON_SOURCES: %d\n", NUM_MODULES, NUM_SOURCES, NUM_SINKS, NUM_NON_SOURCES);
+    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
+      if (nonSourceModuleCheck[al_i]) {
+        printf("NSM %u is a module. Name: %s\n",al_i,nonSourceProcnames[al_i]);
+      }
+      else {
+        printf("NSM %u is a sink. Name: %s\n",al_i,nonSourceProcnames[al_i]);
+      }
+    }
+
+    printf("Checking tick down sems:\n");
+    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
+      int v;
+      int s;
+      s = sem_getvalue(pTickDownSems+al_i, &v);
+      printf("\t(%d)pTickDownSems index %u (NSM %s): %d\n", s,al_i,nonSourceProcnames[al_i], v);
+    }#}
+
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems + al_i)) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i);
+          //printf("Module timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i);
+          printf("Module timing violation on ms: %lu from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
           die("Module timing violation.\n");
         }
         else
-          printf("Sink timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i); // TODO insert non_source name here
+          printf("Sink timing violation on ms: %lu from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]); //non_source number %d \n", *pNumTicks, al_i); // TODO insert non_source name here
       } 
     }
 
