@@ -167,6 +167,15 @@ void set_sched_prior(int priority) {
   }
 }
 
+void set_sched_prior_low(int priority) {
+  struct sched_param param;
+  param.sched_priority = priority;
+  if (sched_setscheduler(0, SCHED_OTHER, &param) == -1) {
+    die("sched_setscheduler failed.\n");
+  }
+}
+
+
 static void check_children() {
 {%- if test_tick_time %}
   clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
@@ -450,9 +459,9 @@ int main(int argc, char* argv[]) {
   // set priority
   set_sched_prior(PRIORITY);
   cpu_set_t mask;
-  CPU_ZERO(&mask);
-  CPU_SET(1, &mask);
-  sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+  //CPU_ZERO(&mask);
+  //CPU_SET(1, &mask);
+  //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
 
 {% for name in source_names -%} // TODO write this loop in C
@@ -462,12 +471,13 @@ int main(int argc, char* argv[]) {
   }
   if (so_pids[{{loop.index0}}] == 0) { // only runs for network process
     cpu_set_t mask;
-    CPU_ZERO(&mask);
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
-    CPU_SET(NETWORK_CPU, &mask);
-    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    printf("Source: {{name}}\n")
+    //CPU_ZERO(&mask);
+    //CPU_SET(NETWORK_CPU, &mask);
+    //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY);
     char* argv[2] = {"./{{name}}", NULL};
@@ -503,9 +513,9 @@ int main(int argc, char* argv[]) {
       }
       if (ch_pids[childNum] == 0) {  // only runs for child processes
         cpu_set_t mask;
-        CPU_ZERO(&mask);
-        CPU_SET(m_j + CPU_OFFSET, &mask);
-        sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+        //CPU_ZERO(&mask);
+        //CPU_SET(m_j + CPU_OFFSET, &mask);
+        //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
         setpriority(PRIO_PROCESS, 0, -19);
         set_sched_prior(PRIORITY);
         char procBuf[64];
@@ -536,14 +546,14 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
   }
   if (si_pids[{{loop.index0}}] == 0) { // only runs for logger process
     cpu_set_t mask;
-    CPU_ZERO(&mask);
     // for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
-    CPU_SET(LOGGER_CPU, &mask);
-    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    setpriority(PRIO_PROCESS, 0, -19);
-    set_sched_prior(PRIORITY);
+    //CPU_ZERO(&mask);
+    //CPU_SET(LOGGER_CPU, &mask);
+    //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    setpriority(PRIO_PROCESS, 0, -2);
+    set_sched_prior_low(0);
     char* argv[2] = {"./{{name}}", NULL};
     
     // execute sink process

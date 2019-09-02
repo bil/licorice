@@ -217,9 +217,9 @@ make_realtime()
 
 kill(ppid,SIGUSR1)
 
-#{% if name=='bufferer'%}
-#cdef int prev_bv=-1
-#{% endif %}
+{% if name=='bufferer'%}
+cdef int prev_bv=-1
+{% endif %}
 while(True):
   sem_wait(&pTickUpSems[{{non_source_num}}])
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
@@ -245,22 +245,17 @@ while(True):
 {% else %}
   {{user_code}}
   {%- if name == "bufferer" %}
-# #  sleeps = 0
-#   while (True):
-#     {% for sig,args in in_signals.items() %}
-#     p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
-#     p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
-#     {% endfor %}
-# #    if (prev_bv!={{in_signals.keys()[0]}}BufVars[0]):
-# #      break;
-#     nanosleep(&ts_pause, NULL)
-# 
-# #  prev_bv = {{in_signals.keys()[0]}}BufVars[0]
+#  sleeps = 0
+  while (True):
+    {% for sig,args in in_signals.items() %}
+    p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
+    p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
+    {% endfor %}
+    if (prev_bv!={{in_signals.keys()[0]}}BufVars[0]):
+      break;
+    nanosleep(&ts_pause, NULL)
 
-  {% for sig,args in in_signals.items() %}
-  p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
-  p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
-  {% endfor %}
+  prev_bv = {{in_signals.keys()[0]}}BufVars[0]
 
   pBufPos[0]+=1
   if (pBufPos[0] > {{history_pad_length}}):
