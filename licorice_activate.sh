@@ -13,7 +13,8 @@ then
 
   LICORICE_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
   LICORICE_TEMPLATING_DIR=$LICORICE_ROOT/templating
-  LICORICE_EXEC_STR="sudo PYTHONHOME=$VIRTUAL_ENV taskset 0x1 nice -n -20 ./timer"
+  #LICORICE_EXEC_STR="sudo PYTHONHOME=$VIRTUAL_ENV taskset 0x1 nice -n -20 ./timer"
+  LICORICE_EXEC_STR="sudo PYTHONHOME=$VIRTUAL_ENV nice -n -20 ./timer"
   LICORICE_PS1_STR=LiCoRICE
   
   EXPERIMENT_DIR=$LICORICE_ROOT/..
