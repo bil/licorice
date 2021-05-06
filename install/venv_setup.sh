@@ -23,16 +23,18 @@ source $VENV_DIR/bin/activate
 pip install cython==0.28
 
 # install remaining python packages from pip
+pip install llvmlite==0.31.* # force earlier version on numba
+pip install scipy==1.0.1
 pip install argparse==1.4.0
-pip install numpy==1.19.5
+pip install numpy==1.14.2
 pip install argparse==1.4.0
 pip install cycler==0.10.0
 pip install pyyaml==5.4.1
 pip install sharedarray==2.0.4
-pip install numba==0.52.0
+pip install numba==0.46.0 # most recent version that supports numpy 1.14
 pip install psutil==5.8.0
 pip install portio==0.5
-pip install matplotlib==3.3.4
-pip install msgpack==1.01
+pip install matplotlib==3.2.2. # supports numpy 1.14
+pip install msgpack==1.0.1
 pip install jinja2==2.11.3
 pip install toposort==1.6
