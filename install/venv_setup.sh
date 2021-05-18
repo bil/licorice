@@ -19,13 +19,6 @@ sudo apt-get -y install libpython-dev python-virtualenv libopenblas-base libopen
 virtualenv -p python3.6m $VENV_DIR # change to python3.6m for python 3
 source $VENV_DIR/bin/activate
 
-# compile numpy
-# git clone https://github.com/numpy/numpy $SRC_NUMPY
-# cd $SRC_NUMPY
-# git checkout tags/v1.14.2 -b v1.14.2 # try with most recent version or pip install numpy --no-binary
-# python setup.py build -j $NUM_CPUS
-# pip install .
-
 # install cython
 pip install cython
 
@@ -37,11 +30,11 @@ pip install argparse
 #pip install numpy==1.14.2
 pip install cycler
 pip install pyyaml
-pip install sharedarray
+pip install sharedarray==2.0.4 # version 3 breaks due to new api for mlock()
 pip install numba
 pip install psutil
 pip install portio
 pip install matplotlib
 pip install msgpack
-pip install jinja2=2.11.3
+pip install jinja2==2.11.3 # otherwise can't find constants.h (for some reason)
 pip install toposort
