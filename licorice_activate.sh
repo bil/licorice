@@ -58,7 +58,7 @@ then
     printf 'Running: %s\n\n' "`cat $FILE_MODEL_NAME`"
 
     pushd $BINARY_DIR
-    $LICORICE_EXEC_STR
+    PYTHONHOME=$VIRTUAL_ENV $LICORICE_EXEC_STR
     popd
   }
 
