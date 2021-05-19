@@ -30,7 +30,7 @@ pip install argparse
 #pip install numpy==1.14.2
 pip install cycler
 pip install pyyaml
-pip install sharedarray==2.0.4 # version 3 breaks due to new api for mlock()
+pip install sharedarray
 pip install numba
 pip install psutil
 pip install portio

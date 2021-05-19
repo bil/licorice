@@ -181,8 +181,8 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   die("numpy signal already created")
 else:
   out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
-  # make sure SharedArray==2.0.4
-  sa.mlock(out_sigs["{{sig}}"])
+  # make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
+  out_sigs["{{sig}}"].base.mlock()
 
   {{sig}}Raw = out_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
