@@ -869,7 +869,7 @@ def parse(paths, config, confirm):
                   name=name,
                   args=module_args,
                   #################################
-                  non_real_time_parser=module_args['non_real_time_parser'],
+                  non_real_time_parser='non_real_time_parser' in module_args,
                   #################################
                   config=config,
                   user_code=user_code,
@@ -930,6 +930,7 @@ def parse(paths, config, confirm):
   if 'config' in config and 'parport_tick_addr' in config['config']:
     parport_tick_addr = config['config']['parport_tick_addr']
   non_source_module_check = list(map(lambda x: int(x in module_names), non_source_names))
+
   do_jinja( os.path.join(paths['templates'], TEMPLATE_TIMER),
             os.path.join(paths['output'], OUTPUT_TIMER),
             config = config,
@@ -956,7 +957,8 @@ def parse(paths, config, confirm):
             num_source_sigs=len(list(source_outputs)),
             source_out_sig_nums={x : internal_signals.index(x) for x in list(source_outputs)},
             parport_tick_addr=parport_tick_addr,
-            non_source_module_check=non_source_module_check
+            non_source_module_check=non_source_module_check,
+            non_source_names=non_source_names
           )
 
   # parse constants.h
