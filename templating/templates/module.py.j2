@@ -179,7 +179,7 @@ out_sigs = {}
 {% for sig, args in out_signals.items() %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
-  die("numpy signal already created")
+  die("numpy signal {{sig}} already created")
 else:
   out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
   # make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
