@@ -51,7 +51,7 @@ An example directory structure for an experimental rig would be:
 4. Bind to the newly built virtualenv:
 
     ```bash
-    source ~/lico_venv/bin/activate
+    source ~/venv/bin/activate
     ```
 
 5. Source the LiCoRICE activation script:
@@ -62,7 +62,7 @@ An example directory structure for an experimental rig would be:
 
     This will make a number of shell functions available, all start with `licorice_`.
 
-    If successful, the prompt should appear in the following manner: `[LiCoRICE] (lico_venv) <user>@<host>:~$`
+    If successful, the prompt should appear in the following manner: `[LiCoRICE] (venv) <user>@<host>:~$`
 
 6. Optional - Compile realtime kernel
 

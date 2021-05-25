@@ -1,7 +1,7 @@
 {% block header %}
 from libc.stdlib cimport atoi, exit
 from libc.stdio cimport printf
-from libc.string cimport strcpy, memset
+from libc.string cimport strcpy, memset, memcpy
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
@@ -20,6 +20,7 @@ from cpython.exc cimport PyErr_CheckSignals
 import random as random
 import math
 import numpy as np
+import posix_ipc
 
 cdef extern from "semaphore.h":
   enum: __SIZEOF_SEM_T
@@ -184,6 +185,16 @@ else:
   # make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
   out_sigs["{{sig}}"].base.mlock()
 
+  ################################################################################
+  {% if non_real_time_parser -%}
+  if "len" in "{{sig}}": 
+    SA_PATH_LEN = "shm://io.{{sig}}"
+  else:
+    SA_PATH = "shm://io.{{sig}}"
+    SEM_NAME = "/{{sig}}.sem"
+  {%- endif %}
+  ################################################################################
+
   {{sig}}Raw = out_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
@@ -191,6 +202,20 @@ else:
   {{sig}}BufVars[6] = {{ args['tick_numel']}}
   {{sig}}BufVars[5] = {{args['tick_numel']}}
 {% endfor %}
+
+###########################################
+#attach to shared arrays
+{% if non_real_time_parser -%}
+raw_sig = sa.attach(SA_PATH)
+#TODO: encode dtype with a variable
+raw_sigStart = <uint8_t *><long>raw_sig.__array_interface__['data'][0]
+raw_len = sa.attach(SA_PATH_LEN)
+raw_lenStart = <uint8_t *><long>raw_len.__array_interface__['data'][0]
+sem = posix_ipc.Semaphore(name = SEM_NAME)
+
+{%- endif %}
+
+###########################################
 
 # set signal mask
 sigfillset(&exitMask)
@@ -233,6 +258,7 @@ while(True):
   {% if top_level %}
   # maybe don't do a divide in the future
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]/{{in_signals[sig]['tick_numel']}}]
+  
   {% else %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
   {% endif %}
@@ -262,6 +288,62 @@ while(True):
     pBufPos[0] = 0
   {% endif %}
 {%- endif %}
+
+####################################################################
+  {%- if non_real_time_parser%}
+  try:
+    sem.acquire(timeout = 0)
+    #Determine the number of samples that need to be transferred over
+    ind = len(raw_len) - 1
+    for i in range(0, len(raw_len)):
+      if raw_len[i] == 0:
+        ind = i
+        break
+
+
+    if ind > 0:
+
+      {% for sig,args in out_signals.items() %}
+      #memcpy to licorice signal and update bufvars
+      print({{sig}})
+      if "len" in "{{sig}}":
+        memcpy(<char *><long>{{sig}}.__array_interface__['data'][0], <char *>raw_lenStart, 2*ind*sizeof({{args['dtype']}}_t)) 
+      else:
+        memcpy(<char *><long>{{sig}}.__array_interface__['data'][0], <char *>raw_sigStart, 2*ind*1472*sizeof({{args['dtype']}}_t)) 
+
+      #TODO: Do I need to also include sizeof and then the dtype
+      {{sig}}BufVars[2] += 2*{{sig}}BufVars[5]*sizeof({{args['dtype']}}_t)
+      {{sig}}BufVars[10] += 1
+      if ({{sig}}BufVars[7] <= ({{sig}}BufVars[2] + {{sig}}BufVars[6])):
+        {{sig}}BufVars[4] = {{sig}}BufVars[2]
+        {{sig}}BufVars[12] = {{sig}}BufVars[10]
+      elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
+        {{sig}}BufVars[4] = {{sig}}BufVars[2] 
+        {{sig}}BufVars[12] = {{sig}}BufVars[10]
+      {{sig}}BufVars[3] += 2*{{sig}}BufVars[5]*sizeof({{args['dtype']}}_t)
+      {{sig}}BufVars[11] += 1
+
+      {{sig}}BufVars[1] = {{sig}}BufVars[2]
+      {{sig}}BufVars[9] = {{sig}}BufVars[10]
+      {{sig}}BufVars[0] = {{sig}}BufVars[1] - {{sig}}BufVars[3]
+      {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11]
+      if ({{sig}}BufVars[7] < ({{sig}}BufVars[2] + {{sig}}BufVars[6])):
+        {{sig}}BufVars[2] = 0
+        {{sig}}BufVars[10] = 0
+      {{sig}}BufVars[3] = 0
+      {{sig}}BufVars[11] = 0 
+      {% endfor %}
+      
+      raw_len[:] = bytearray(len(raw_len))
+
+    sem.release()
+  except posix_ipc.BusyError:
+    pass
+  {%- endif %}
+
+
+###################################################################
+
 {%for dep_name, dep_val in dependencies.items() %}
   # printf("module 1 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
   {{dep_name}}BufVars[2] += {{dep_name}}BufVars[5]
