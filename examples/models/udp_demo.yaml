@@ -24,7 +24,7 @@ modules:
       args:
         type: udp      # the type of souce this is
         port: 51002         # port number to read from (bind to)
-        interface: 192.168.137.255  # interface name
+        interface: localhost  # interface name
       schema:               # define the structure of the data generated from the source
         data:
           dtype: uint8      # data type quantization

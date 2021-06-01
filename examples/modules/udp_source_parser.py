@@ -8,6 +8,7 @@
 
 	try:
 		nbytes, clientAddr = s.recvfrom_into(buf, PACKET_SIZE)
+		print(nbytes, clientAddr)
 	except:
 		e = sys.exc_info()[0]
 		print(e)

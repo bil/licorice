@@ -9,10 +9,10 @@ def flush_udp():
 			print("clearing buffer\n")
 			bytes_recv, addr = s.recvfrom_into(old_data,PACKET_SIZE)
 		except socket.error as err:
-			return 
+			return
 
 # Set up the udp connection (identifies interface and port number to connect to)
-UDP_ADDR = '192.168.137.255'
+UDP_ADDR = 'localhost'
 UDP_PORT = 51002
 
 #TODO: Do error checking here about connecting to the socket/if it succeeds
