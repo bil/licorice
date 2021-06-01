@@ -72,9 +72,9 @@ set_sighandler(SIGUSR1, &exit_handler, &exitMask)
 created_mem = SharedArray.list()
 {% for sig,args in (out_signals.items()) %}	#Are we guareenteed to have one output signal? or could there be more?
 
-SA_PATH = "shm://io.{{sig}}"
-SA_PATH_LEN = "shm://io.{{sig}}_len"
-SEM_NAME = "/{{sig}}.sem"
+SA_PATH = "shm://io.{{sig}}_pb"
+SA_PATH_LEN = "shm://io.{{sig}}_len_pb"
+SEM_NAME = "/{{sig}}.sem_pb"
 
 #Delete shared memory arrays if they already exist
 if any(['io.{{sig}}' == x[0] for x in created_mem]):
@@ -107,6 +107,7 @@ sem.release()
 os.kill(os.getppid(), signal.SIGUSR2)
 
 #k should always start at -1 so that when you do the first +1 in the while loop, it becomes 0 (for the zeroth index)
+k = -1 # was deleted in 96fa6aa4 for unclear reason
 
 while True:
 	#Parser code should read in the data from the non-real-time source and update the length and raw data shared arrays 
