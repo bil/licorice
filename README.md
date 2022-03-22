@@ -10,35 +10,28 @@ It is suitable for numerical processing of streaming data into and through a sys
 * Python (both Python 2 and 3 are supported)
 * gcc toolchain
 
-**NOTE**: The setup scripts here only work for Ubuntu Server Xenial 16.04 LTS.
-We recommend starting with a stock install of Ubuntu Server Xenial 16.04 LTS.
+**NOTE**: The setup scripts here are currently only tested on Ubuntu 20.04.4 LTS (Focal Fossa).
+We recommend starting with a stock install of Ubuntu Server 20.04 LTS.
 Use of any other UNIX platform requires manual installation of packages.
 
 ## Setup
 
 ### Directory structure
 
-LiCoRICE is designed to be a submodule of a larger repository.
-This larger repository is where the configuration, code, and binaries for the models that LiCoRICE runs are stored.
-An example directory structure for an experimental rig would be:
+LiCoRICE is designed to be a standalone application that operates on a separate repository.
+This repository is where the configuration, code, and binaries for the models that LiCoRICE runs are stored.
+An example directory structure for an experimental rig might contain:
 
 * `rig`
-  * `licorice` (this is the LiCoRICE git repository)
   * `models` (directory where the YAML files specifying the various LiCoRICE models)
   * `modules` (directory where the code for the various LiCoRICE modules is kept)
   * `run` (output directory where the code and compiled binaries of the LiCoRICE model is output to)
 
 ### Installation 
 
-1. Disable all USB and ACPI support in the BIOS of the target system
+1. Clone the LiCoRICE repository.
 
-    USB and ACPI features throw CPU interrupts which can interfere with realtime performance.
-
-    If USB support is needed for peripherals, enable only the minimum USB version necessary on as few ports as possible if such options in the BIOS exist.
-
-2. Clone the LiCoRICE repository and place it in the directory structure as mentioned above
-
-3. Python virtualenv setup
+1. Python virtualenv setup
 
     From the top-level LiCoRICE directory, run:
 
@@ -48,30 +41,34 @@ An example directory structure for an experimental rig would be:
 
     This script will take 15 to 30 minutes to complete.
 
-4. Bind to the newly built virtualenv:
+1. Bind to the newly built virtualenv:
 
     ```bash
-    source ~/venv/bin/activate
+    pyenv activate licorice
     ```
 
-5. Source the LiCoRICE activation script:
+1. Install LiCoRICE locally
 
     ```bash
-    source licorice_activate.sh
+    pip install -e .
     ```
 
     This will make a number of shell functions available, all start with `licorice_`.
 
-    If successful, the prompt should appear in the following manner: `[LiCoRICE] (venv) <user>@<host>:~$`
+1. Optional - Modify BIOS settings and compile realtime kernel
 
-6. Optional - Compile realtime kernel
+    1. Disable all USB and ACPI support in the BIOS of the target system
 
-    Compiling a realtime kernel is not a requirement to run LiCoRICE, but realtime performance is one of the central features of the platform.
+    USB and ACPI features throw CPU interrupts which can interfere with realtime performance.
+
+    If USB support is needed for peripherals, enable only the minimum USB version necessary on as few ports as possible if such options in the BIOS exist.
+
+    2. Compiling a realtime kernel is not a requirement to run LiCoRICE, but realtime performance is one of the central features of the platform.
     Without a realtime kernel, timing assurances are harder to deliver.
     Tick violations are more likely to occur as model complexity grows.
     For basic platform testing and evaluation, a realtime kernel is not necessary, but for any production deployments, realtime kernel compilation is strongly advised.
 
-    The instructions for realtime kernel compilation here should be applied to a stock install of Ubuntu server 16.04 LTS.
+    The instructions for realtime kernel compilation here should be applied to a stock install of Ubuntu server 20.04 LTS.
 
     From the top-level LiCoRICE repository directory, run:
 
@@ -93,6 +90,8 @@ The examples folder contains instructions on how to get started with LiCoRICE.
 It is recommended that first time users work through the examples to become familiar with the basics of the LiCoRICE workflow.
 
 ## Usage
+
+TODO: expand this section
 
 In general, only one command needs to be issued to parse, compile, and run a model:
 

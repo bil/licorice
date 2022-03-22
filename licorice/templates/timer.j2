@@ -560,10 +560,10 @@ int main(int argc, char* argv[]) {
 {%- endfor %}
 
 
-{% if num_modules != 0 -%}
+{% if num_modules != 0 %}
   // fork and exec child processes
-{% for i in range(0, topo_height) -%}
-{% for j in range(0, topo_widths[i]) -%}
+{%- for i in range(0, topo_height) %}
+{%- for j in range(0, topo_widths[i]) %}
   moduleTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
 {%- endfor %}
 {%- endfor %}
@@ -648,6 +648,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
 
   // set up timer
   printf("Setting up timer...\n");
+  fflush(stdout);
 
   rtTimer.it_value.tv_sec = SECREQ;
   rtTimer.it_value.tv_usec = USECREQ;

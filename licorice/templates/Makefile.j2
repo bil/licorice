@@ -16,31 +16,31 @@ timer: timer.c utilityFunctions.c
 {% for source in source_names -%}
 {% if source_types[loop.index0] == 'python' -%}
 {{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c # lineUtilities.c
-	cython --embed -o {{source}}.c {{source}}.pyx
+	cython --embed -3 -o {{source}}.c {{source}}.pyx
 	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(CYLDFLAGS) # remove not a line source
 {% else -%}
 {{source}}: {{source}}.c sourceUtils.c utilityFunctions.c
 	$(CC) $(CFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(LDFLAGS)
 {% endif -%}
-{%- endfor %}
+{%- endfor -%}
 
 {% for sink in sink_names %}
 {{sink}}:  {{sink}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c # lineUtilities.c #networkUtilities.c
-	cython --embed -o {{sink}}.c {{sink}}.pyx
+	cython --embed -3 -o {{sink}}.c {{sink}}.pyx
 	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c -o {{sink}} $(CYLDFLAGS)
-{% endfor %}
+{% endfor -%}
 
 {% for child in module_names -%}
 {{child}}: {{child}}.pyx utilityFunctions.c #networkUtilities.c
-	cython --embed -o {{child}}.c {{child}}.pyx
+	cython --embed -3 -o {{child}}.c {{child}}.pyx
 	$(CC) $(CYFLAGS) -Wno-cpp {{child}}.c  utilityFunctions.c -o {{child}} $(CYLDFLAGS) #networkUtilities.c
-{%- endfor %}
+{% endfor -%}
 
 {% for nrtSource in non_real_time_source_names -%}
 {{nrtSource}}: {{nrtSource}}.pyx utilityFunctions.c #networkUtilities.c
-	cython --embed -o {{nrtSource}}.c {{nrtSource}}.pyx
+	cython --embed -3 -o {{nrtSource}}.c {{nrtSource}}.pyx
 	$(CC) $(CYFLAGS) -Wno-cpp {{nrtSource}}.c  utilityFunctions.c -o {{nrtSource}} $(CYLDFLAGS) #networkUtilities.c
-{%- endfor %}
+{% endfor -%}
 
 clean:
 	rm -f timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %}{% for c in module_names %}{{c}} {% endfor %}{% for nrt in non_real_time_source_names %}{{nrt}} {% endfor %}

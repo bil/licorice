@@ -904,8 +904,8 @@ def parse(paths, config, confirm):
   py_paths = get_paths()
   py_conf_str = "python-config"
   if sys.version_info.major == 3:
-    py_conf_str = "python3.6m-config"
-  py_link_flags = subprocess.check_output([py_conf_str,"--ldflags"]).decode("utf-8")
+    py_conf_str = "python3.8-config"
+  py_link_flags = subprocess.check_output([py_conf_str,"--embed", "--ldflags"]).decode("utf-8")
   if sys.version_info.major == 3:
     py_link_flags = re.sub("-L[^\s]+config-[^\s]+", "", py_link_flags) # TODO, make this less sketchy
   assert(x in py_link_flags for x in ["-ldl", "-lutil" "-lm", "-lpthread"])
