@@ -116,7 +116,7 @@ cdef void int_handler(int signum):
   pass
 
 cdef void exit_handler(int signum):
-  printf("EXIT HANDLER for %s\n", "{{name}}")
+  printf("EXIT HANDLER for {{name}}\n")
   handle_exit(0)
 
 cdef void mem_error_handler(int signum):
@@ -177,20 +177,20 @@ else:
 {%- endfor %}
 out_sigs = {}
 {% for sig, args in out_signals.items() %}
-if any([b'{{sig}}_pb' == x[0] for x in created_mem]):
-  sa.delete("shm://{{sig}}_pb")
+if any([b'{{sig}}' == x[0] for x in created_mem]):
+  sa.delete("shm://{{sig}}")
   die("numpy signal {{sig}} already created")
 else:
-  out_sigs["{{sig}}"] = sa.create("shm://{{sig}}_pb", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
+  out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
   # make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
   out_sigs["{{sig}}"].base.mlock()
 
   ################################################################################
   {% if non_real_time_parser -%}
   if "len" in "{{sig}}": 
-    SA_PATH_LEN = "shm://io.{{sig}}_pb"
+    SA_PATH_LEN = "shm://io.{{sig}}"
   else:
-    SA_PATH = "shm://io.{{sig}}_pb"
+    SA_PATH = "shm://io.{{sig}}"
     SEM_NAME = "/{{sig}}.sem"
   {%- endif %}
   ################################################################################

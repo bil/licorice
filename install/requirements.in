@@ -1,0 +1,17 @@
+cython
+numpy --no-binary numpy
+llvmlite
+scipy --no-binary scipy
+argparse
+cycler
+posix_ipc
+pyyaml
+sharedarray
+numba
+psutil
+portio
+markupsafe<=2.0.1
+matplotlib
+msgpack
+jinja2<=2.11.3 # otherwise can't find constants.h (for some reason)
+toposort
