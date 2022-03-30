@@ -4,37 +4,14 @@
 #
 # This should be run from inside the LiCoRICE repository directory
 
-NUM_CPUS=`grep processor /proc/cpuinfo|wc -l`
-
-TMP=/tmp
-SRC_NUMPY=$TMP/numpy
-SRC_SCIPY=$TMP/scipy
-
-VENV_DIR=`pwd`/../venv
-
 # install some packages
-sudo apt-get -y install libpython-dev python-virtualenv libopenblas-base libopenblas-dev sqlite libmsgpack-dev libsqlite3-dev libevent-dev htop
+sudo apt-get -y install libopenblas-base libopenblas-dev sqlite libmsgpack-dev libsqlite3-dev libevent-dev htop
 
-# make venv
-virtualenv -p python2 $VENV_DIR # change to python3.6m for python 3
-source $VENV_DIR/bin/activate
+curl https://pyenv.run | bash
 
-# install cython
-pip install cython
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
 
-# compile numpy
-git clone https://github.com/numpy/numpy $SRC_NUMPY
-cd $SRC_NUMPY
-git checkout tags/v1.14.2 -b v1.14.2
-python setup.py build -j $NUM_CPUS
-pip install .
-
-# compile scipy
-git clone https://github.com/scipy/scipy $SRC_SCIPY
-cd $SRC_SCIPY
-git checkout tags/v1.0.1 -b v1.0.1
-python setup.py build -j $NUM_CPUS
-python setup.py install
-
-# install remaining python packages from pip
-pip install argparse pyyaml jinja2 toposort psutil portio sharedarray==2.0.4 matplotlib numba msgpack
+PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -f
+pyenv virtualenv 3.8.12 licorice
+./update-deps.sh

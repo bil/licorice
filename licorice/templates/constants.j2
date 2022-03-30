@@ -10,7 +10,7 @@
  * for the logger process (CPU 3). So, this should be a minimum of 4.
  * MODULES CURRENTLY RUNNING ON CPUS 1 -> NUM_CORES-1. 
  */
-#define CPU_OFFSET 5
+#define CPU_OFFSET 2
 /*
  * The processor number on which to run the networking process, which is receiving
  * packets from the Cerberus system. NETWORK CURRENTLY RUNNING  ON ALL MODULE CORES. 
@@ -21,7 +21,7 @@
  * The processor number on which to run the data logging process. LOGGER CURRENTLY RUNNING 
  * ON ALL MODULE CORES. (nothing special about logger)
  */
-#define LOGGER_CPU 3
+#define LOGGER_CPU 1
 
 /* 
  * TODO Make this configurable?
@@ -40,6 +40,12 @@
  * with SQL syntax, since it is simply spliced into SQL command without any error checking.
  */
 #define DATALOGGER_SIGNALS_TABLE_NAME "signals"
+
+/*
+ * How often sql flushes
+ *
+ */
+#define SQL_LOGGER_FLUSH 1000
 
 /*
  * Time (seconds) until a new SQL database is created.
@@ -64,7 +70,7 @@
 
 /*
  * Max size of file pathname for child process execution.  The timer
- * parent runs processes containing a max of MAX_PATH_LEN characters,
+ * parent runs proceses containing a max of MAX_PATH_LEN characters,
  * including the null terminator.
  */
 #define MAX_PATH_LEN 16
@@ -94,7 +100,7 @@
 #define NUM_SOURCE_SIGS {{num_source_sigs}}
 
 // Number of of microseconds for the timer interrupt (1 ms resolution)
-#define USECREQ 1000
+#define USECREQ 100000
 
 // Number of seconds for the timer interrupt
 #define SECREQ 0

@@ -27,6 +27,10 @@
 #define NUM_SINKS {{num_sinks}}
 #define NUM_MODULES {{num_modules}}
 
+//////////////////////////////////////////////////////////////
+#define NUM_NON_REAL_TIME_SOURCES {{num_non_real_time_sources}}
+//////////////////////////////////////////////////////////////
+
 #define NUM_TICKS_OFFSET 0
 #define SOURCE_SEM_OFFSET 0
 #define TICK_SEMS_OFFSET 0
@@ -40,6 +44,9 @@
 static pid_t ch_pids[NUM_MODULES];
 {%- if num_modules != 0 %}
 static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
+{%- endif %}
+{%- if (num_sinks+num_modules) != 0 %}
+static char nonSourceProcnames[NUM_NON_SOURCES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in non_source_names[:-1] %}"{{n}}", {% endfor %}"{{non_source_names[-1]}}"{{'}'}};
 {%- endif %}
 {%- if topo_height != 0 %}
 static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{{l}}, {% endfor %}{{topo_widths[-1]}}{{'}'}};
@@ -58,6 +65,7 @@ static pid_t si_pids[NUM_SINKS];
 {%- if parport_tick_addr %}
 static unsigned char outVal = 0;
 {%- endif %}
+
 
 // pointer to start of shared memory
 static size_t shm_size;
@@ -86,8 +94,12 @@ static int sigalrm_recv;
 static int sigexit_recv;
 static int sigchld_recv;
 
+////////////////////////////////////////////////
+static pid_t nrtSource_pids[NUM_NON_REAL_TIME_SOURCES];
+////////////////////////////////////////////////
+
 // static int num_cores = {{num_cores}};
-static int ex_i, al_i, de_i, m_i;
+static size_t ex_i, al_i, de_i, m_i;
 {%- if topo_height != 0 -%} 
 static int m_j;
 {%- endif %}
@@ -144,9 +156,27 @@ void handle_exit(int exitStatus) {
     if (so_pids[ex_i] != -1) {
       printf("Killing source: %d\n", so_pids[ex_i]);
       kill(so_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
+      //while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
+      while(waitpid(-1, 0, WNOHANG) > 0){
+        printf("waiting for pid: %d\n", so_pids[ex_i]);
+        fflush(stdout);
+      }
     }
   }
+
+ ////////////////////////////////////////////////
+  for(ex_i = 0; ex_i < NUM_NON_REAL_TIME_SOURCES; ex_i++){
+    if(nrtSource_pids[ex_i] != -1){
+      printf("Killing non-real-time source: %d\n", nrtSource_pids[ex_i]);
+      kill(nrtSource_pids[ex_i], SIGUSR1); 
+      while(waitpid(-1, 0, WNOHANG) > 0){
+        printf("waiting for pid: %d\n", nrtSource_pids[ex_i]);
+        fflush(stdout);
+      }
+    }
+  }
+  ////////////////////////////////////////////////
+
   printf("Unmapping shared memory...\n");
   printf("%ld SIGALRMs sent\n", *pNumTicks);
   // close shared memory
@@ -163,6 +193,15 @@ void set_sched_prior(int priority) {
     die("sched_setscheduler failed.\n");
   }
 }
+
+void set_sched_prior_low(int priority) {
+  struct sched_param param;
+  param.sched_priority = priority;
+  if (sched_setscheduler(0, SCHED_OTHER, &param) == -1) {
+    die("sched_setscheduler failed.\n");
+  }
+}
+
 
 static void check_children() {
 {%- if test_tick_time %}
@@ -192,12 +231,14 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
       sem_wait(pSourceSem);
     atomic_thread_fence(memory_order_seq_cst);
+    // printf("Number of internal signals: %d", NUM_INTERNAL_SIGS);
     for (al_i = 0; al_i < NUM_INTERNAL_SIGS; al_i++) {
       pCurBufVars = pBufVars + (BUF_VARS_LEN * al_i);
       // NON-LATENCY-DEPENDENT BUFFER UPDATE
       *(pCurBufVars + 1) = *(pCurBufVars + 2);
       // *(pCurBufVars + 9) = *(pCurBufVars + 10);
       *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
+      // printf("%u\n", pCurBufVars[0]);
       // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
       if ((*(pCurBufVars + 7) < *(pCurBufVars + 2)) + *(pCurBufVars + 6)) {
         *(pCurBufVars + 2) = 0;
@@ -218,15 +259,33 @@ static void check_children() {
   
   // normal behavior on subsequent iterations
   else {
+    {#printf("NUM_MODULES: %d, NUM_SOURCES: %d, NUM_SINKS: %d, NUM_NON_SOURCES: %d\n", NUM_MODULES, NUM_SOURCES, NUM_SINKS, NUM_NON_SOURCES);
+    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
+      if (nonSourceModuleCheck[al_i]) {
+        printf("NSM %u is a module. Name: %s\n",al_i,nonSourceProcnames[al_i]);
+      }
+      else {
+        printf("NSM %u is a sink. Name: %s\n",al_i,nonSourceProcnames[al_i]);
+      }
+    }
+
+    printf("Checking tick down sems:\n");
+    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
+      int v;
+      int s;
+      s = sem_getvalue(pTickDownSems+al_i, &v);
+      printf("\t(%d)pTickDownSems index %u (NSM %s): %d\n", s,al_i,nonSourceProcnames[al_i], v);
+    }#}
+
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems + al_i)) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i);
+          printf("Module timing violation on ms: %lu from non_source number %zu \n", *pNumTicks, al_i);
           die("Module timing violation.\n");
         }
         else
-          printf("Sink timing violation on ms: %lu from non_source number %d \n", *pNumTicks, al_i); // TODO insert non_source name here
+          printf("Sink timing violation on ms: %lu from non_source number %zu \n", *pNumTicks, al_i); // TODO insert non_source name here
       } 
     }
 
@@ -259,6 +318,7 @@ static void check_children() {
 
       // printf("timer 1: %u %u %u %u %u \n", *(pCurBufVars + 0),*(pCurBufVars + 1),*(pCurBufVars + 2),*(pCurBufVars + 6),*(pCurBufVars + 7));
       *(pCurBufVars + 1) = *(pCurBufVars + 2);
+      
       // *(pCurBufVars + 9) = *(pCurBufVars + 10);
       *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
       // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
@@ -348,12 +408,25 @@ void dead_child() {
       ch_pids[de_i] = -1;
     }
   }
+
+  ////////////////////////////////////////////////
+  for (de_i = 0; de_i < NUM_NON_REAL_TIME_SOURCES; de_i++) {
+    if (nrtSource_pids[de_i] == dead_pid) {
+      nrtSource_pids[de_i] = -1;
+    }
+  }
+  ////////////////////////////////////////////////
+
   errno = saved_errno;
   die("I have lost a child :( \n");
 }
 
 void chld_handler(int sig) {
   sigchld_recv++;
+}
+
+void interrupt_handler(int sig){
+  printf("received interrupted system call error\n");
 }
 
 /*
@@ -388,6 +461,7 @@ int main(int argc, char* argv[]) {
   set_sighandler(SIGUSR1, &usr1_handler, NULL);
   set_sighandler(SIGUSR2, &usr2_handler, NULL);
   set_sighandler(SIGCHLD, &chld_handler, NULL);
+  // set_sighandler(SIGINT, interrupt_handler, NULL);
   printf("Handlers installed.\n");
 
   // create shared memory and map it
@@ -428,10 +502,30 @@ int main(int argc, char* argv[]) {
   // set priority
   set_sched_prior(PRIORITY);
   cpu_set_t mask;
-  CPU_ZERO(&mask);
-  CPU_SET(1, &mask);
-  sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+  //CPU_ZERO(&mask);
+  //CPU_SET(1, &mask);
+  //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
+////////////////////////////////////////////////
+{% for name in non_real_time_source_names -%}
+  if((nrtSource_pids[{{loop.index0}}] = fork()) == -1 ) die("nrtSource fork failed\n");
+
+  if(nrtSource_pids[{{loop.index0}}] == 0){
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(NETWORK_CPU, &mask);
+    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    setpriority(PRIO_PROCESS, 0, -19);
+    set_sched_prior(PRIORITY);
+    char* argv[3] = {"./{{name}}", "&", NULL};
+    // char* argv[4] = {"python", "nonRealTimeSource.py", "&", NULL};
+    execvp(argv[0],argv);
+    printf("network exec error. %s \n", strerror(errno));
+    exit(1);
+  }
+  pause();
+{%- endfor %}
+////////////////////////////////////////////////
 
 {% for name in source_names -%} // TODO write this loop in C
   // fork and exec network process
@@ -440,12 +534,13 @@ int main(int argc, char* argv[]) {
   }
   if (so_pids[{{loop.index0}}] == 0) { // only runs for network process
     cpu_set_t mask;
-    CPU_ZERO(&mask);
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
-    CPU_SET(NETWORK_CPU, &mask);
-    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    printf("Source: {{name}}\n")
+    //CPU_ZERO(&mask);
+    //CPU_SET(NETWORK_CPU, &mask);
+    //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY);
     char* argv[2] = {"./{{name}}", NULL};
@@ -465,10 +560,10 @@ int main(int argc, char* argv[]) {
 {%- endfor %}
 
 
-{% if num_modules != 0 -%}
+{% if num_modules != 0 %}
   // fork and exec child processes
-{% for i in range(0, topo_height) -%}
-{% for j in range(0, topo_widths[i]) -%}
+{%- for i in range(0, topo_height) %}
+{%- for j in range(0, topo_widths[i]) %}
   moduleTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
 {%- endfor %}
 {%- endfor %}
@@ -481,9 +576,9 @@ int main(int argc, char* argv[]) {
       }
       if (ch_pids[childNum] == 0) {  // only runs for child processes
         cpu_set_t mask;
-        CPU_ZERO(&mask);
-        CPU_SET(m_j + CPU_OFFSET, &mask);
-        sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+        //CPU_ZERO(&mask);
+        //CPU_SET(m_j + CPU_OFFSET, &mask);
+        //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
         setpriority(PRIO_PROCESS, 0, -19);
         set_sched_prior(PRIORITY);
         char procBuf[64];
@@ -514,14 +609,14 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
   }
   if (si_pids[{{loop.index0}}] == 0) { // only runs for logger process
     cpu_set_t mask;
-    CPU_ZERO(&mask);
     // for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
-    CPU_SET(LOGGER_CPU, &mask);
-    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    setpriority(PRIO_PROCESS, 0, -19);
-    set_sched_prior(PRIORITY);
+    //CPU_ZERO(&mask);
+    //CPU_SET(LOGGER_CPU, &mask);
+    //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    setpriority(PRIO_PROCESS, 0, -2);
+    set_sched_prior_low(0);
     char* argv[2] = {"./{{name}}", NULL};
     
     // execute sink process
@@ -553,6 +648,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
 
   // set up timer
   printf("Setting up timer...\n");
+  fflush(stdout);
 
   rtTimer.it_value.tv_sec = SECREQ;
   rtTimer.it_value.tv_usec = USECREQ;

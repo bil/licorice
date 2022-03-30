@@ -10,35 +10,31 @@ It is suitable for numerical processing of streaming data into and through a sys
 * Python (both Python 2 and 3 are supported)
 * gcc toolchain
 
-**NOTE**: The setup scripts here only work for Ubuntu Server Xenial 16.04 LTS.
-We recommend starting with a stock install of Ubuntu Server Xenial 16.04 LTS.
+**NOTE**: The setup scripts here are currently only tested on Ubuntu 20.04.4 LTS (Focal Fossa).
+We recommend starting with a stock install of Ubuntu Server 20.04 LTS.
 Use of any other UNIX platform requires manual installation of packages.
 
 ## Setup
 
 ### Directory structure
 
-LiCoRICE is designed to be a submodule of a larger repository.
-This larger repository is where the configuration, code, and binaries for the models that LiCoRICE runs are stored.
-An example directory structure for an experimental rig would be:
+LiCoRICE is designed to be a standalone application that operates on a separate repository.
+This repository is where the configuration, code, and binaries for the models that LiCoRICE runs are stored.
+An example directory structure for an experimental rig might contain:
 
 * `rig`
-  * `licorice` (this is the LiCoRICE git repository)
   * `models` (directory where the YAML files specifying the various LiCoRICE models)
   * `modules` (directory where the code for the various LiCoRICE modules is kept)
   * `run` (output directory where the code and compiled binaries of the LiCoRICE model is output to)
 
+However, this directory structure is completely configurable. Users should set `LICORICE_WORKING_DIR` to the experiment root (`rig` above). Each experiment subdirectory may also be set individually with `LICORICE_MODULE_DIR`, `LICORICE_OUTPUT_DIR`, `LICORICE_EXPORT_DIR`, `LICORICE_TMP_MODULE_DIR` , and L`ICORICE_TMP_OUTPUT_DIR`. Setting any of these will override the default LICORICE_WORKING_DIR/<subdirectory>. If LICORICE_WORKING_DIR is not set, LiCoRICE will use the current working directory as the rig and issue a warning.
+
+
 ### Installation 
 
-1. Disable all USB and ACPI support in the BIOS of the target system
+1. Clone the LiCoRICE repository.
 
-    USB and ACPI features throw CPU interrupts which can interfere with realtime performance.
-
-    If USB support is needed for peripherals, enable only the minimum USB version necessary on as few ports as possible if such options in the BIOS exist.
-
-2. Clone the LiCoRICE repository and place it in the directory structure as mentioned above
-
-3. Python virtualenv setup
+1. Python virtualenv setup
 
     From the top-level LiCoRICE directory, run:
 
@@ -48,30 +44,34 @@ An example directory structure for an experimental rig would be:
 
     This script will take 15 to 30 minutes to complete.
 
-4. Bind to the newly built virtualenv:
+1. Bind to the newly built virtualenv:
 
     ```bash
-    source ~/lico_venv/bin/activate
+    pyenv activate licorice
     ```
 
-5. Source the LiCoRICE activation script:
+1. Install LiCoRICE locally
 
     ```bash
-    source licorice_activate.sh
+    pip install -e .
     ```
 
-    This will make a number of shell functions available, all start with `licorice_`.
+    This will add a shell command called `licorice` which is the single entrypoint into the LiCoRICE application.
 
-    If successful, the prompt should appear in the following manner: `[LiCoRICE] (lico_venv) <user>@<host>:~$`
+1. Optional - Modify BIOS settings and compile realtime kernel
 
-6. Optional - Compile realtime kernel
+    1. Disable all USB and ACPI support in the BIOS of the target system
 
-    Compiling a realtime kernel is not a requirement to run LiCoRICE, but realtime performance is one of the central features of the platform.
+    USB and ACPI features throw CPU interrupts which can interfere with realtime performance.
+
+    If USB support is needed for peripherals, enable only the minimum USB version necessary on as few ports as possible if such options in the BIOS exist.
+
+    2. Compiling a realtime kernel is not a requirement to run LiCoRICE, but realtime performance is one of the central features of the platform.
     Without a realtime kernel, timing assurances are harder to deliver.
     Tick violations are more likely to occur as model complexity grows.
     For basic platform testing and evaluation, a realtime kernel is not necessary, but for any production deployments, realtime kernel compilation is strongly advised.
 
-    The instructions for realtime kernel compilation here should be applied to a stock install of Ubuntu server 16.04 LTS.
+    The instructions for realtime kernel compilation here should be applied to a stock install of Ubuntu server 20.04 LTS.
 
     From the top-level LiCoRICE repository directory, run:
 
@@ -94,10 +94,12 @@ It is recommended that first time users work through the examples to become fami
 
 ## Usage
 
+TODO: expand this section
+
 In general, only one command needs to be issued to parse, compile, and run a model:
 
 ```bash
-licorice_go <model_name>
+licorice go <model_name>
 ```
 
 This performs the following actions:
@@ -108,7 +110,7 @@ This performs the following actions:
     This is done with the following command, and assumes that the shell is bound to the virtualenv:
 
     ```bash
-    licorice_parse_model <model_name>
+    licorice parse <model_name>
     ```
 
 2. Compiling
@@ -116,11 +118,30 @@ This performs the following actions:
     Once parsed, the code is ready to be compiled.
 
     ```bash
-    licorice_compile_model
+    licorice compile <model_name>
     ```
 3. Running
 
     After compilation, the model can then be run:
     ```bash
-    licorice_run_model
+    licorice run <mode_name>
     ```
+
+## Packaging
+
+A standalone executable of licorice can be created by running the script:
+
+```bash
+./packaging/create_binary.sh
+````
+
+This will create a portable executable `dist/licorice`.
+
+If the created executable `dist/licorice` is experiencing issues, first try building a single directory executable and debugging that:
+
+```bash
+./packaging/create_binary.sh licorice_onedir.spec
+```
+
+This will create a portable folder `dist/licorice` that contains an executable `licorice`
+
