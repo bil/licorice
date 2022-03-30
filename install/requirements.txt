@@ -7,6 +7,8 @@
 --no-binary numpy
 --no-binary scipy
 
+altgraph==0.17.2
+    # via pyinstaller
 argparse==1.4.0
     # via -r requirements.in
 cycler==0.11.0
@@ -52,6 +54,10 @@ posix-ipc==1.0.5
     # via -r requirements.in
 psutil==5.9.0
     # via -r requirements.in
+pyinstaller==4.10
+    # via -r requirements.in
+pyinstaller-hooks-contrib==2022.3
+    # via pyinstaller
 pyparsing==3.0.7
     # via
     #   matplotlib

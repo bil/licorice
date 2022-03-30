@@ -12,6 +12,6 @@ curl https://pyenv.run | bash
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
-pyenv install 3.8.12 -s
+PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -f
 pyenv virtualenv 3.8.12 licorice
 ./update-deps.sh

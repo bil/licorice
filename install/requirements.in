@@ -15,3 +15,6 @@ matplotlib
 msgpack
 jinja2<=2.11.3 # otherwise can't find constants.h (for some reason)
 toposort
+
+# dev
+pyinstaller
