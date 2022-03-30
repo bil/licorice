@@ -1,14 +1,19 @@
-import os, shutil
-import jinja2
+import os
+import re
+import shutil
 import sys
+import warnings
+from ast import literal_eval
+from distutils.sysconfig import get_python_lib
+import subprocess
+from sysconfig import get_paths
+
+import jinja2
 from toposort import toposort
 import numpy as np
 import psutil
-from ast import literal_eval
-import subprocess
-from sysconfig import get_paths
-import warnings
-import re
+
+from licorice.utils import __handle_completed_process
 
 # available path constants
 # paths['templates']
@@ -859,11 +864,14 @@ def parse(paths, config, confirm):
                     user_code=user_code
                    )
           # compile .so file
-          # TODO: change this to subprocess when migrating to python 3.5
-          ret = os.system("python {0}/numba_{1}.py".format(paths['output'], name))
-          if (ret):
-            print("Numba module compilation failed")
-            exit()
+          os_env = os.environ.copy()
+          os_env["PYTHONPATH"] = get_python_lib()
+          __handle_completed_process(subprocess.run(
+            ["python", f"numba_{name}.py"],
+            cwd=paths["output"],
+            env=os_env,
+            capture_output=True
+          ))
         do_jinja( os.path.join(paths['templates'], template),
                   os.path.join(paths['output'], name + out_extension),
                   name=name,
@@ -922,7 +930,7 @@ def parse(paths, config, confirm):
             numpy_incl=np.get_include(),
             py_incl=py_paths['include'],
             py_lib=py_paths['stdlib'],
-            py_link_flags=py_link_flags
+            py_link_flags=py_link_flags,
           )
 
   # parse timer parent

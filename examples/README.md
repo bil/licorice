@@ -13,7 +13,7 @@ We recommend creating a directory structure in the following manner:
   * `modules` (directory where the code for the various LiCoRICE modules is kept)
   * `run` (output directory where the code and compiled binaries of the LiCoRICE model is output to)
 
-This is LiCoRICE's default behavior, but may be overrided by setting the LICORICE_*_DIR environment variables.
+This is LiCoRICE's default behavior, but may be overrided by setting the LICORICE_*_DIR environment variables as described in the top-level README.
 
 ## Example models
 

@@ -7,20 +7,9 @@ from warnings import warn
 
 import argparse
 import yaml
+
 import licorice.template_funcs as template_funcs
-
-@lru_cache(maxsize=None)
-def __parse_args():
-  print("Executing parse_args")
-  # do some argument parsing
-  arg_parser = argparse.ArgumentParser(description='LiCoRICE config parser.')
-  arg_parser.add_argument('model', type=str, help='YAML model file to parse')
-  arg_parser.add_argument('-g', '--generate', action='store_true', help='generate user code templates')
-  arg_parser.add_argument('-e', '--export', action='store_true', help='export current project')
-  arg_parser.add_argument('-Q', '--confirm', action='store_true', help='ask for user confirmation on action')
-  args = arg_parser.parse_args()
-
-  return args
+from licorice.utils import __handle_completed_process
 
 def __load_and_validate_model(file):
   filepath = None
@@ -103,15 +92,6 @@ def __get_licorice_paths():
   return paths
 
 
-def __handle_completed_process(result, print_stdout=False):
-  if print_stdout:
-    print(result.stdout.decode())
-
-  if result.returncode != 0:
-    print(f"Completed process output: {result.stdout.decode()}")
-    raise RuntimeError(result.stderr.decode())
-
-
 def __execute_iterable_output(cmd, **kwargs):
     popen = subprocess.Popen(
       cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True, bufsize=1, **kwargs
@@ -135,15 +115,15 @@ def generate_model(model_file, confirm=False):
   template_funcs.generate(paths, model, confirm)
 
 
-def parse_model(paths=None, confirm=False):
+def parse_model(args):
   args = __parse_args()
   model = __load_and_validate_model(args.model)
-  paths = paths or __get_licorice_paths()
+  paths = __get_licorice_paths()
   template_funcs.parse(paths, model, args.confirm)
 
 
-def compile_model(paths=None):
-  paths = paths or __get_licorice_paths()
+def compile_model(args):
+  paths = __get_licorice_paths()
 
   # make clean
   __handle_completed_process(subprocess.run(
@@ -160,11 +140,11 @@ def compile_model(paths=None):
   ), print_stdout=True)
 
 
-def run_model(paths=None, rt=False):
-  paths = paths or __get_licorice_paths()
+def run_model(args):
+  paths = __get_licorice_paths()
   os_env = os.environ.copy()
   os_env["PYTHONPATH"] = get_python_lib()
-  if rt:
+  if args.rt:
     # TODO look at taskset 0x1 and if sudo is needed
     run_cmd = "nice -n -20 ./timer"
   else:
@@ -172,28 +152,45 @@ def run_model(paths=None, rt=False):
   for line in __execute_iterable_output(
     shlex.split(run_cmd),
     cwd=paths["output"],
-    env=os_env
+    env=os_env,
   ):
     print(line, end="", flush=True)
 
 
-def go():
-  paths = __get_licorice_paths()
-  parse_model(paths)
-  compile_model(paths)
-  run_model(paths)
+def go(args):
+  parse_model(args)
+  compile_model(args)
+  run_model(args)
+
+
+command_dict = {
+  "go": go,
+  "parse": parse_model,
+  "compile": compile_model,
+  "run": run_model,
+  "generate": generate_model,
+  "export": export_model,
+}
+
+
+@lru_cache(maxsize=None)
+def __parse_args():
+  print("Executing parse_args")
+  # do some argument parsing
+  arg_parser = argparse.ArgumentParser(description='LiCoRICE config parser.')
+  arg_parser.add_argument('cmd', type=str, help='LiCoRICE command to run.',choices=command_dict.keys())
+  arg_parser.add_argument('model', type=str, help='YAML model file to parse')
+  arg_parser.add_argument('-y', '--confirm', action='store_true', help='ask for user confirmation on action')
+  arg_parser.add_argument('--rt', '--realtime', action='store_true', help='run LiCoRICE with realtime timing guarantees')
+  args = arg_parser.parse_args()
+
+  return args
 
 
 def main():
   args = __parse_args()
 
-  if args.export == True:
-    export_model(args.confirm)
-  elif args.generate == True:
-    generate_model(args.model, args.confirm)
-  else:
-    # parse_model calls memoized __parse_args to get model
-    parse_model(None, args.confirm)
+  command_dict[args.cmd](args)
 
 if __name__ == "__main__":
   main()

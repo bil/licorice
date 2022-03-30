@@ -27,6 +27,9 @@ An example directory structure for an experimental rig might contain:
   * `modules` (directory where the code for the various LiCoRICE modules is kept)
   * `run` (output directory where the code and compiled binaries of the LiCoRICE model is output to)
 
+However, this directory structure is completely configurable. Users should set `LICORICE_WORKING_DIR` to the experiment root (`rig` above). Each experiment subdirectory may also be set individually with `LICORICE_MODULE_DIR`, `LICORICE_OUTPUT_DIR`, `LICORICE_EXPORT_DIR`, `LICORICE_TMP_MODULE_DIR` , and L`ICORICE_TMP_OUTPUT_DIR`. Setting any of these will override the default LICORICE_WORKING_DIR/<subdirectory>. If LICORICE_WORKING_DIR is not set, LiCoRICE will use the current working directory as the rig and issue a warning.
+
+
 ### Installation 
 
 1. Clone the LiCoRICE repository.
@@ -53,7 +56,7 @@ An example directory structure for an experimental rig might contain:
     pip install -e .
     ```
 
-    This will make a number of shell functions available, all start with `licorice_`.
+    This will add a shell command called `licorice` which is the single entrypoint into the LiCoRICE application.
 
 1. Optional - Modify BIOS settings and compile realtime kernel
 
@@ -96,7 +99,7 @@ TODO: expand this section
 In general, only one command needs to be issued to parse, compile, and run a model:
 
 ```bash
-licorice_go <model_name>
+licorice go <model_name>
 ```
 
 This performs the following actions:
@@ -107,7 +110,7 @@ This performs the following actions:
     This is done with the following command, and assumes that the shell is bound to the virtualenv:
 
     ```bash
-    licorice_parse_model <model_name>
+    licorice parse <model_name>
     ```
 
 2. Compiling
@@ -115,11 +118,30 @@ This performs the following actions:
     Once parsed, the code is ready to be compiled.
 
     ```bash
-    licorice_compile_model
+    licorice compile <model_name>
     ```
 3. Running
 
     After compilation, the model can then be run:
     ```bash
-    licorice_run_model
+    licorice run <mode_name>
     ```
+
+## Packaging
+
+A standalone executable of licorice can be created by running the script:
+
+```bash
+./packaging/create_binary.sh
+````
+
+This will create a portable executable `dist/licorice`.
+
+If the created executable `dist/licorice` is experiencing issues, first try building a single directory executable and debugging that:
+
+```bash
+./packaging/create_binary.sh licorice_onedir.spec
+```
+
+This will create a portable folder `dist/licorice` that contains an executable `licorice`
+
