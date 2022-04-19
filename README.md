@@ -129,6 +129,18 @@ This performs the following actions:
 
 ## Packaging
 
+### PyPI
+
+Cutting PyPI releases is done automatically when a tag pipeline runs in Gitlab
+CI. From the repo's default branch, update the version number in `setup.py` and
+run:
+
+```bash
+./packaging/release_pypi.sh
+```
+
+### Binary
+
 A standalone executable of licorice can be created by running the script:
 
 ```bash
