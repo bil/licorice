@@ -21,3 +21,4 @@ pyinstaller
 black
 flake8
 isort
+twine

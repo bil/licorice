@@ -1,0 +1,1 @@
+include licorice/generators/* licorice/templates/* install/requirements.in
