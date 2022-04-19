@@ -8,7 +8,7 @@ with open("install/requirements.in") as fh:
 
 setup(
     name="bil-licorice",
-    version="0.0.1",
+    version="0.0.4",
     license="MIT,",
     description="Linux Comodular Realtime Interactive Compute Environment",
     long_description=long_description,
