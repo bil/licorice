@@ -9,7 +9,6 @@ pyyaml
 sharedarray
 numba
 psutil
-portio
 markupsafe<=2.0.1
 matplotlib
 msgpack

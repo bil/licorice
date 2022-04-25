@@ -15,6 +15,7 @@ cache:
   - key:
       files:
         - install/requirements.txt
+        - install/linux-requirements.txt
     paths:
       - .cache/pip
       - venv/
@@ -24,13 +25,14 @@ cache:
 
 before_script:
   - export APT_CACHE_DIR=`pwd`/apt-cache && mkdir -pv $APT_CACHE_DIR
-  - apt-get update -y
+  - apt-get update
   - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y libopenblas-base libopenblas-dev sqlite3  libsqlite3-dev libmsgpack-dev libevent-dev gfortran
   - pip install --upgrade pip
   - pip install virtualenv
   - virtualenv venv
   - source venv/bin/activate
   - pip install -r install/requirements.txt
+  - pip install -r install/linux-requirements.txt
   - pip install .
 
 # build-binary:
