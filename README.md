@@ -39,7 +39,7 @@ However, this directory structure is completely configurable. Users should set `
     From the top-level LiCoRICE directory, run:
 
     ```bash
-    ./install/venv_setup.sh
+    ./install/env_setup.sh
     ```
 
     This script will take 15 to 30 minutes to complete.
