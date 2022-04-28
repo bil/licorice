@@ -95,7 +95,7 @@ def generate(paths, config, confirm):
         if confirm:
             while True:
                 sys.stdout.write("Ok to remove old module directory? ")
-                choice = raw_input().lower()
+                choice = input().lower()
                 if choice == "y":
                     break
                 elif choice == "n":
@@ -115,6 +115,7 @@ def generate(paths, config, confirm):
     os.mkdir(paths["modules"])
 
     print("Generated modules:")
+
     modules = {}
     if "modules" in config and config["modules"]:
         modules = config["modules"]
@@ -1214,6 +1215,10 @@ def parse(paths, config, confirm):
     )
 
     # parse timer parent
+    if not config.get("config"):
+        config["config"] = {}
+        if not config["config"].get("num_ticks"):
+            config["config"]["num_ticks"] = -1
     parport_tick_addr = None
     if "config" in config and "parport_tick_addr" in config["config"]:
         parport_tick_addr = config["config"]["parport_tick_addr"]
@@ -1255,15 +1260,12 @@ def parse(paths, config, confirm):
     )
 
     # parse constants.h
-    if not "config" in config:
-        config["config"] = {}
-    if not "init_buffer_ticks" in config["config"]:
-        config["config"]["init_buffer_ticks"] = 100
     do_jinja(
         os.path.join(paths["templates"], TEMPLATE_CONSTANTS),
         os.path.join(paths["output"], OUTPUT_CONSTANTS),
+        num_ticks=config["config"].get("num_ticks"),
         init_buffer_ticks=(
-            50 if line_source_exists else config["config"]["init_buffer_ticks"]
+            config["config"].get("init_buffer_ticks") or 50 if line_source_exists else 100
         ),
         num_sem_sigs=num_sem_sigs,
         num_non_sources=len(non_source_names),
