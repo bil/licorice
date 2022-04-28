@@ -1,0 +1,34 @@
+# sends TX 1000 to polaris
+# working
+
+signals:
+
+  serial_out:
+    shape: 50
+    dtype: uint8
+    history: 1
+
+modules:
+
+  polaris_send:
+    language: python
+    constructor: True
+    out:
+      - serial_out
+
+  # sinks
+  serial_writer:
+    language: python
+    in:
+      - serial_out
+    out:
+      name: serial_writer
+      args:
+        type: pipe
+        filepath: /tmp/fifo_sink
+      schema:
+        packets_per_tick: 1
+        data:
+          dtype: uint8
+          size: 1
+    parser: true

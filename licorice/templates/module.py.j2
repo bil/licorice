@@ -262,6 +262,7 @@ while(True):
   {% else %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
   {% endif %}
+  {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
 {% endfor %}
 {% for sig,args in out_signals.items() %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]
