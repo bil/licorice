@@ -206,6 +206,7 @@ void set_sched_prior_low(int priority) {
 static void check_children() {
 {%- if test_tick_time %}
   clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
+  printf("tick %li began at %f.\n", (*pNumTicks)+1, tickTimer.tv_nsec/1000000.);
 {% endif %}
 {%- if parport_tick_addr %}
   // flip bits and output to parallel port
@@ -215,7 +216,7 @@ static void check_children() {
   
   // printf("TIMER tick %ld\n", *pNumTicks);
   if ((sigalrm_recv > 1))
-    die("Timer missed a tick.");
+    die("Timer missed a tick. (>1 unhandled sigalrms)");
 
 {%- if test_tick_time %}
   tickStartNSec = tickTimer.tv_nsec;
@@ -287,11 +288,12 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems + al_i)) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on ms: %lu from non_source number %zu \n", *pNumTicks, al_i);
+          printf("Module timing violation on ms: %lu from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
           die("Module timing violation.\n");
         }
-        else
-          printf("Sink timing violation on ms: %lu from non_source number %zu \n", *pNumTicks, al_i); // TODO insert non_source name here
+        else {
+          printf("Sink timing violation on ms: %lu from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+        }
       } 
     }
 
