@@ -6,6 +6,10 @@
 # Note: model configuration is still in alpha stage and subject to cosmetic changes
 #
 
+config:
+  num_ticks: 10
+  init_buffer_ticks: 10
+
 signals:
 
   m1:

@@ -14,6 +14,6 @@ pip-sync "$(dirname "$0")/requirements.txt"
 case $OSTYPE in
     linux*)
         pip-compile "$(dirname "$0")/linux-requirements.in"
-        pip-sync "$(dirname "$0")/linux-requirements.txt"
+        pip-sync "$(dirname "$0")/requirements.txt" "$(dirname "$0")/linux-requirements.txt"
         ;;
 esac

@@ -4,6 +4,11 @@
 * Basic user configurable constants *
 *************************************/
 /*
+ * Number of ticks for LiCoRICE to run. The default value (-1) indicates
+ * that LiCORICE will run until it is stopped by an interrupt or exception.
+ */
+#define NUM_TICKS {{num_ticks}}
+/*
  * The offset from which to run the child processes, zero-indexed. Usually 
  * the first (CPU 0) is for the parent timer process itself, the second
  * is for Redis, the third is the network process (CPU 2), and the last is
@@ -76,11 +81,11 @@
 #define MAX_PATH_LEN 16
 
 /*
- * This is the number of milliseconds at the beginning of execution during which the 
+ * This is the number of ticks at the beginning of execution during which the
  * child processes do not run.
  * Don't touch.
- * Can be thought of as system latency. Using 50 for line since sound card has 20ms 
- * buffer period.
+ * Can be thought of as system latency. Default is 50 when a line source exists
+ * given 20ms sound card buffer period.
  */
 #define INIT_BUFFER_TICKS {{init_buffer_ticks}}
 

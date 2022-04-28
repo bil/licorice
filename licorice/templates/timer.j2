@@ -178,7 +178,7 @@ void handle_exit(int exitStatus) {
   ////////////////////////////////////////////////
 
   printf("Unmapping shared memory...\n");
-  printf("%ld SIGALRMs sent\n", *pNumTicks);
+  printf("LiCoRICE ran for %ld ticks.\n", *pNumTicks);
   // close shared memory
   munmap(pmem, shm_size);
   shm_unlink(SMEM0_PATHNAME);
@@ -224,7 +224,13 @@ static void check_children() {
   
   // increment SIGALRM counter
   (*pNumTicks)++;
-  // printf("%ld\n", *pNumTicks);
+
+{%- if config["config"]["num_ticks"] != -1 %}
+  if (*pNumTicks > {{config["config"]["num_ticks"]}}) {
+    (*pNumTicks)--;
+    handle_exit(0);
+  }
+{%- endif %}
 
   // only trigger sources on first iterations
   if (*pNumTicks < 0) {
