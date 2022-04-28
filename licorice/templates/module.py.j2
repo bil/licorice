@@ -273,11 +273,11 @@ while(True):
   {%- if name == "bufferer" %}
 #  sleeps = 0
   while (True):
-    {% for sig,args in in_signals.items() %}
-    p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
-    p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
-    {% endfor %}
     if (prev_bv!={{in_signals.keys()[0]}}BufVars[0]):
+      {% for sig,args in in_signals.items() %}
+      p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
+      p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
+      {% endfor %}
       break;
     nanosleep(&ts_pause, NULL)
 
