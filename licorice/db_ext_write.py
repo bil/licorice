@@ -31,7 +31,11 @@ def createTables(cur, table):
         file_path = os.path.join(dir_path, filename)
         file_stat = os.stat(file_path)
         mtime = file_stat.st_mtime
-        contents = yaml.safe_load(file(file_path))
+        if dir_name is "yaml":
+            contents = yaml.safe_load(file(file_path))
+        else:
+          f = open(file_path, "r")
+          contents = f.read()
         packed_contents = msgpack.packb(contents)
         # insert into database
         cur.execute(
