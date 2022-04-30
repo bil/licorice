@@ -109,7 +109,6 @@ cdef extern from "time.h":
   ctypedef int64_t time_t
   int nanosleep(const timespec *req, timespec *rem)
 
-
 {% elif sig_type == 'zmq' -%} # header declaration for zmq source
 cdef extern from "zmq.h":
   int zmq_close(void *s)
@@ -527,6 +526,12 @@ else:
   {{sig}}BufVars[5] = {{args['schema']['data']['size']}}  
   {%- endif %}
   ##################################################################################
+  {%- endif %}
+
+  {%- if sig_type == 'pipe' %}
+  #print "Source pre: {0}".format({{sig}}BufVars[0])
+  {{sig}}BufVars[0] = 0
+  #print "Source post: {0}".format({{sig}}BufVars[0])
   {%- endif %}
 
   {%- if sig_type == 'pipe' %}
