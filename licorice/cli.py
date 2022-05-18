@@ -32,7 +32,7 @@ def __load_and_validate_model(file):
 
     if not filepath:
         raise ValueError(
-            f"Could not locate model file: {file}. Specify a full path or set LICORICE_MODEL_DIR"
+            f"Could not locate model file: {file}. Specify a full path or set LICORICE_WORKING_DIR and/or other env vars."
         )
 
     # load model

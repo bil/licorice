@@ -1,0 +1,36 @@
+# Output a sine wave over line out
+
+config:
+  tick_size: 100000
+  num_ticks: 10
+  init_buffer_ticks: 2 
+
+signals:
+  sine_wave:
+    shape: (9600, )
+    dtype: float32
+    history: 100
+
+modules:
+  sine_gen:
+    language: python
+    constructor: true
+    numba: false
+    out:
+      - sine_wave
+
+  sine_audio_out:
+    language: python
+    in:
+      - sine_wave
+    out:  
+      name: sine_out
+      args:
+        type: line
+      schema:
+        data:
+          dtype: float32
+          size: 9600
+      realTime: False
+      buffered: True # TODO, setting False should allow copying directly from signal history
+

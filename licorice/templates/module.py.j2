@@ -1,6 +1,6 @@
 {% block header %}
 from libc.stdlib cimport atoi, exit
-from libc.stdio cimport printf
+from libc.stdio cimport printf, fflush, stdout
 from libc.string cimport strcpy, memset, memcpy
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
@@ -28,9 +28,7 @@ cdef extern from "semaphore.h":
     char __size[__SIZEOF_SEM_T]
     long int __align
   ctypedef sem_union sem_t
-  int sem_init(sem_t *, int, unsigned)
   int sem_wait(sem_t *)
-  int sem_getvalue(sem_t *restrict, int *restrict)
   int sem_post(sem_t *)
 #not used yet, just seeing if it would work
 cdef extern from "unistd.h":

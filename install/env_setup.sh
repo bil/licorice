@@ -11,7 +11,7 @@ case $OSTYPE in
                 libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
                 libncurses5-dev libncursesw5-dev xz-utils tk-dev \
                 libopenblas-base libopenblas-dev sqlite libmsgpack-dev \
-                libevent-dev
+                libevent-dev libasound2-dev
         else
             echo "Automatic dependency installation not supported for your " \
                  "flavor of Linux. Please install dependencies manually."

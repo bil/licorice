@@ -105,10 +105,10 @@
 #define NUM_SOURCE_SIGS {{num_source_sigs}}
 
 // Number of of microseconds for the timer interrupt (1 ms resolution)
-#define USECREQ 100000
+#define USECREQ {{tick_size_us}}
 
 // Number of seconds for the timer interrupt
-#define SECREQ 0
+#define SECREQ {{tick_size_s}}
 
 // Process priority (1 (low) to 99 (high))
 // Don't set to 99, or else process cannot be killed

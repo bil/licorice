@@ -1,5 +1,5 @@
 from libc.stdio cimport printf, stdout, fflush, remove
-from libc.stdlib cimport exit, malloc, free
+from libc.stdlib cimport exit, malloc, free, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
@@ -91,14 +91,28 @@ cdef extern from "<alsa/asoundlib.h>" nogil:
   struct _snd_pcm:
     pass
   ctypedef _snd_pcm snd_pcm_t
+  struct _snd_pcm_hw_params:
+    pass 
+  ctypedef _snd_pcm_hw_params snd_pcm_hw_params_t
+  struct _snd_pcm_sw_params:
+    pass 
+  ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t
   ctypedef unsigned long snd_pcm_uframes_t
   ctypedef long snd_pcm_sframes_t
   int snd_pcm_prepare(snd_pcm_t* pcm) 
   snd_pcm_sframes_t snd_pcm_writei(snd_pcm_t *pcm, const void *buffer, snd_pcm_uframes_t size) 
+  int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
+  const char * snd_strerror (int errnum)
+  snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
+  void snd_pcm_hw_params_alloca(void *ptr)
+  void snd_pcm_sw_params_alloca(void *ptr)
+  int snd_pcm_state(snd_pcm_t *pcm)   
 
-cdef extern from "lineUtilities.h":
-  int pcm_init_play()
-  void pcm_close_play()
+cdef extern from "lineUtilities.h" nogil:
+  int pcm_init_playback(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams)
+  void pcm_close(snd_pcm_t *handle)
+  int pcm_write_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr)
+  snd_pcm_sframes_t pcm_get_period_size_bytes()
 
 {% elif sig_type == 'disk' %}
 cdef extern from "<msgpack.h>" nogil:
@@ -239,16 +253,14 @@ cdef extern from "<pthread.h>" nogil:
   pthread_t pthread_self()
 {%- endif %}
 
-cdef extern from "semaphore.h":
-  enum: __SIZEOF_SEM_T
+cdef extern from "semaphore.h" nogil:
   cdef union sem_union:
-    char __size[__SIZEOF_SEM_T]
-    long int __align
+    pass
   ctypedef sem_union sem_t
-  int sem_init(sem_t *, int, unsigned)
+  int sem_init(sem_t *sem, int pshared, unsigned int value)
   int sem_wait(sem_t *)
-  int sem_getvalue(sem_t *restrict, int *restrict)
   int sem_post(sem_t *)
+  int sem_destroy(sem_t *sem)
 
 cdef extern from "constants.h":
   enum: NUM_CHANNELS
@@ -274,7 +286,7 @@ cdef extern from "constants.h":
 cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
-#cdef struct timespec tickTimer;
+#cdef struct timespec tickTimer
 
 {% if sig_type == 'udp' -%}
 cdef int s
@@ -289,20 +301,29 @@ cdef const char *FIFOFILE = '{{out_signal['args']['filepath']}}'
 cdef void *radio
 cdef void *context
 {%- elif sig_type == 'line' %}
-# cdef extern snd_pcm_t *play_handle
-# cdef snd_pcm_uframes_t frames
-# cdef int ret
-# cdef int rc
-# # threading variables
-# cdef pthread_t tid
-# cdef pthread_cond_t cv
-# cdef pthread_mutex_t mutex
-# cdef bool shouldDie = False
-# # worker thread vars
-# cdef char *zErrMsg
-# cdef void * retVal
-# cdef uint32_t lineWriteOffset = 0
-# cdef bool lineWrapped
+LINE_BUFFER_PERIODS = 2
+cdef snd_pcm_t *play_handle
+cdef snd_pcm_hw_params_t *play_hwparams
+cdef snd_pcm_sw_params_t *play_swparams
+cdef uint8_t *pLineOutBuf
+cdef uint8_t *pLineOutBufWrite
+cdef uint8_t *pLineOutBufRead
+cdef ssize_t linePeriodSizeBytes
+cdef snd_pcm_uframes_t linePeriodSizeFrames
+cdef ssize_t lineOutBufSize
+cdef long int lineBytesWrapped
+cdef int ret
+cdef int rc
+# threading variables
+cdef pthread_t tid
+cdef sem_t lineSem
+cdef bool shouldDie = False
+# worker thread vars
+cdef char *zErrMsg
+cdef void *retVal
+cdef uint32_t lineWriteOffset = 0
+cdef bool lineWrapped
+
 {%- elif sig_type == 'disk' %}
 cdef bool newDB = False
 cdef int ret
@@ -394,7 +415,7 @@ cdef size_t outBufLen
 {%- endif %}
 
 cdef void handle_exit(int exitStatus):
-  global cv, mutex, retVal, tid, radio, context, s, shm_size, pmem
+  global retVal, tid, radio, context, s, shm_size, pmem
 {%- if sig_type == 'disk' %}
   global shouldDie
 {%- endif %}
@@ -410,17 +431,14 @@ cdef void handle_exit(int exitStatus):
   zmq_close(radio)
   zmq_ctx_destroy(context)
 {%- elif sig_type == 'line' %}
-  # pthread_mutex_lock(&mutex)
-  # shouldDie = True
-  # pthread_cond_signal(&cv) 
-  # pthread_mutex_unlock(&mutex)
-  # pthread_join(tid, &retVal)
-  # pcm_close_play()
-{%- elif sig_type == 'disk' %}
-  #pthread_mutex_lock(&mutex)
   shouldDie = True
-  #pthread_cond_signal(&cv) 
-  #pthread_mutex_unlock(&mutex)
+  sem_post(&lineSem)
+  pthread_join(tid, &retVal)
+  free(pLineOutBuf)
+  sem_destroy(&lineSem)
+  pcm_close(play_handle)
+{%- elif sig_type == 'disk' %}
+  shouldDie = True
   #pthread_join(tid, &retVal)
 {% for sig in msgpack_sigs %}
   msgpack_sbuffer_destroy(&mpSignals{{sig|capitalize}}Buf)
@@ -440,7 +458,7 @@ cdef void int_handler(int signum):
   pass
 
 cdef void exit_handler(int signum):
-  printf("EXIT HANDLER for %s\n", "{{name}}")
+  printf("EXIT HANDLER for {{name}}\n")
   handle_exit(0)
 
 cdef void bus_handler(int signum):
@@ -500,7 +518,7 @@ cdef void* copyFromBuffer():
 
 cdef int f
 cdef void* processRequests() nogil:
-  global mutex, cv, shouldDie, zErrMsg, db, newDB, db_index, num_extra_cols, exitMask, signalsQuery, signalsStmt\
+  global shouldDie, zErrMsg, db, newDB, db_index, num_extra_cols, exitMask, signalsQuery, signalsStmt\
          {% for sig in msgpack_sigs %}, mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}, \
          pSignalsStructFlushStart, pSignalsStructFlushEnd, pSignalsStructCur
 
@@ -594,49 +612,30 @@ cdef void* processRequests() nogil:
 {%- endif %}
 
 {% if sig_type == 'line' -%}
-# cdef void* processRequests(void *arg) nogil:
-#   global mutex, cv, shouldDie, retVal, exitMask, ret, frames, play_handle, zErrMsg, lineWriteOffset, {% for sig,dtype in sig_types %}{{sig}}BufVars, {{sig}}StrtPtr, {{sig}}EndPtr{{"," if not loop.last}} {% endfor %}
-#   pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
-#   zErrMsg = <char *>0
-#   {%- if has_parser and out_signal['args']['type'] != 'vis_pygame' %}
-#   # TODO figure out outBuf stuff for this
-#   # need to not use {{sig}} when there is a parser and instead do everything with outBuf, letting user set outBuf using {{sig}}StrtPtrs
-#   {%- endif %}
-#   while (True):
-#     pthread_mutex_lock(&mutex)
-#     pthread_cond_wait(&cv, &mutex) 
+cdef void* processRequests(void *arg) nogil:
+  global shouldDie, exitMask, ret, play_handle, zErrMsg, pLineOutBuf, pLineOutBufRead, lineSem, lineOutBufSize, linePeriodSizeFrames, linePeriodSizeBytes
+  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  cdef snd_pcm_sframes_t pcm_ret
+  cdef int *retVal
+  zErrMsg = <char *>0
 
-#     if (shouldDie):
-#       retVal = NULL  
-#       pthread_exit(retVal)
+  while (True):
+    sem_wait(&lineSem)
 
-#     if ({{sig}}BufVars[1] < lineWriteOffset):
-#       lineWrapped = True
+    if (shouldDie):
+      retVal[0] = EXIT_SUCCESS
+      pthread_exit(&retVal)
 
-#     while (lineWrapped or ((lineWriteOffset + frames * 2) < {{sig}}BufVars[1])):
-#       ret = snd_pcm_writei(play_handle, <void *>({{sig}}StrtPtr + lineWriteOffset), frames)
-#       if (ret == -EPIPE):
-#         # EPIPE means underrun
-#         printf("underrun occurred\n")
-#         snd_pcm_prepare(play_handle)
-#       elif (ret < 0):
-#        die("writei failed")
-#       elif (ret != <int>frames):
-#         die("short write")
+    pcm_ret = pcm_write_buffer(play_handle, pLineOutBufRead, linePeriodSizeFrames)
+    if (pcm_ret < 0):
+      printf("pcm_write_buffer failed.\n")
+      retVal[0] = EXIT_FAILURE
+      pthread_exit(&retVal)
 
-#       # z = 0
-#       # while (z < frames * 2):
-#       #   printf("%d ", (sigStrtPtr)[lineWriteOffset + z])
-#       #   z += 1
-#       # printf("\n\n")
-#       lineWriteOffset += (frames * 2)
-#       if (lineWriteOffset >= ({{sig}}EndPtr - {{sig}}StrtPtr)):
-#         lineWriteOffset = 0
-#         lineWrapped = False
+    pLineOutBufRead += linePeriodSizeBytes
+    if (pLineOutBufRead >= pLineOutBuf + lineOutBufSize):
+      pLineOutBufRead = pLineOutBuf
 
-#     # why is this all the way down here?  won't the mutex be locked until it gets here (or its unlocking twice,
-#     # which isn't good either)? 
-#     pthread_mutex_unlock(&mutex)
 {%- endif %}
 
 # main
@@ -652,29 +651,6 @@ set_sighandler(SIGUSR1, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
-
-{% if not is_single_threaded -%}
-# init mutex and condition variable
-rc = pthread_mutex_init(&mutex, NULL)
-if (rc): die("pthread_mutex_init failed")
-rc = pthread_cond_init(&cv, NULL)
-if (rc): die("pthread_cond_init failed")
-# create background thread
-rc = pthread_create(&tid, NULL, &processRequests, NULL)
-if (rc): die("pthread_create failed")
-
-cdef sched_param param
-param.sched_priority = 39
-pthread_setschedparam(tid, SCHED_FIFO, &param)
-cdef cpu_set_t mask
-# cdef pthread_t maint = pthread_self()
-# CPU_ZERO(&mask)
-# CPU_SET(3, &mask)
-# pthread_setaffinity_np(maint, sizeof(cpu_set_t), &mask)
-CPU_ZERO(&mask)
-CPU_SET(4, &mask)
-pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
-{%- endif %}
 
 {% if sig_type == 'disk' %}
 # SQLITE INIT
@@ -861,8 +837,19 @@ if (named_pipe == -1):
   die("Could not open pipe \n")
 
 {% elif sig_type == 'line' %}
-# # initiliaze line in 
-# frames = pcm_init_play()
+# initiliaze line in
+snd_pcm_hw_params_alloca(&play_hwparams)
+snd_pcm_sw_params_alloca(&play_swparams)
+pcm_init_playback(&play_handle, play_hwparams, play_swparams)
+sem_init(&lineSem, 0, 0) 
+linePeriodSizeBytes = pcm_get_period_size_bytes()
+linePeriodSizeFrames = snd_pcm_bytes_to_frames(play_handle, linePeriodSizeBytes)
+lineOutBufSize = LINE_BUFFER_PERIODS * linePeriodSizeBytes
+pLineOutBuf = <uint8_t *>malloc(lineOutBufSize)
+pLineOutBufWrite = pLineOutBuf
+pLineOutBufRead = pLineOutBuf
+lineBufferedPeriods = 0
+snd_pcm_prepare(play_handle)
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{out_signal['args']['addr']}}, 1, 1)):
@@ -876,6 +863,23 @@ if (not radio):
   die("Could not create ZMQ socket.\n")
 rc = zmq_connect(radio, "udp://192.168.1.1:5555")
 assert (rc == 0)
+{%- endif %}
+
+{% if not is_single_threaded -%}
+rc = pthread_create(&tid, NULL, &processRequests, NULL)
+if (rc): die("pthread_create failed")
+
+cdef sched_param param
+param.sched_priority = 39
+pthread_setschedparam(tid, SCHED_FIFO, &param)
+cdef cpu_set_t mask
+# cdef pthread_t maint = pthread_self()
+# CPU_ZERO(&mask)
+# CPU_SET(3, &mask)
+# pthread_setaffinity_np(maint, sizeof(cpu_set_t), &mask)
+CPU_ZERO(&mask)
+CPU_SET(4, &mask)
+pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
 {%- endif %}
 
 {% if default_params -%}
@@ -901,7 +905,7 @@ while(True):
 
 {%- if not has_parser and out_signal['args']['type'] != 'vis_pygame' %}
   outBuf = <uint8_t *>({{in_signal_name}}StrtPtr + {{in_signal_name}}BufVars[0])
-  outBufLen = {{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0] 
+  outBufLen = ({{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0]) * sizeof({{in_signal_name}}StrtPtr[0])
 {%- endif %}
 {%- if sig_type == 'udp' %}
   for sentBytes in range(0,outBufLen,1472): # TODO read in MTU or make constant for user. or could use sendto max
@@ -916,12 +920,26 @@ while(True):
 {%- endif %}
 
 {%- if sig_type == 'line' %}
-  # # Output handled in async thread
+  lineBytesWrapped = (pLineOutBufWrite - pLineOutBuf) + outBufLen - lineOutBufSize
+  linePeriodsWritten = 0
+  if (lineBytesWrapped > 0):
+    memcpy(pLineOutBufWrite, outBuf, outBufLen - lineBytesWrapped)
+    memcpy(pLineOutBuf, outBuf + outBufLen - lineBytesWrapped, lineBytesWrapped)
 
-  # if (pNumTicks[0] % 25 == 0):
-  #   pthread_mutex_lock(&mutex)
-  #   pthread_cond_signal(&cv)
-  #   pthread_mutex_unlock(&mutex)
+    linePeriodsWritten = ((((pLineOutBufWrite - pLineOutBuf) + outBufLen) // linePeriodSizeBytes) - ((pLineOutBufWrite - pLineOutBuf) // linePeriodSizeBytes))
+    lineBufferedPeriods += linePeriodsWritten 
+
+    pLineOutBufWrite = pLineOutBuf + lineBytesWrapped
+  else:
+    memcpy(pLineOutBufWrite, outBuf, outBufLen)
+    linePeriodsWritten = ((((pLineOutBufWrite - pLineOutBuf) + outBufLen) // linePeriodSizeBytes) - ((pLineOutBufWrite - pLineOutBuf) // linePeriodSizeBytes))
+    lineBufferedPeriods += linePeriodsWritten
+    pLineOutBufWrite += outBufLen
+
+  for i in range(linePeriodsWritten):
+    sem_post(&lineSem)
+  linePeriodsWritten = 0
+  
 {%- elif sig_type == 'disk' %}
   if (pNumTicks[0] > 0) and (pNumTicks[0] % (NEW_DB_NUM_S * 1000) == 0):
     newDB = True

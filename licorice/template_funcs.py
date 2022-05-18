@@ -406,7 +406,7 @@ def parse(paths, config, confirm):
 
     logger_defined = False
     logger_database_filename = ""
-    module = False
+    compile_for_line = False
     for module_name, module_args in iter(modules.items()):
 
         if (
@@ -468,6 +468,8 @@ def parse(paths, config, confirm):
                 logger_database_filename = signals[out_sig_name]["args"][
                     "save_file"
                 ]
+            if out_signals[out_sig_name] in ["line"]:
+                compile_for_line = True
         else:
             # module
             if not "in" in module_args or not module_args["in"]:
@@ -960,7 +962,7 @@ def parse(paths, config, confirm):
                 parser_code=parser_code,
                 construct_code=construct_code,
                 destruct_code=destruct_code,
-                in_signal_name=(None if (has_parser) else list(in_signals)[0]),
+                in_signal_name= None if has_parser else list(in_signals)[0],
                 in_signals=in_signals,
                 msgpack_sigs=msgpack_sigs,
                 raw_vec_sigs=raw_vec_sigs,
@@ -1212,13 +1214,16 @@ def parse(paths, config, confirm):
         py_incl=py_paths["include"],
         py_lib=py_paths["stdlib"],
         py_link_flags=py_link_flags,
+        line=compile_for_line,
     )
 
     # parse timer parent
     if not config.get("config"):
         config["config"] = {}
-        if not config["config"].get("num_ticks"):
-            config["config"]["num_ticks"] = -1
+    if not config["config"].get("num_ticks"):
+        config["config"]["num_ticks"] = -1
+    if not config["config"].get("tick_size"):
+        config["config"]["tick_size"] = 1000    
     parport_tick_addr = None
     if "config" in config and "parport_tick_addr" in config["config"]:
         parport_tick_addr = config["config"]["parport_tick_addr"]
@@ -1263,9 +1268,11 @@ def parse(paths, config, confirm):
     do_jinja(
         os.path.join(paths["templates"], TEMPLATE_CONSTANTS),
         os.path.join(paths["output"], OUTPUT_CONSTANTS),
-        num_ticks=config["config"].get("num_ticks"),
+        num_ticks=config["config"]["num_ticks"],
+        tick_size_us=config["config"]["tick_size"] % 1000000,
+        tick_size_s=config["config"]["tick_size"] // 1000000,
         init_buffer_ticks=(
-            config["config"].get("init_buffer_ticks") or 50 if line_source_exists else 100
+            (config["config"].get("init_buffer_ticks")) or (50 if line_source_exists else 100)
         ),
         num_sem_sigs=num_sem_sigs,
         num_non_sources=len(non_source_names),
