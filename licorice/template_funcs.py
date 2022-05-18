@@ -1,11 +1,12 @@
 import os
+import platform
 import re
 import shutil
 import subprocess
 import sys
 import warnings
 from ast import literal_eval
-from distutils.sysconfig import get_python_lib
+from distutils.sysconfig import get_config_var, get_python_lib
 from sysconfig import get_paths
 
 import jinja2
@@ -1188,17 +1189,14 @@ def parse(paths, config, confirm):
 
     # parse Makefile
     py_paths = get_paths()
-    py_conf_str = "python-config"
-    if sys.version_info.major == 3:
-        py_conf_str = "python3.8-config"
+    py_conf_str = f"{get_config_var('BINDIR')}/python3-config"
     py_link_flags = subprocess.check_output(
         [py_conf_str, "--embed", "--ldflags"]
-    ).decode("utf-8")
-    if sys.version_info.major == 3:
-        py_link_flags = re.sub(
-            "-L[^\s]+config-[^\s]+", "", py_link_flags
-        )  # TODO, make this less sketchy
-    assert (x in py_link_flags for x in ["-ldl", "-lutil" "-lm", "-lpthread"])
+    ).decode("utf-8").strip()
+
+    extra_incl = ""
+    if platform.system() == "Linux":
+        extra_incl = "-lrt"
 
     do_jinja(
         os.path.join(paths["templates"], TEMPLATE_MAKEFILE),
@@ -1210,9 +1208,10 @@ def parse(paths, config, confirm):
         non_real_time_source_names=non_real_time_source_names,
         #############################################################################
         source_types=list(map(lambda x: modules[x]["language"], source_names)),
+        extra_incl=extra_incl,
         numpy_incl=np.get_include(),
         py_incl=py_paths["include"],
-        py_lib=py_paths["stdlib"],
+        py_lib=get_config_var("PY_LDFLAGS"),
         py_link_flags=py_link_flags,
         line=compile_for_line,
     )
