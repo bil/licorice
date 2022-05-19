@@ -1261,6 +1261,7 @@ def parse(paths, config, confirm):
         parport_tick_addr=parport_tick_addr,
         non_source_module_check=non_source_module_check,
         non_source_names=non_source_names,
+        num_non_sources=len(module_names) + len(sink_names),
     )
 
     # parse constants.h

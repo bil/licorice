@@ -45,7 +45,7 @@ static pid_t ch_pids[NUM_MODULES];
 {%- if num_modules != 0 %}
 static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
 {%- endif %}
-{%- if (num_sinks+num_modules) != 0 %}
+{%- if num_non_sources %}
 static char nonSourceProcnames[NUM_NON_SOURCES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in non_source_names[:-1] %}"{{n}}", {% endfor %}"{{non_source_names[-1]}}"{{'}'}};
 {%- endif %}
 {%- if topo_height != 0 %}
@@ -266,24 +266,7 @@ static void check_children() {
   
   // normal behavior on subsequent iterations
   else {
-    {#printf("NUM_MODULES: %d, NUM_SOURCES: %d, NUM_SINKS: %d, NUM_NON_SOURCES: %d\n", NUM_MODULES, NUM_SOURCES, NUM_SINKS, NUM_NON_SOURCES);
-    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
-      if (nonSourceModuleCheck[al_i]) {
-        printf("NSM %u is a module. Name: %s\n",al_i,nonSourceProcnames[al_i]);
-      }
-      else {
-        printf("NSM %u is a sink. Name: %s\n",al_i,nonSourceProcnames[al_i]);
-      }
-    }
-
-    printf("Checking tick down sems:\n");
-    for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
-      int v;
-      int s;
-      s = sem_getvalue(pTickDownSems+al_i, &v);
-      printf("\t(%d)pTickDownSems index %u (NSM %s): %d\n", s,al_i,nonSourceProcnames[al_i], v);
-    }#}
-
+  {%- if num_non_sources %}
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems + al_i)) {
@@ -296,6 +279,7 @@ static void check_children() {
         }
       } 
     }
+  {%- endif %}
 
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
       sem_wait(pSourceSem);
@@ -360,10 +344,12 @@ static void check_children() {
       kill(so_pids[al_i], SIGALRM);
     }
 
+    {%- if num_non_sources %}
     // trigger all non-source processes
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       sem_post(pTickUpSems + al_i);
     }
+    {%- endif %}
   }
 
 {%- if test_tick_time %}
