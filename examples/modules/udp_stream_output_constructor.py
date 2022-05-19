@@ -5,8 +5,8 @@ import time
 import os
 import asyncio
 
-MESSAGE_SIZE = 4
-NUM_PACKETS = 5
+MESSAGE_SIZE = 10
+NUM_PACKETS = 1
 
 # Create SharedArray
 SHM_NAME = 'shm://io.udp_data' #"shm://io.udp_data"

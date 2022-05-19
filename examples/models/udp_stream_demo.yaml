@@ -6,13 +6,13 @@ config:
 
 signals:
   udp_data:
-    shape: (4, 5)
+    shape: (1, 10)
     #shape: 4
     dtype: uint8
     log: False
 
   udp_data_len:
-    shape: 5
+    shape: 1
     dtype: uint8
     log: False
 
@@ -29,7 +29,7 @@ modules:
    #     args:
    #       type: udp      # the type of souce this is
    #       port: 51002         # port number to read from (bind to)
-   #       interface: 192.168.137.255  # interface name
+   #       interface: '127.0.0.1'  # interface name
    #     schema:               # define the structure of the data generated from the source
    #       data:
    #         dtype: uint8      # data type quantization
@@ -40,7 +40,7 @@ modules:
    #     - udp_data
 
    # read in from the stored array and output
-   udp_output:          # define the module
+   udp_stream_output:          # define the module
      language: python   # language the module is written in
      constructor: True   # needs a constructor 
      out:                # input signals / output signals *(was originally in:)
@@ -92,3 +92,4 @@ modules:
 #       - udp_data
 #       - udp_data_len
 # '''
+

@@ -561,7 +561,7 @@ zeroPtr = bufStrtPtr
 {% if default_params -%}
 {{in_sig_name}} = {{default_params}}
 {%- endif %}
-{{construct_code}}
+  {{construct_code}}
 
 make_realtime()
 fflush(stdout)

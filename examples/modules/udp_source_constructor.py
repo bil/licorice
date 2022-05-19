@@ -1,28 +1,22 @@
-#Flush udp buffer before we begin reading the data
-def flush_udp():
-	print("Inside udp flush")
-	old_data = np.zeros(shape = (1,PACKET_SIZE), dtype = np.uint8)
-	s.setblocking(0)
-	bytes_recv = 1
-	while bytes_recv > 0:
-		try:
-			print("clearing buffer\n")
-			bytes_recv, addr = s.recvfrom_into(old_data,PACKET_SIZE)
-		except socket.error as err:
-			return
+import posix_ipc
+import numpy as np
+import SharedArray
+import time
 
-# Set up the udp connection (identifies interface and port number to connect to)
-UDP_ADDR = 'localhost'
-UDP_PORT = 51002
+shm_name_src = 'io.udp_source'
+shm_size_src = 4+1
+# udp_shm_src = SharedArray.create(shm_name_src, shm_size_src)
+udp_source_raw = SharedArray.attach(shm_name_src, shm_size_src)
 
-#TODO: Do error checking here about connecting to the socket/if it succeeds
-#TODO: check for dropped packets
-#soccket must be names as s
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.bind((UDP_ADDR, UDP_PORT))
+sem_name_src = "udp_source.sem"
+sem_src = posix_ipc.Semaphore(sem_name_src, posix_ipc.O_CREX)
+sem_src.release() # first uptick to make the semaphore usable
 
-#clear udp kerel buffer of old_data
-flush_udp()
+udp_source = np.zeros((shm_size_src-1,1))
 
-#set socket back to blocking
-s.setblocking(1)
+# UDP_ADDR = 'localhost'
+# UDP_PORT = 51002
+
+k = 1
+
+# cdef int udp_num_packets_i = 1
