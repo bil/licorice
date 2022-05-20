@@ -94,18 +94,19 @@ def __get_licorice_paths():
 
 
 def __execute_iterable_output(cmd, **kwargs):
-    popen = subprocess.Popen(
+    process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         universal_newlines=True,
         shell=True,
         bufsize=1,
         **kwargs,
     )
-    for stdout_line in iter(popen.stdout.readline, ""):
+    for stdout_line in iter(process.stdout.readline, ""):
         yield stdout_line
-    popen.stdout.close()
-    return_code = popen.wait()
+    process.stdout.close()
+    return_code = process.wait()
     if return_code:
         raise subprocess.CalledProcessError(return_code, cmd)
 

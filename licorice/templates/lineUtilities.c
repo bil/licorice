@@ -10,7 +10,7 @@
 
 static unsigned int NPERIODS = 2;
 static unsigned int buffer_time = 0;       /* ring buffer length in us */
-static unsigned int period_time = 50000;       /* period time in us */
+static unsigned int period_time = 5000;       /* period time in us */
 
 static snd_pcm_sframes_t buffer_size;
 static snd_pcm_sframes_t period_size;
@@ -201,9 +201,14 @@ int pcm_init_playback(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pc
   }
 }
 
-void pcm_close(snd_pcm_t *handle) {
+void pcm_close(snd_pcm_t *handle, int exitStatus) {
   int err;
-  err = snd_pcm_drain(handle);
+  if (exitStatus) {
+    err = snd_pcm_drop(handle);
+  }
+  else {
+    err = snd_pcm_drain(handle);
+  }
   if (err < 0) printf("snd_pcm_drain failed: %s\n", snd_strerror(err));    
   snd_pcm_close(handle);
 }

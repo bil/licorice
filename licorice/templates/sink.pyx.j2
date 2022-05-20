@@ -99,18 +99,17 @@ cdef extern from "<alsa/asoundlib.h>" nogil:
   ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t
   ctypedef unsigned long snd_pcm_uframes_t
   ctypedef long snd_pcm_sframes_t
-  int snd_pcm_prepare(snd_pcm_t* pcm) 
-  snd_pcm_sframes_t snd_pcm_writei(snd_pcm_t *pcm, const void *buffer, snd_pcm_uframes_t size) 
-  int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
-  const char * snd_strerror (int errnum)
-  snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
   void snd_pcm_hw_params_alloca(void *ptr)
-  void snd_pcm_sw_params_alloca(void *ptr)
-  int snd_pcm_state(snd_pcm_t *pcm)   
+  void snd_pcm_sw_params_alloca(void *ptr)   
+  snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
+  const char * snd_strerror (int errnum)
+  int snd_pcm_prepare(snd_pcm_t* pcm) 
+  int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
+  snd_pcm_sframes_t snd_pcm_writei(snd_pcm_t *pcm, const void *buffer, snd_pcm_uframes_t size) 
 
 cdef extern from "lineUtilities.h" nogil:
   int pcm_init_playback(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams)
-  void pcm_close(snd_pcm_t *handle)
+  void pcm_close(snd_pcm_t *handle, int exitStatus)
   int pcm_write_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr)
   snd_pcm_sframes_t pcm_get_period_size_bytes()
 
@@ -312,9 +311,8 @@ cdef ssize_t linePeriodSizeBytes
 cdef snd_pcm_uframes_t linePeriodSizeFrames
 cdef ssize_t lineOutBufSize
 cdef long int lineBytesWrapped
-cdef int ret
-cdef int rc
 # threading variables
+cdef int rc
 cdef pthread_t tid
 cdef sem_t lineSem
 cdef bool shouldDie = False
@@ -416,7 +414,7 @@ cdef size_t outBufLen
 
 cdef void handle_exit(int exitStatus):
   global retVal, tid, radio, context, s, shm_size, pmem
-{%- if sig_type == 'disk' %}
+{%- if sig_type in ['disk', 'line'] %}
   global shouldDie
 {%- endif %}
 
@@ -436,7 +434,7 @@ cdef void handle_exit(int exitStatus):
   pthread_join(tid, &retVal)
   free(pLineOutBuf)
   sem_destroy(&lineSem)
-  pcm_close(play_handle)
+  pcm_close(play_handle, exitStatus)
 {%- elif sig_type == 'disk' %}
   shouldDie = True
   #pthread_join(tid, &retVal)

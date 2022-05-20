@@ -15,12 +15,12 @@ timer: timer.c utilityFunctions.c
 
 {% for source in source_names -%}
 {% if source_types[loop.index0] == 'python' -%}
-{{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c # lineUtilities.c
+{{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} # lineUtilities.c
 	cython --embed -3 -o {{source}}.c {{source}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(CYLDFLAGS) # remove not a line source
+	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{source}} $(CYLDFLAGS) # remove not a line source
 {% else -%}
 {{source}}: {{source}}.c sourceUtils.c utilityFunctions.c
-	$(CC) $(CFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c -o {{source}} $(LDFLAGS)
+	$(CC) $(CFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{source}} $(LDFLAGS)
 {% endif -%}
 {%- endfor -%}
 

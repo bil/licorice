@@ -350,6 +350,7 @@ def parse(paths, config, confirm):
         signal_args["tick_numel"] = np.prod(
             np.array(literal_eval(str(signal_args["shape"])))
         )
+        print(signal_args["buf_tot_numel"])
         signal_args["dtype_msgpack"] = fix_dtype_msgpack(signal_args["dtype"])
     for module_name, module_args in iter(modules.items()):
         ext_sig = None
@@ -393,7 +394,6 @@ def parse(paths, config, confirm):
     dependency_graph = {}
     in_signals = {}
     out_signals = {}
-    line_source_exists = 0
     num_threaded_sinks = 0
 
     ################################################
@@ -416,8 +416,18 @@ def parse(paths, config, confirm):
             and module_args["in"]["name"] in external_signals
         ):
             ################################################
-            if module_args["in"]["realTime"]:
-                # real time source
+            if module_args.get("real_time") and not module_args["real_time"]:
+                # non-realtime source
+                ################################################
+                in_sig_name = module_args["in"]["name"]
+                non_real_time_source_names.append(module_name)
+                assert "type" in signals[in_sig_name]["args"]
+                non_real_time_source_signals[in_sig_name] = signals[
+                    in_sig_name
+                ]
+                num_non_real_time_sources = num_non_real_time_sources + 1
+                ################################################
+            else:
                 source_names.append(module_name)
                 for sig in module_args["out"]:
                     source_outputs[sig] = 0
@@ -441,16 +451,6 @@ def parse(paths, config, confirm):
                         ]
                 if out_sig_schema_num > 0:
                     assert out_sig_schema_num == len(list(out_signals))
-            else:  # Non real time source
-                ################################################
-                in_sig_name = module_args["in"]["name"]
-                non_real_time_source_names.append(module_name)
-                assert "type" in signals[in_sig_name]["args"]
-                non_real_time_source_signals[in_sig_name] = signals[
-                    in_sig_name
-                ]
-                num_non_real_time_sources = num_non_real_time_sources + 1
-            ################################################
 
         elif (
             "out" in module_args
@@ -576,14 +576,6 @@ def parse(paths, config, confirm):
                 else None
             )
 
-            if in_signal["args"]["type"] == "line":
-                print("Line input not supported")
-                exit()
-                line_source_exists = 1
-                in_signal["schema"] = {}
-                in_signal["schema"]["data"] = {}
-                in_signal["schema"]["data"]["dtype"] = "uint16"
-
             in_dtype = in_signal["schema"]["data"]["dtype"]
             in_dtype = fix_dtype(in_dtype)
             out_sig_types = {}
@@ -639,7 +631,7 @@ def parse(paths, config, confirm):
                     destruct_code = f.read()
                     destruct_code = destruct_code.replace("\n", "\n  ")
 
-            # if module_args['in']['realTime']:
+            # if module_args['in']['real_time']:
             do_jinja(
                 os.path.join(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
@@ -667,6 +659,7 @@ def parse(paths, config, confirm):
                 in_dtype=in_dtype,
                 sig_types=out_sig_types,
                 buf_vars_len=BUF_VARS_LEN,
+                py_maj_version=sys.version_info[0],
             )
         ################################################
         elif name in non_real_time_source_names:  # Non-Real Time Source
@@ -677,13 +670,16 @@ def parse(paths, config, confirm):
 
             has_parser = "parser" in module_args and module_args["parser"]
 
+            # TODO update list of supported source (and sink) types
+            supported_source_types = ["line"]
+
             parser_code = ""
             if has_parser:
                 if module_args["parser"] == True:
                     module_args["parser"] = name + "_parser"
                 else:
                     exit(
-                        "Must specifying a parser for non-real-time source {0}".format(
+                        "Must specify a parser for non-real-time source {0}".format(
                             name
                         )
                     )
@@ -697,11 +693,15 @@ def parse(paths, config, confirm):
                     parser_code = f.read()
                     # parser_code = parser_code.replace("\n", "\n  ")
             else:
-                exit(
-                    "Must specifying a parser for non-real-time source {0}".format(
-                        name
+                if (
+                    module_args["in"]["args"]["type"]
+                    not in supported_source_types
+                ):
+                    exit(
+                        "Must specify a parser for non-real-time source {0}".format(
+                            name
+                        )
                     )
-                )
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
@@ -709,7 +709,7 @@ def parse(paths, config, confirm):
                     module_args["constructor"] = name + "_constructor"
                 else:
                     exit(
-                        "Must specifying a constructor for non-real-time source {0}".format(
+                        "Must specify a constructor for non-real-time source {0}".format(
                             name
                         )
                     )
@@ -722,12 +722,6 @@ def parse(paths, config, confirm):
                     "r",
                 ) as f:
                     construct_code = f.read()
-            else:
-                exit(
-                    "Must specifying a constructor for non-real-time source {0}".format(
-                        name
-                    )
-                )
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
@@ -735,7 +729,7 @@ def parse(paths, config, confirm):
                     module_args["destructor"] = name + "_destructor"
                 else:
                     exit(
-                        "Must specifying a destructor for non-real-time source {0}".format(
+                        "Must specify a destructor for non-real-time source {0}".format(
                             name
                         )
                     )
@@ -749,12 +743,6 @@ def parse(paths, config, confirm):
                 ) as f:
                     destruct_code = f.read()
                     destruct_code = destruct_code.replace("\n", "\n  ")
-            else:
-                exit(
-                    "Must specifying a destructor for non-real-time source {0}".format(
-                        name
-                    )
-                )
 
             in_signal = signals[module_args["in"]["name"]]
             do_jinja(
@@ -963,7 +951,7 @@ def parse(paths, config, confirm):
                 parser_code=parser_code,
                 construct_code=construct_code,
                 destruct_code=destruct_code,
-                in_signal_name= None if has_parser else list(in_signals)[0],
+                in_signal_name=None if has_parser else list(in_signals)[0],
                 in_signals=in_signals,
                 msgpack_sigs=msgpack_sigs,
                 raw_vec_sigs=raw_vec_sigs,
@@ -1190,9 +1178,11 @@ def parse(paths, config, confirm):
     # parse Makefile
     py_paths = get_paths()
     py_conf_str = f"{get_config_var('BINDIR')}/python3-config"
-    py_link_flags = subprocess.check_output(
-        [py_conf_str, "--embed", "--ldflags"]
-    ).decode("utf-8").strip()
+    py_link_flags = (
+        subprocess.check_output([py_conf_str, "--embed", "--ldflags"])
+        .decode("utf-8")
+        .strip()
+    )
 
     extra_incl = ""
     if platform.system() == "Linux":
@@ -1222,7 +1212,7 @@ def parse(paths, config, confirm):
     if not config["config"].get("num_ticks"):
         config["config"]["num_ticks"] = -1
     if not config["config"].get("tick_size"):
-        config["config"]["tick_size"] = 1000    
+        config["config"]["tick_size"] = 1000
     parport_tick_addr = None
     if "config" in config and "parport_tick_addr" in config["config"]:
         parport_tick_addr = config["config"]["parport_tick_addr"]
@@ -1271,9 +1261,7 @@ def parse(paths, config, confirm):
         num_ticks=config["config"]["num_ticks"],
         tick_size_us=config["config"]["tick_size"] % 1000000,
         tick_size_s=config["config"]["tick_size"] // 1000000,
-        init_buffer_ticks=(
-            (config["config"].get("init_buffer_ticks")) or (50 if line_source_exists else 100)
-        ),
+        init_buffer_ticks=((config["config"].get("init_buffer_ticks")) or 100),
         num_sem_sigs=num_sem_sigs,
         num_non_sources=len(non_source_names),
         num_internal_sigs=len(internal_signals),
