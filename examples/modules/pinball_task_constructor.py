@@ -2,17 +2,18 @@
 # currently implemented as internals, but will be exposed as constants infrastructure later
 
 task_states = {
-        'begin'     : 1,
-        'active'    : 2,
-        'hold'      : 3,
-        'success'   : 4,
-        'fail'      : 5,
-        'end'       : 6 }
+    "begin": 1,
+    "active": 2,
+    "hold": 3,
+    "success": 4,
+    "fail": 5,
+    "end": 6,
+}
 
 black = [0, 0, 0]
 green = [0, 255, 0]
-red   = [255, 0, 0]
-blue  = [0, 0, 255]
+red = [255, 0, 0]
+blue = [0, 0, 255]
 white = [255, 255, 255]
 light_blue = [150, 200, 255]
 
@@ -33,14 +34,18 @@ size_target_i = int(50)
 color_cursor_i = white
 color_target_i = green
 
-def is_cursor_on_target(cursor, target, window) :
-    return ( (cursor[0] - target[0])**2 + (cursor[1] - target[1])**2 )**(0.5) <= window
 
-def gen_new_target() :
+def is_cursor_on_target(cursor, target, window):
+    return ((cursor[0] - target[0]) ** 2 + (cursor[1] - target[1]) ** 2) ** (
+        0.5
+    ) <= window
+
+
+def gen_new_target():
 
     pos_max = 1000
 
-    return [ int(np.random.rand() * pos_max), int(np.random.rand() * pos_max) ]
+    return [int(np.random.rand() * pos_max), int(np.random.rand() * pos_max)]
 
 
 # PARAMS

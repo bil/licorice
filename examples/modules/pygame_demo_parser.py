@@ -1,8 +1,11 @@
 if not pNumTicks[0] % refresh_rate:
 
-    theta += math.pi/64
+    theta += math.pi / 64
 
-    pos = (r * math.cos(theta) + offset[0], r * math.sin(2*theta) + offset[1])
+    pos = (
+        r * math.cos(theta) + offset[0],
+        r * math.sin(2 * theta) + offset[1],
+    )
     cir1.set_pos(pos)
 
     screen.fill(black)

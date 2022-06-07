@@ -109,19 +109,13 @@ if enable_pitch_shift:
 # lowpass
 if enable_lowpass:
     res, low_z = signal.lfilter(
-        low_filter_params[0],
-        low_filter_params[1],
-        res,
-        zi=low_z
+        low_filter_params[0], low_filter_params[1], res, zi=low_z
     )
 
 # highpass
 if enable_highpass:
     res, high_z = signal.lfilter(
-        high_filter_params[0],
-        high_filter_params[1],
-        res,
-        zi=high_z
+        high_filter_params[0], high_filter_params[1], res, zi=high_z
     )
 
 # channel select

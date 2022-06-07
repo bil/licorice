@@ -34,8 +34,8 @@ def createTables(cur, table):
         if dir_name is "yaml":
             contents = yaml.safe_load(file(file_path))
         else:
-          f = open(file_path, "r")
-          contents = f.read()
+            f = open(file_path, "r")
+            contents = f.read()
         packed_contents = msgpack.packb(contents)
         # insert into database
         cur.execute(

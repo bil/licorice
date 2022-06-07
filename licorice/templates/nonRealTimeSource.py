@@ -1,9 +1,11 @@
-import socket 
+import asyncio
+import socket
+import time
+
 import numpy as np
 import posix_ipc
 import SharedArray
-import time
-import asyncio
+
 # # udpLen = SharedArray.create(SA_PATH_LEN, shape = 12, dtype = np.uint8)
 # # udpRaw = SharedArray.create(SA_PATH, shape = (6, 1472), dtype = np.uint8) #12 = 2*6 where 6 is the max number of ticks per ms
 # # print("Created udpRaw\n")
@@ -16,7 +18,7 @@ import asyncio
 # # sem.release()
 
 # # Set up the udp connection
-UDP_ADDR = '127.0.0.1'
+UDP_ADDR = "127.0.0.1"
 UDP_PORT = 51002
 
 
@@ -24,7 +26,7 @@ UDP_PORT = 51002
 # s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # s.bind((UDP_ADDR, UDP_PORT))
 
-# # PACKET_SIZE = 1472 
+# # PACKET_SIZE = 1472
 # # k = -1
 
 # #clear udp kerel buffer of old_data
@@ -33,11 +35,11 @@ UDP_PORT = 51002
 # #set socket back to blocking
 # s.setblocking(1)
 
-#signal to parent that setup is done
+# signal to parent that setup is done
 os.kill(os.getppid(), signal.SIGUSR2)
 
-#debugging file
-f = open('udpDataTemp', 'w+b')
+# debugging file
+f = open("udpDataTemp", "w+b")
 
 # k = 0
 
@@ -82,7 +84,7 @@ f = open('udpDataTemp', 'w+b')
 #         sem.acquire()
 #         udp_packet_valid[0] = 1
 
-#         udp_source_raw[k][0] = nbytes 
+#         udp_source_raw[k][0] = nbytes
 #         udp_source_raw[k][1:1+MESSAGE_SIZE] = buf[k][0:MESSAGE_SIZE]
 #         buf[0:MESSAGE_SIZE] = np.zeros(shape=(1, MESSAGE_SIZE), dtype = np.uint8)
 #         print(udp_source_raw)
@@ -95,49 +97,56 @@ f = open('udpDataTemp', 'w+b')
 
 # s.close()#?DO I NEED THIS?
 
+
 def getipAddr():
-    return netifaces.ifaddresses('enp7s1')[netifaces.AF_INET][0]['addr']
+    return netifaces.ifaddresses("enp7s1")[netifaces.AF_INET][0]["addr"]
+
 
 def getPort():
     return socket.htons(51002)
 
+
 def killHandler(signum, frame):
     print("Inside Sigterm handler for non real time sources.\n")
-    sem.unlink()    
+    sem.unlink()
     # SharedArray.delete(SA_PATH)
     # SharedArray.delete(SA_PATH_LEN)
     f.close()
     s.close()
     exit(0)
 
-#Set up signal handlers 
+
+# Set up signal handlers
 signal.signal(signal.SIGTERM, killHandler)
 
-#Set up Shared Array Path and Semaphore path
-MAX_NUM_PACKETS_PER_MS = 1, 
-SHM_NAME="shm://io.udp_data", 
-MAX_MESSAGE_SIZE=10, 
-NUM_PACKETS = 1,
-SEM_NAME = "shm://udp_data.sem",
+# Set up Shared Array Path and Semaphore path
+MAX_NUM_PACKETS_PER_MS = (1,)
+SHM_NAME = ("shm://io.udp_data",)
+MAX_MESSAGE_SIZE = (10,)
+NUM_PACKETS = (1,)
+SEM_NAME = ("shm://udp_data.sem",)
 valid_name = "shm://io.udp_valid"
 
-#Delete shared memory arrays if they already exist
+# Delete shared memory arrays if they already exist
 created_mem = SharedArray.list()
-if any(['io.udp_data' == x[0] for x in created_mem]):
+if any(["io.udp_data" == x[0] for x in created_mem]):
     SharedArray.delete("io.udp_data")
-    if any(['udp_data.sem' == x[0] for x in created_mem]):
+if any(["udp_data.sem" == x[0] for x in created_mem]):
     SharedArray.delete("udp_data.sem")
-if any(['io.udp_valid' == x[0] for x in created_mem]):
+if any(["io.udp_valid" == x[0] for x in created_mem]):
     SharedArray.delete("io.udp_valid")
 
+
 class EchoServerProtocol:
-    def __init__(self, 
-            MAX_NUM_PACKETS_PER_MS = 1, 
-            SHM_NAME="shm://io.udp_data", 
-            MAX_MESSAGE_SIZE=10, 
-            NUM_PACKETS = 1,
-            SEM_NAME = "shm://udp_data.sem",
-            valid_name = "shm://io.udp_valid"):
+    def __init__(
+        self,
+        MAX_NUM_PACKETS_PER_MS=1,
+        SHM_NAME="shm://io.udp_data",
+        MAX_MESSAGE_SIZE=10,
+        NUM_PACKETS=1,
+        SEM_NAME="shm://udp_data.sem",
+        valid_name="shm://io.udp_valid",
+    ):
         # super().__init()
         self.MAX_NUM_PACKETS_PER_MS = MAX_NUM_PACKETS_PER_MS
 
@@ -146,8 +155,8 @@ class EchoServerProtocol:
         self.MESSAGE_SIZE = self.MAX_MESSAGE_SIZE = MAX_MESSAGE_SIZE
         self.NUM_PACKETS = NUM_PACKETS
         self.shm_size_src = MAX_MESSAGE_SIZE + 1
-                SHM_SIZE = (NUM_PACKETS, MESSAGE_SIZE + 1)
-                self.udp_source_raw = SharedArray.attach(SHM_NAME)
+        SHM_SIZE = (NUM_PACKETS, MESSAGE_SIZE + 1)
+        self.udp_source_raw = SharedArray.attach(SHM_NAME)
 
         # Bind to semaphore
         self.SEM_NAME = SEM_NAME
@@ -170,13 +179,15 @@ class EchoServerProtocol:
         nbytes = len(message)
         if nbytes > 1:
             messageInt = np.array([ord(c) for c in message])
-            print('Received %r of length %d from %s' % (message, nbytes, addr))
+            print("Received %r of length %d from %s" % (message, nbytes, addr))
             self.sem.acquire()
             self.udp_packet_valid[0] = 1
-            self.udp_source_raw[self.k][0] = nbytes 
+            self.udp_source_raw[self.k][0] = nbytes
             messageLength = min(self.MESSAGE_SIZE, nbytes)
             # print(50, messageLength, messageInt, messageInt.shape, self.udp_source_raw[self.k, 1:1+messageLength].shape)
-            self.udp_source_raw[self.k][1:1+messageLength] = messageInt[0:min(self.MESSAGE_SIZE, nbytes)]
+            self.udp_source_raw[self.k][1 : 1 + messageLength] = messageInt[
+                0 : min(self.MESSAGE_SIZE, nbytes)
+            ]
             # print("".join([chr(int(x)) for x in self.udp_source_raw[self.k][1:min(1+self.MESSAGE_SIZE, 1 + nbytes)]]))
             # print(self.udp_source_raw)
             self.sem.release()
@@ -188,6 +199,7 @@ class EchoServerProtocol:
         # print('Send %r to %s' % (message, addr))
         self.transport.sendto(data, addr)
 
+
 print("Starting UDP server")
 
 # Get a reference to the event loop as we plan to use
@@ -196,7 +208,8 @@ loop = asyncio.get_event_loop()
 
 # One protocol instance will be created to serve all client requests
 listen = loop.create_datagram_endpoint(
-    EchoServerProtocol, local_addr=('127.0.0.1', 51002))
+    EchoServerProtocol, local_addr=("127.0.0.1", 51002)
+)
 transport, protocol = loop.run_until_complete(listen)
 
 try:
@@ -213,7 +226,7 @@ loop.close()
 # transport, protocol = await loop.create_datagram_endpoint(
 #     lambda: EchoServerProtocol(),
 #     local_addr=('127.0.0.1', 51002))
-        
+
 
 # try:
 #     await asyncio.sleep(3600)  # Serve for 1 hour.

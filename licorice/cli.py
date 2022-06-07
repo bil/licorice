@@ -32,7 +32,8 @@ def __load_and_validate_model(file):
 
     if not filepath:
         raise ValueError(
-            f"Could not locate model file: {file}. Specify a full path or set LICORICE_WORKING_DIR and/or other env vars."
+            f"Could not locate model file: {file}. Specify a full path "
+            " or set LICORICE_WORKING_DIR and/or other env vars."
         )
 
     # load model
@@ -42,11 +43,11 @@ def __load_and_validate_model(file):
         except yaml.YAMLError as exc:
             print(exc)
 
-    # this assumes that a top level object with three primary mappings is loaded
-    # the only three mappings should be: config, signals, and modules
-    # later versions should throw an error if this is not true
-    # Relevant note: this entire parser is dangerous and does not have any safety checks
-    #    it will break badly for malformed yaml data
+    # This assumes that a top level object with three primary mappings is
+    # loaded the only three mappings should be: config, signals, and modules
+    # Later versions should throw an error if this is not true.
+    # Relevant note: this entire parser is dangerous and does not have any
+    # safety checks. It will break badly for malformed yaml data.
     top_level = ["config", "modules", "signals"]
     if not set(model.keys()).issubset(set(top_level)):
         raise RuntimeError("Invalid model definition.")
@@ -69,7 +70,8 @@ def __get_licorice_paths():
     if not licorice_working_dir:
         licorice_working_dir = os.getcwd()
         warn(
-            "LICORICE_WORKING_DIR env var not set. Using pwd as working directory.",
+            "LICORICE_WORKING_DIR env var not set. "
+            "Using pwd as working directory.",
             RuntimeWarning,
         )
 

@@ -4,10 +4,11 @@
 #
 #    pip-compile ./install/requirements.in
 #
+--no-binary numpy
+--no-binary scipy
+
 altgraph==0.17.2
     # via pyinstaller
-argparse==1.4.0
-    # via -r ./install/requirements.in
 black==22.3.0
     # via -r ./install/requirements.in
 bleach==5.0.0

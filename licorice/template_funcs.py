@@ -1,6 +1,5 @@
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -58,6 +57,7 @@ OUTPUT_CONSTANTS = "constants.h"
 BUF_VARS_LEN = 16
 HISTORY_PAD_LENGTH = 4999
 
+
 # change dtype to C format
 def fix_dtype(dtype):
     if "int" in dtype:
@@ -101,9 +101,10 @@ def generate(paths, config, confirm):
                     break
                 elif choice == "n":
                     print(
-                        "Could not complete generation. Backup old modules if necessary and try again."
+                        "Could not complete generation. "
+                        "Backup old modules if necessary and try again."
                     )
-                    exit()
+                    sys.exit()
                 else:
                     print("Please respond with 'y' or 'n'.")
         if os.path.exists(paths["tmp_modules"]):
@@ -154,7 +155,7 @@ def generate(paths, config, confirm):
 
             # generate source parser template
             if "parser" in module_args and module_args["parser"]:
-                if module_args["parser"] == True:
+                if module_args["parser"] is True:
                     module_args["parser"] = module_name + "_parser"
                 print("   - " + module_args["parser"] + " (parser)")
                 do_jinja(
@@ -166,7 +167,7 @@ def generate(paths, config, confirm):
 
             # generate source constructor template
             if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] == True:
+                if module_args["constructor"] is True:
                     module_args["constructor"] = module_name + "_constructor"
                 print("   - " + module_args["constructor"] + " (constructor)")
                 do_jinja(
@@ -179,7 +180,7 @@ def generate(paths, config, confirm):
 
             # generate source destructor template
             if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] == True:
+                if module_args["destructor"] is True:
                     module_args["destructor"] = module_name + "_destructor"
                 print("   - " + module_args["destructor"] + " (destructor)")
                 do_jinja(
@@ -205,7 +206,7 @@ def generate(paths, config, confirm):
                 extension = ".c"
 
             if "parser" in module_args and module_args["parser"]:
-                if module_args["parser"] == True:
+                if module_args["parser"] is True:
                     module_args["parser"] = module_name + "_parser"
                 print("   - " + module_args["parser"] + " (parser)")
                 do_jinja(
@@ -216,7 +217,7 @@ def generate(paths, config, confirm):
                 )
 
             if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] == True:
+                if module_args["constructor"] is True:
                     module_args["constructor"] = module_name + "_constructor"
                 print("   - " + module_args["constructor"] + " (constructor)")
                 do_jinja(
@@ -228,7 +229,7 @@ def generate(paths, config, confirm):
                 )
 
             if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] == True:
+                if module_args["destructor"] is True:
                     module_args["destructor"] = module_name + "_destructor"
                 print("   - " + module_args["destructor"] + " (destructor)")
                 do_jinja(
@@ -250,7 +251,7 @@ def generate(paths, config, confirm):
             )
 
             if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] == True:
+                if module_args["constructor"] is True:
                     module_args["constructor"] = module_name + "_constructor"
                 print("   - " + module_args["constructor"] + " (constructor)")
                 do_jinja(
@@ -262,7 +263,7 @@ def generate(paths, config, confirm):
                 )
 
             if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] == True:
+                if module_args["destructor"] is True:
                     module_args["destructor"] = module_name + "_destructor"
                 print("   - " + module_args["destructor"] + " (destructor)")
                 do_jinja(
@@ -296,14 +297,14 @@ def parse(paths, config, confirm):
         if confirm:
             while True:
                 sys.stdout.write("Ok to remove old output directory? ")
-                choice = raw_input().lower()
+                choice = input().lower()
                 if choice == "y":
                     break
                 elif choice == "n":
-                    print(
-                        "Could not complete parsing. Backup old output directory if necessary and try again."
+                    sys.exit(
+                        "Could not complete parsing. Backup old output "
+                        "directory if necessary and try again."
                     )
-                    exit()
                 else:
                     print("Please respond with 'y' or 'n'.")
             print()
@@ -336,13 +337,13 @@ def parse(paths, config, confirm):
         if signal_args["sig_shape"] == "":
             signal_args["sig_shape"] = str(signal_args["shape"]) + ")"
 
-        if not "history" in signal_args:
+        if "history" not in signal_args:
             signal_args["history"] = 1
         signal_history = signal_args["history"]
 
         signal_args["sig_shape"] = (
-            "({0},".format(signal_history + HISTORY_PAD_LENGTH)
-            + signal_args["sig_shape"]
+            f"({signal_history + HISTORY_PAD_LENGTH},"
+            f"{signal_args['sig_shape']}"
         )
         signal_args["buf_tot_numel"] = np.prod(
             np.array(literal_eval(str(signal_args["sig_shape"])))
@@ -360,9 +361,12 @@ def parse(paths, config, confirm):
         ):
             ext_sig = module_args["in"]
 
-            # need 4 times the average per-tick # of bytes since need double packets_per_tick in the
-            # worst case and two full tick lengths to avoid overlap in wrap. 2 would also likely work, but 4 is very safe
-            # TODO, maybe packets_per_tick should default to 1 for some inputs? e.g., default, joystick, parport?
+            # need 4 times the average per-tick # of bytes since need double
+            # packets_per_tick in the worst case and two full tick lengths to
+            # avoid overlap in wrap. 2 would also likely work, but 4 is very
+            # safe
+            # TODO, maybe packets_per_tick should default to 1 for some inputs?
+            # e.g., default, joystick, parport?
             ext_sig["schema"]["buf_tot_numel"] = (
                 4
                 * int(ext_sig["schema"]["packets_per_tick"])
@@ -404,7 +408,6 @@ def parse(paths, config, confirm):
     all_names = list(modules)
     assert len(all_names) == len(set(all_names))
 
-    logger_defined = False
     logger_database_filename = ""
     compile_for_line = False
     for module_name, module_args in iter(modules.items()):
@@ -464,7 +467,6 @@ def parse(paths, config, confirm):
             if out_signals[out_sig_name] in ["line", "disk"]:
                 num_threaded_sinks += 1
             if out_signals[out_sig_name] in ["disk"]:
-                logger_defined = True
                 logger_database_filename = signals[out_sig_name]["args"][
                     "save_file"
                 ]
@@ -472,9 +474,9 @@ def parse(paths, config, confirm):
                 compile_for_line = True
         else:
             # module
-            if not "in" in module_args or not module_args["in"]:
+            if "in" not in module_args or not module_args["in"]:
                 module_args["in"] = []
-            if not "out" in module_args or not module_args["out"]:
+            if "out" not in module_args or not module_args["out"]:
                 module_args["out"] = []
             if not isinstance(module_args["in"], list):
                 module_args["in"] = [module_args["in"]]
@@ -486,7 +488,7 @@ def parse(paths, config, confirm):
     for sig_name in internal_signals:
         if (
             sig_name not in list(source_outputs)
-            and not sig_name in sig_sem_dict
+            and sig_name not in sig_sem_dict
         ):
             sig_sem_dict[sig_name] = sem_location
             sem_location += 1
@@ -514,7 +516,8 @@ def parse(paths, config, confirm):
     topo_children = list(map(list, list(toposort(dependency_graph))))
     topo_widths = list(
         map(len, topo_children)
-    )  # TODO, maybe give warning if too many children on one core? Replaces MAX_NUM_ROUNDS assertion
+    )  # TODO, maybe give warning if too many children on one core? Replaces
+    # MAX_NUM_ROUNDS assertion
     topo_height = len(topo_children)
     topo_max_width = 0 if len(topo_widths) == 0 else max(topo_widths)
     num_cores_used = (
@@ -528,7 +531,8 @@ def parse(paths, config, confirm):
 
     if num_cores_used > num_cores_avail:
         warnings.warn(
-            "WARNING: Computer running LiCoRICE may not have sufficient cores to execute this model successfully."
+            "WARNING: Computer running LiCoRICE may not have sufficient cores "
+            "to execute this model successfully."
         )
 
     # print("system input and output signals")
@@ -592,7 +596,7 @@ def parse(paths, config, confirm):
 
             parser_code = ""
             if has_parser:
-                if module_args["parser"] == True:
+                if module_args["parser"] is True:
                     module_args["parser"] = name + "_parser"
                 with open(
                     os.path.join(
@@ -605,7 +609,7 @@ def parse(paths, config, confirm):
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] == True:
+                if module_args["constructor"] is True:
                     module_args["constructor"] = name + "_constructor"
                 with open(
                     os.path.join(
@@ -618,7 +622,7 @@ def parse(paths, config, confirm):
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] == True:
+                if module_args["destructor"] is True:
                     module_args["destructor"] = name + "_destructor"
                 with open(
                     os.path.join(
@@ -674,13 +678,12 @@ def parse(paths, config, confirm):
 
             parser_code = ""
             if has_parser:
-                if module_args["parser"] == True:
+                if module_args["parser"] is True:
                     module_args["parser"] = name + "_parser"
                 else:
-                    exit(
-                        "Must specify a parser for non-real-time source {0}".format(
-                            name
-                        )
+                    sys.exit(
+                        "Must specify a parser for non-real-time source "
+                        f"{name}."
                     )
 
                 with open(
@@ -696,21 +699,19 @@ def parse(paths, config, confirm):
                     module_args["in"]["args"]["type"]
                     not in supported_source_types
                 ):
-                    exit(
-                        "Must specify a parser for non-real-time source {0}".format(
-                            name
-                        )
+                    sys.exit(
+                        "Must specify a parser for non-real-time source "
+                        f"{name},"
                     )
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] == True:
+                if module_args["constructor"] is True:
                     module_args["constructor"] = name + "_constructor"
                 else:
-                    exit(
-                        "Must specify a constructor for non-real-time source {0}".format(
-                            name
-                        )
+                    sys.exit(
+                        "Must specify a constructor for non-real-time source "
+                        f"{name}."
                     )
 
                 with open(
@@ -724,13 +725,12 @@ def parse(paths, config, confirm):
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] == True:
+                if module_args["destructor"] is True:
                     module_args["destructor"] = name + "_destructor"
                 else:
-                    exit(
-                        "Must specify a destructor for non-real-time source {0}".format(
-                            name
-                        )
+                    sys.exit(
+                        "Must specify a destructor for non-real-time source "
+                        f"{name}."
                     )
 
                 with open(
@@ -784,7 +784,6 @@ def parse(paths, config, confirm):
             has_parser = "parser" in module_args and module_args["parser"]
             if (not has_parser) and (out_signal["args"]["type"] != "disk"):
                 assert len(in_signals) == 1
-            # buffer_parser = has_parser and out_signal['args']['type'] != 'vis_pygame'
 
             module_depends_on = []
             for sig, args in iter(in_signals.items()):
@@ -811,7 +810,7 @@ def parse(paths, config, confirm):
                 out_dtype = "uint8_t"
 
             parser_code = ""
-            if has_parser and (module_args["parser"] == True):
+            if has_parser and (module_args["parser"] is True):
                 module_args["parser"] = name + "_parser"
                 with open(
                     os.path.join(
@@ -824,7 +823,7 @@ def parse(paths, config, confirm):
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] == True:
+                if module_args["constructor"] is True:
                     module_args["constructor"] = name + "_constructor"
                 with open(
                     os.path.join(
@@ -837,7 +836,7 @@ def parse(paths, config, confirm):
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] == True:
+                if module_args["destructor"] is True:
                     module_args["destructor"] = name + "_destructor"
                 with open(
                     os.path.join(
@@ -849,12 +848,13 @@ def parse(paths, config, confirm):
                     destruct_code = f.read()
                     destruct_code = destruct_code.replace("\n", "\n  ")
 
-            # if logger, group signals in different data structs depending on storage type
+            # if logger, group signals in different data structs depending on
+            # storage type
             msgpack_sigs = []  # signals to be wrapped in msgpack
             raw_vec_sigs = {}  # map signal to number of columns it will use
             raw_vec_sigs[
                 "total"
-            ] = 0  # keep track of the total number of extra signal columns in db
+            ] = 0  # keep track of total number of extra signal columns in db
             raw_text_sigs = (
                 {}
             )  # int vector signals to be stored as text in SQL
@@ -866,17 +866,17 @@ def parse(paths, config, confirm):
 
                     # determine whether signal should be logged or not
                     log = False  # if no logging specified
-                    if ("log" in args and args["log"] == True) or (
+                    if ("log" in args and args["log"] is True) or (
                         "log_storage" in args
                         and (
                             "enable" not in args["log_storage"]
-                            or args["log_storage"]["enable"] == True
+                            or args["log_storage"]["enable"] is True
                         )
                     ):
                         log = True
 
-                    if log == True:
-                        # automatic determination of optimal signal storage type
+                    if log is True:
+                        # automatically determinae  optimal signal storage type
                         if "log_storage" not in args or (
                             args["log_storage"]["type"] == "auto"
                         ):
@@ -895,7 +895,7 @@ def parse(paths, config, confirm):
 
                         # assign specified storage
                         elif ("enable" not in args["log_storage"]) or (
-                            args["log_storage"]["enable"] == True
+                            args["log_storage"]["enable"] is True
                         ):
                             if args["log_storage"]["type"] == "msgpack":
                                 msgpack_sigs.append(sig)
@@ -908,7 +908,8 @@ def parse(paths, config, confirm):
                                         args["tick_numel"] - 1
                                     )  # only count *extra* columns
                                 elif args["log_storage"]["type"] == "text":
-                                    # determine number of bytes in one signal element
+                                    # determine number of bytes in one signal
+                                    # element
                                     shape = str(args["shape"])
                                     if "16" in shape:
                                         numBytes = 2
@@ -923,11 +924,9 @@ def parse(paths, config, confirm):
                                     raw_num_sigs.append(sig)
                             else:  # not 1D array, store as msgpack
                                 print(
-                                    "Signal shape for "
-                                    + sig
-                                    + " unsupported. Signal must be 1-dimensional array to be stored as "
-                                    + args["log_storage"]
-                                    + "."
+                                    f"Signal shape for {sig} unsupported. "
+                                    "Signal must be 1-dimensional array to be "
+                                    f"stored as {args['log_storage']}."
                                 )
                                 print(sig + " will be wrapped in msgpack.")
                                 msgpack_sigs.append(sig)
@@ -992,8 +991,6 @@ def parse(paths, config, confirm):
                     mod = modules[tmp_name]
                     for in_sig in mod["in"]:
                         if in_sig == out_sig:
-                            child_index = all_names.index(tmp_name)
-                            parent_index = all_names.index(name)
                             if in_sig in dependencies:
                                 dependencies[in_sig] += 1
                             else:
@@ -1041,7 +1038,7 @@ def parse(paths, config, confirm):
             file_path = os.path.join(paths["modules"], name + in_extension)
             if not name == "bufferer":
                 if not os.path.isfile(file_path):
-                    exit("Error: Module {0} file does not exist.".format(name))
+                    sys.exit(f"Error: Module {name} file does not exist.")
                 with open(file_path, "r") as f:
                     user_code = f.read()
                     # if module_language == 'python':
@@ -1050,32 +1047,30 @@ def parse(paths, config, confirm):
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] == True:
+                if module_args["constructor"] is True:
                     module_args["constructor"] = name + "_constructor"
                 file_path = os.path.join(
                     paths["modules"], module_args["constructor"] + in_extension
                 )
                 if not os.path.isfile(file_path):
-                    exit(
-                        "Error: Module {0} constructor file does not exist.".format(
-                            name
-                        )
+                    sys.exit(
+                        f"Error: Module {name} constructor "
+                        "file does not exist."
                     )
                 with open(file_path, "r") as f:
                     construct_code = f.read()
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] == True:
+                if module_args["destructor"] is True:
                     module_args["destructor"] = name + "_destructor"
                 file_path = os.path.join(
                     paths["modules"], module_args["destructor"] + in_extension
                 )
                 if not os.path.isfile(file_path):
-                    exit(
-                        "Error: Module {0} destructor file does not exist.".format(
-                            name
-                        )
+                    sys.exit(
+                        f"Error: Module {name} destructor"
+                        " file does not exist."
                     )
                 with open(file_path, "r") as f:
                     destruct_code = f.read()
@@ -1193,9 +1188,9 @@ def parse(paths, config, confirm):
         module_names=module_names,
         source_names=source_names,
         sink_names=sink_names,
-        #############################################################################
+        #######################################################################
         non_real_time_source_names=non_real_time_source_names,
-        #############################################################################
+        #######################################################################
         source_types=list(map(lambda x: modules[x]["language"], source_names)),
         extra_incl=extra_incl,
         numpy_incl=np.get_include(),

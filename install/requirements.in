@@ -2,7 +2,6 @@ cython
 numpy --no-binary numpy
 llvmlite
 scipy --no-binary scipy
-argparse
 cycler
 posix_ipc
 pyyaml
