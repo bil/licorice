@@ -1,0 +1,21 @@
+# pygame_test
+#
+# A model that performs a simple visualization test with the pygame backend
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+
+config:
+  tick_size: 10000
+
+modules:
+
+  # sinks
+  pygame_demo:
+    language: python
+    constructor: true
+    parser: true            # most "user code" will live here for a sink
+    destructor: true
+    out:
+      name: viz
+      args:
+        type: vis_pygame    # sink type for pygame

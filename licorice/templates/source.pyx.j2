@@ -330,12 +330,14 @@ cdef void handle_exit(int exitStatus):
   global num_packets
   {%- endif %}
   {{destruct_code}}
-  created_mem = sa.list()
 
 # delete the signal's shared memory array
-{%- for sig,args in (out_signals.items()) %}
-  if any([b'{{sig}}' == x[0] for x in created_mem]):
+  sa_names = [sig.name for sig in sa.list()]
+{%- for sig in (out_signals.keys()) %}
+  if b"{{sig}}" in sa_names:
     sa.delete("shm://{{sig}}")
+  else:
+    printf("Could not delete shared array {{sig}}.\n")
 {%- endfor %}
 
 {%- if sig_type == 'udp' %}
@@ -551,13 +553,9 @@ snd_pcm_sw_params_alloca(&cap_swparams)
 pcm_init_capture(&cap_handle, cap_hwparams, cap_swparams)
 sem_init(&lineSem, 0, 0)
 linePeriodSizeBytes = pcm_get_period_size_bytes()
-print("GOT HERE", flush=True)
 linePeriodSizeFrames = snd_pcm_bytes_to_frames(cap_handle, linePeriodSizeBytes)
 lineBufferSizeBytes = linePeriodSizeBytes * NPERIODS
-print("GOT HERE 1", flush=True)
-
 lineBufferSizeFrames = snd_pcm_bytes_to_frames(cap_handle, lineBufferSizeBytes)
-print("GOT HERE 2", flush=True)
 
 lineOutBufSize = LINE_BUFFER_PERIODS * lineBufferSizeBytes
 pLineOutBuf = <uint8_t *>malloc(lineOutBufSize)
@@ -596,46 +594,44 @@ created_mem = sa.list()
 {% for sig,args in (out_signals.items()) %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
-  die("numpy signal already created\n")
-else:
-  dtype = np.{{args['dtype']}}
-  out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=dtype)
-  {{sig}} = out_sigs['{{sig}}']
-  {{sig}}StrtPtr = <{{sig_types[sig]}} *><long>out_sigs['{{sig}}'].__array_interface__['data'][0]
+  printf("Numpy signal {{sig}} already created. Overwriting\n")
 
-  {%- if not has_parser %}
-  out_sig = out_sigs['{{sig}}']
-  {%- endif %}
+dtype = np.{{args['dtype']}}
+out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=dtype)
+{{sig}} = out_sigs['{{sig}}']
+{{sig}}StrtPtr = <{{sig_types[sig]}} *><long>out_sigs['{{sig}}'].__array_interface__['data'][0]
 
-  {%-  if py_maj_ver == 2 %}
-  # make sure SharedArray==2.0.4
-  sa.mlock(out_sigs['{{sig}}'])
-  {%- endif %}
+{%- if not has_parser %}
+out_sig = out_sigs['{{sig}}']
+{%- endif %}
 
-  {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
-  print({{args['sig_shape']}}, flush=True)
-  print({{args['buf_tot_numel']}}, flush=True)
-  {{sig}}BufVars[7] = {{args['buf_tot_numel']}}
+{%-  if py_maj_ver == 2 %}
+# TODO determine usage in SharedArray>2.0.4
+sa.mlock(out_sigs['{{sig}}'])
+{%- endif %}
 
-  {%- if sig_type == 'line' %}
-  {{sig}}BufVars[6] = lineBufferSizeBytes // sizeof({{in_dtype}}) * 2 
-  {{sig}}BufVars[5] = lineBufferSizeBytes // sizeof({{in_dtype}})
-  {{sig}}BufVars[0] = 0
+{{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
+{{sig}}BufVars[7] = {{args['buf_tot_numel']}}
 
-  {%- elif sig_type == 'udp'%}
-  {{sig}}BufVars[6] = 2*MAX_NUM_PACKETS_PER_MS*packetSize #Max size of data that can be received in one tick
-  {{sig}}BufVars[5] = packetSize #size of each packet of data
-  #^^should this be the same update as below? what is the out signal packet size for udp?
-  {{sig}}BufVars[7] = {{6 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
+{%- if sig_type == 'line' %}
+{{sig}}BufVars[6] = recvLen // sizeof({{in_dtype}}) * 2
+{{sig}}BufVars[5] = recvLen // sizeof({{in_dtype}})
+{{sig}}BufVars[0] = 0
 
-  {%- elif sig_type == 'pipe' %}
-  #print "Source pre: {0}".format({{sig}}BufVars[0])
-  {{sig}}BufVars[0] = 0
-  #print "Source post: {0}".format({{sig}}BufVars[0])
-  {%- else %}
-  {{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
-  {{sig}}BufVars[5] = {{args['schema']['data']['size']}}  
-  {%- endif %}
+{%- elif sig_type == 'udp'%}
+{{sig}}BufVars[6] = 2*MAX_NUM_PACKETS_PER_MS*packetSize #Max size of data that can be received in one tick
+{{sig}}BufVars[5] = packetSize #size of each packet of data
+#^^should this be the same update as below? what is the out signal packet size for udp?
+{{sig}}BufVars[7] = {{6 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
+
+{%- elif sig_type == 'pipe' %}
+#print "Source pre: {0}".format({{sig}}BufVars[0])
+{{sig}}BufVars[0] = 0
+#print "Source post: {0}".format({{sig}}BufVars[0])
+{%- else %}
+{{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
+{{sig}}BufVars[5] = {{args['schema']['data']['size']}}
+{%- endif %}
 
 {%- endfor %}
 

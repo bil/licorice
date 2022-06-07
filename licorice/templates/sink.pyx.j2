@@ -17,7 +17,6 @@ import SharedArray as sa
 import numpy as np
 cimport numpy as np
 cimport cython
-import ctypes
 import portio
 import time
 
@@ -785,11 +784,12 @@ created_mem = sa.list()
 {% for sig,dtype in sig_types.items() %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
-  {{sig}} = in_sigs['{{sig}}']
+  {{sig}}Raw = in_sigs['{{sig}}']
 {%- if py_maj_ver == 2 %}
   # sa.mlock(in_sigs['{{sig}}'])
 {%- endif %}
   {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
 else:
   die("numpy signal not created\n")
 {% if sig_type != 'vis_pygame' %}
@@ -883,6 +883,16 @@ while(True):
 {%- for dep_on in m_dep_on %}
   sem_wait(&pSigSems[{{dep_on[1]}}])
 {%- endfor %}
+
+{% for sig,args in in_signals.items() %}
+  {% if top_level %} # TODO a sink could theoretically be top-level
+  # maybe don't do a divide in the future
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]//{{in_signals[sig]['tick_numel']}}]
+  {% else %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  {% endif %}
+  {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+{% endfor %}
 
   {{parser_code}} 
 

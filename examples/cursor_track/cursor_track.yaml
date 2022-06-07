@@ -1,0 +1,55 @@
+# cursor Pygame demo
+#
+# A model that reads from a joystick axis and places the movement as a cursor on a pygame window
+# This model requires the USB kernel to have been compiled
+# This model also requires a working pygame visualization installation
+#
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+config:
+  tick_size: 10000
+
+signals:
+
+  joystick_axis:
+    shape: 2
+    dtype: double
+
+  joystick_buttons:
+    shape: 6
+    dtype: uint8
+
+modules:
+
+  # sources
+  joystick_out:
+    language: python
+    constructor: True # the constructor and parser perform all the USB manipulation through pygame
+    parser: True
+    in:
+      name: jdev
+      args:
+        type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
+      schema:
+        packets_per_tick: 1
+        data:
+          dtype: double
+          size: 2
+    out:
+      - joystick_axis
+      - joystick_buttons
+
+  # sinks
+  cursor_display:
+    language: python
+    constructor: true
+    parser: true            # "user code" for the sink lives here
+    destructor: true
+    in:
+      - joystick_axis
+    out:
+      name: viz
+      args:
+        type: vis_pygame    # sink type for pygame

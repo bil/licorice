@@ -7,7 +7,7 @@ stages:
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  LICORICE_WORKING_DIR: "$CI_PROJECT_DIR/examples"
+  LICORICE_WORKING_PATH: "$CI_PROJECT_DIR/examples/matrix_multiply"
   TWINE_USERNAME: "$TEST_PYPI_USERNAME"
   TWINE_PASSWORD: "$TEST_PYPI_PASSWORD"
 
@@ -56,16 +56,14 @@ test-pip:
   script:
     - ulimit -r 49
     - ulimit -l unlimited
-    - licorice parse matrix_multiply
-    - licorice compile matrix_multiply
-    - ulimit -a
-    - licorice go matrix_multiply
+    - examples/matrix_multiply/run.sh
 
 test-binary:
   stage: test
   # needs:
   #   - build-binary
   script:
+    - pip install -r install/requirements-dev.txt
     - pyinstaller packaging/licorice_onedir.spec -y # TODO move to build
     - dist/licorice/licorice parse matrix_multiply
     - dist/licorice/licorice compile matrix_multiply

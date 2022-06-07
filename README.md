@@ -7,7 +7,7 @@ It is suitable for numerical processing of streaming data into and through a sys
 
 * x86\_64 system
 * Modern UNIX environment (Linux, MacOS)
-* Python (both Python 2 and 3 are supported)
+* Python 3.6+
 * gcc toolchain
 
 **NOTE**: The setup scripts here are currently only tested on Ubuntu 20.04.4 LTS (Focal Fossa).
@@ -25,9 +25,9 @@ An example directory structure for an experimental rig might contain:
 * `rig`
   * `models` (directory where the YAML files specifying the various LiCoRICE models)
   * `modules` (directory where the code for the various LiCoRICE modules is kept)
-  * `run` (output directory where the code and compiled binaries of the LiCoRICE model is output to)
+  * `run` (LiCoRICE-managed output directory where populated code templates, compiled binaries, and data files for the LiCoRICE model are to)
 
-However, this directory structure is completely configurable. Users should set `LICORICE_WORKING_DIR` to the experiment root (`rig` above). Each experiment subdirectory may also be set individually with `LICORICE_MODULE_DIR`, `LICORICE_OUTPUT_DIR`, `LICORICE_EXPORT_DIR`, `LICORICE_TMP_MODULE_DIR` , and L`ICORICE_TMP_OUTPUT_DIR`. Setting any of these will override the default LICORICE_WORKING_DIR/<subdirectory>. If LICORICE_WORKING_DIR is not set, LiCoRICE will use the current working directory as the rig and issue a warning.
+However, this directory structure is completely configurable. Users should set `LICORICE_WORKING_PATH` to the experiment root (`rig` above). Each experiment subdirectory may also be set individually with `LICORICE_MODULE_PATH`, `LICORICE_OUTPUT_DIR`, `LICORICE_EXPORT_DIR`, `LICORICE_TMP_MODULE_DIR` , and `LICORICE_TMP_OUTPUT_DIR`. Setting any of these will override the default `LICORICE_WORKING_DIR/<subdirectory>`. If `LICORICE_WORKING_PATH` is not set, LiCoRICE will set it to the current working directory and issue a warning. To search for files in multiple directories, LiCoRICE`*_PATH` environment variables support BASH-like lists of paths separated by your OS'es path separator (commonly `:` for Linux).
 
 
 ### Installation 
@@ -43,6 +43,15 @@ However, this directory structure is completely configurable. Users should set `
     ```
 
     This script will take 15 to 30 minutes to complete.
+
+1. [Install pyenv](https://github.com/pyenv/pyenv#set-up-your-shell-environment-for-pyenv) and pyenv-virtualenv in your `~/.bashrc` or similar:
+
+    ```bash
+    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+    echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+    echo 'eval "$(pyenv-virtualenv init -)"' >> ~/.bashrc
+    ```` 
 
 1. Bind to the newly built virtualenv:
 

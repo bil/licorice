@@ -4,6 +4,7 @@
 # LiCoRICE-specific
 run/
 */run/
+*.lico/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

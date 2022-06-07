@@ -1,0 +1,152 @@
+# pinball_demo
+#
+# A simple model that implements a random target acquisition task
+#
+# reads from a joystick axis to control the cursor
+#
+# This model requires the USB kernel to have been compiled
+# This model also requires a working pygame visualization installation
+#
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+config:
+  tick_size: 10000
+
+signals:
+
+  joystick_axis:
+    shape: 2
+    dtype: double
+    log: false
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+
+  joystick_buttons:
+    shape: 6
+    dtype: double
+
+  pos_cursor:
+    shape: 2
+    dtype: double
+    log: true
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+
+  pos_target:
+    shape: 2
+    dtype: double
+    log: true
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+
+  size_cursor:
+    shape: 1
+    dtype: uint16
+
+  size_target:
+    shape: 1
+    dtype: uint16
+
+  color_cursor:
+    shape: 3
+    dtype: uint8
+
+  color_target:
+    shape: 3
+    dtype: uint8
+
+  state_task:
+    shape: 1
+    dtype: int8
+    log: true
+
+
+modules:
+
+  # sources
+  joystick_out:
+    language: python
+    constructor: True # the constructor and parser perform all the USB manipulation through pygame
+    parser: True
+    in:
+      name: jdev
+      args:
+        type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
+      schema:
+        packets_per_tick: 1
+        data:
+          dtype: float
+          size: 8
+    out:
+      - joystick_axis
+      - joystick_buttons
+
+
+  # modules
+  pinball_task:
+    language: python
+    constructor: true
+    in:
+      - joystick_axis
+      - joystick_buttons
+    out:
+      - pos_cursor
+      - pos_target
+      - size_target
+      - size_cursor
+      - color_cursor
+      - color_target
+      - state_task
+
+  # sinks
+  pinball_pygame:
+    language: python
+    constructor: true
+    parser: true
+    destructor: true
+    in:
+      - pos_cursor
+      - pos_target
+      - size_cursor
+      - size_target
+      - color_cursor
+      - color_target
+    out:
+      name: viz
+      args:
+        type: vis_pygame    # sink type for pygame
+
+  pinball_audio:
+    language: python
+    constructor: true
+    parser: true
+    destructor: true
+    in: 
+      - state_task
+    out:
+      name: viz_audio
+      args:
+        type: vis_pygame
+
+  logger:
+    language: python
+    in:
+      - pos_cursor
+      - pos_target
+      - state_task
+    out:
+      name: sqlite_logger
+      args:
+        type: 'disk'
+        save_file: './datalogger'

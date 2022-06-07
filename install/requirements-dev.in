@@ -1,0 +1,11 @@
+# testing
+pygame # TODO should this be a main dep?
+
+# formatting
+black
+flake8
+isort
+
+# packaging
+pyinstaller
+twine

@@ -25,7 +25,7 @@ from licorice.utils import __handle_completed_process
 # paths['tmp_output']
 
 TEMPLATE_MODULE_C = "module.c.j2"
-TEMPLATE_MODULE_PY = "module.py.j2"
+TEMPLATE_MODULE_PY = "module.pyx.j2"
 TEMPLATE_LOGGER = "logger.j2"
 TEMPLATE_SINK_PY = "sink.pyx.j2"
 TEMPLATE_SINK_C = "sink.c.j2"
@@ -88,11 +88,31 @@ def do_jinja(template_path, out_path, **data):
     out_f.close()
 
 
+# return valid filepath if file exists in given path_list
+def __find_in_path(path_list, file):
+    for path in path_list:
+        filepath = os.path.join(path, file)
+        if os.path.exists(filepath):
+            return filepath
+
+    raise FileNotFoundError(
+        f"Could not locate {file} in path: {os.pathsep.join(path_list)}."
+    )
+
+
 # generate empty templates for modules, parsers, constructors, and destructors
 def generate(paths, config, confirm):
     print("Generating modules...\n")
 
-    if os.path.exists(paths["modules"]):
+    if len(paths["modules"] > 1):
+        print(
+            "Ambiguous module directory specified. Defaulting to "
+            f"{paths['modules'][0]}."
+        )
+
+    modules_path = paths["modules"][0]
+
+    if os.path.exists(modules_path):
         if confirm:
             while True:
                 sys.stdout.write("Ok to remove old module directory? ")
@@ -109,12 +129,12 @@ def generate(paths, config, confirm):
                     print("Please respond with 'y' or 'n'.")
         if os.path.exists(paths["tmp_modules"]):
             shutil.rmtree(paths["tmp_modules"])
-        shutil.move(paths["modules"], paths["tmp_modules"])
-        print("Moved " + paths["modules"] + " to ") + paths["tmp_modules"]
-        shutil.rmtree(paths["modules"], ignore_errors=True)
+        shutil.move(modules_path, paths["tmp_modules"])
+        print("Moved " + modules_path + " to ") + paths["tmp_modules"]
+        shutil.rmtree(modules_path, ignore_errors=True)
         print("Removed old output directory.\n")
 
-    os.mkdir(paths["modules"])
+    os.mkdir(modules_path)
 
     print("Generated modules:")
 
@@ -159,9 +179,9 @@ def generate(paths, config, confirm):
                     module_args["parser"] = module_name + "_parser"
                 print("   - " + module_args["parser"] + " (parser)")
                 do_jinja(
-                    os.path.join(paths["generator"], parse_template),
+                    __find_in_path(paths["generator"], parse_template),
                     os.path.join(
-                        paths["modules"], module_args["parser"] + extension
+                        modules_path, module_args["parser"] + extension
                     ),
                 )
 
@@ -171,9 +191,9 @@ def generate(paths, config, confirm):
                     module_args["constructor"] = module_name + "_constructor"
                 print("   - " + module_args["constructor"] + " (constructor)")
                 do_jinja(
-                    os.path.join(paths["generator"], construct_template),
+                    __find_in_path(paths["generator"], construct_template),
                     os.path.join(
-                        paths["modules"],
+                        modules_path,
                         module_args["constructor"] + extension,
                     ),
                 )
@@ -184,9 +204,9 @@ def generate(paths, config, confirm):
                     module_args["destructor"] = module_name + "_destructor"
                 print("   - " + module_args["destructor"] + " (destructor)")
                 do_jinja(
-                    os.path.join(paths["generator"], destruct_template),
+                    __find_in_path(paths["generator"], destruct_template),
                     os.path.join(
-                        paths["modules"], module_args["destructor"] + extension
+                        modules_path, module_args["destructor"] + extension
                     ),
                 )
 
@@ -210,9 +230,9 @@ def generate(paths, config, confirm):
                     module_args["parser"] = module_name + "_parser"
                 print("   - " + module_args["parser"] + " (parser)")
                 do_jinja(
-                    os.path.join(paths["generator"], parse_template),
+                    __find_in_path(paths["generator"], parse_template),
                     os.path.join(
-                        paths["modules"], module_args["parser"] + extension
+                        modules_path, module_args["parser"] + extension
                     ),
                 )
 
@@ -221,9 +241,9 @@ def generate(paths, config, confirm):
                     module_args["constructor"] = module_name + "_constructor"
                 print("   - " + module_args["constructor"] + " (constructor)")
                 do_jinja(
-                    os.path.join(paths["generator"], construct_template),
+                    __find_in_path(paths["generator"], construct_template),
                     os.path.join(
-                        paths["modules"],
+                        modules_path,
                         module_args["constructor"] + extension,
                     ),
                 )
@@ -233,9 +253,9 @@ def generate(paths, config, confirm):
                     module_args["destructor"] = module_name + "_destructor"
                 print("   - " + module_args["destructor"] + " (destructor)")
                 do_jinja(
-                    os.path.join(paths["generator"], destruct_template),
+                    __find_in_path(paths["generator"], destruct_template),
                     os.path.join(
-                        paths["modules"], module_args["destructor"] + extension
+                        modules_path, module_args["destructor"] + extension
                     ),
                 )
 
@@ -243,8 +263,8 @@ def generate(paths, config, confirm):
             # module
             print(" - ") + module_name
             do_jinja(
-                os.path.join(paths["generator"], G_TEMPLATE_MODULE_CODE_PY),
-                os.path.join(paths["modules"], module_name + ".py"),
+                __find_in_path(paths["generator"], G_TEMPLATE_MODULE_CODE_PY),
+                os.path.join(modules_path, module_name + ".py"),
                 name=module_name,
                 in_sig=module_args["in"],
                 out_sig=module_args["out"],
@@ -255,9 +275,9 @@ def generate(paths, config, confirm):
                     module_args["constructor"] = module_name + "_constructor"
                 print("   - " + module_args["constructor"] + " (constructor)")
                 do_jinja(
-                    os.path.join(paths["generator"], construct_template),
+                    __find_in_path(paths["generator"], construct_template),
                     os.path.join(
-                        paths["modules"],
+                        modules_path,
                         module_args["constructor"] + extension,
                     ),
                 )
@@ -267,9 +287,9 @@ def generate(paths, config, confirm):
                     module_args["destructor"] = module_name + "_destructor"
                 print("   - " + module_args["destructor"] + " (destructor)")
                 do_jinja(
-                    os.path.join(paths["generator"], destruct_template),
+                    __find_in_path(paths["generator"], destruct_template),
                     os.path.join(
-                        paths["modules"], module_args["destructor"] + extension
+                        modules_path, module_args["destructor"] + extension
                     ),
                 )
 
@@ -316,11 +336,12 @@ def parse(paths, config, confirm):
         print("Removing old output directory.\n")
 
     # copy helper files to output path
-    shutil.copytree(
-        paths["templates"],
-        paths["output"],
-        ignore=shutil.ignore_patterns(("*.j2")),
-    )
+    for template_path in paths["templates"]:
+        shutil.copytree(
+            template_path,
+            paths["output"],
+            ignore=shutil.ignore_patterns(("*.j2")),
+        )
 
     # set up signal helper variables
     internal_signals = list(signals or [])  # list of numpy signal names
@@ -599,7 +620,7 @@ def parse(paths, config, confirm):
                 if module_args["parser"] is True:
                     module_args["parser"] = name + "_parser"
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"], module_args["parser"] + in_extension
                     ),
                     "r",
@@ -612,7 +633,7 @@ def parse(paths, config, confirm):
                 if module_args["constructor"] is True:
                     module_args["constructor"] = name + "_constructor"
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"],
                         module_args["constructor"] + in_extension,
                     ),
@@ -625,7 +646,7 @@ def parse(paths, config, confirm):
                 if module_args["destructor"] is True:
                     module_args["destructor"] = name + "_destructor"
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"],
                         module_args["destructor"] + in_extension,
                     ),
@@ -636,7 +657,7 @@ def parse(paths, config, confirm):
 
             # if module_args['in']['real_time']:
             do_jinja(
-                os.path.join(paths["templates"], template),
+                __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
                 name=name,
                 source_num=source_names.index(name),
@@ -687,7 +708,7 @@ def parse(paths, config, confirm):
                     )
 
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"], module_args["parser"] + in_extension
                     ),
                     "r",
@@ -715,7 +736,7 @@ def parse(paths, config, confirm):
                     )
 
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"],
                         module_args["constructor"] + in_extension,
                     ),
@@ -734,7 +755,7 @@ def parse(paths, config, confirm):
                     )
 
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"],
                         module_args["destructor"] + in_extension,
                     ),
@@ -745,7 +766,7 @@ def parse(paths, config, confirm):
 
             in_signal = signals[module_args["in"]["name"]]
             do_jinja(
-                os.path.join(paths["templates"], template),
+                __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
                 name=name,
                 in_signal=in_signal,
@@ -813,7 +834,7 @@ def parse(paths, config, confirm):
             if has_parser and (module_args["parser"] is True):
                 module_args["parser"] = name + "_parser"
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"], module_args["parser"] + in_extension
                     ),
                     "r",
@@ -826,7 +847,7 @@ def parse(paths, config, confirm):
                 if module_args["constructor"] is True:
                     module_args["constructor"] = name + "_constructor"
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"],
                         module_args["constructor"] + in_extension,
                     ),
@@ -839,7 +860,7 @@ def parse(paths, config, confirm):
                 if module_args["destructor"] is True:
                     module_args["destructor"] = name + "_destructor"
                 with open(
-                    os.path.join(
+                    __find_in_path(
                         paths["modules"],
                         module_args["destructor"] + in_extension,
                     ),
@@ -940,7 +961,7 @@ def parse(paths, config, confirm):
                         in_sig_types.pop(sig)
 
             do_jinja(
-                os.path.join(paths["templates"], template),
+                __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
                 name=name,
                 non_source_num=non_source_names.index(name),
@@ -1035,8 +1056,10 @@ def parse(paths, config, confirm):
                 out_sig_types[sig] = dtype
 
             user_code = ""
-            file_path = os.path.join(paths["modules"], name + in_extension)
             if not name == "bufferer":
+                file_path = __find_in_path(
+                    paths["modules"], name + in_extension
+                )
                 if not os.path.isfile(file_path):
                     sys.exit(f"Error: Module {name} file does not exist.")
                 with open(file_path, "r") as f:
@@ -1049,7 +1072,7 @@ def parse(paths, config, confirm):
             if "constructor" in module_args and module_args["constructor"]:
                 if module_args["constructor"] is True:
                     module_args["constructor"] = name + "_constructor"
-                file_path = os.path.join(
+                file_path = __find_in_path(
                     paths["modules"], module_args["constructor"] + in_extension
                 )
                 if not os.path.isfile(file_path):
@@ -1064,7 +1087,7 @@ def parse(paths, config, confirm):
             if "destructor" in module_args and module_args["destructor"]:
                 if module_args["destructor"] is True:
                     module_args["destructor"] = name + "_destructor"
-                file_path = os.path.join(
+                file_path = __find_in_path(
                     paths["modules"], module_args["destructor"] + in_extension
                 )
                 if not os.path.isfile(file_path):
@@ -1112,7 +1135,7 @@ def parse(paths, config, confirm):
                 func_inputs = ",".join(module_args["in"] + module_args["out"])
                 mod_func_inst = ",".join(mod_func_insts)
                 do_jinja(
-                    os.path.join(paths["templates"], TEMPLATE_NUMBA),
+                    __find_in_path(paths["templates"], TEMPLATE_NUMBA),
                     os.path.join(paths["output"], "numba_" + name + ".py"),
                     mod_name="numba_" + name,
                     func_name="numba_" + func_name,
@@ -1131,8 +1154,9 @@ def parse(paths, config, confirm):
                         capture_output=True,
                     )
                 )
+
             do_jinja(
-                os.path.join(paths["templates"], template),
+                __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
                 name=name,
                 args=module_args,
@@ -1146,6 +1170,9 @@ def parse(paths, config, confirm):
                 dependencies=dependencies,
                 depends_on=depends_on,
                 tick_sem_idx=non_source_names.index(name),
+                in_signal_name=(
+                    None if name != "bufferer" else next(iter(in_signals))
+                ),
                 in_signals=in_signals,
                 out_signals=out_signals,
                 sig_nums=sig_nums,
@@ -1183,7 +1210,7 @@ def parse(paths, config, confirm):
         extra_incl = "-lrt"
 
     do_jinja(
-        os.path.join(paths["templates"], TEMPLATE_MAKEFILE),
+        __find_in_path(paths["templates"], TEMPLATE_MAKEFILE),
         os.path.join(paths["output"], OUTPUT_MAKEFILE),
         module_names=module_names,
         source_names=source_names,
@@ -1215,7 +1242,7 @@ def parse(paths, config, confirm):
     )
 
     do_jinja(
-        os.path.join(paths["templates"], TEMPLATE_TIMER),
+        __find_in_path(paths["templates"], TEMPLATE_TIMER),
         os.path.join(paths["output"], OUTPUT_TIMER),
         config=config,
         topo_order=topo_children,
@@ -1250,7 +1277,7 @@ def parse(paths, config, confirm):
 
     # parse constants.h
     do_jinja(
-        os.path.join(paths["templates"], TEMPLATE_CONSTANTS),
+        __find_in_path(paths["templates"], TEMPLATE_CONSTANTS),
         os.path.join(paths["output"], OUTPUT_CONSTANTS),
         num_ticks=config["config"]["num_ticks"],
         tick_size_us=config["config"]["tick_size"] % 1000000,
@@ -1268,6 +1295,7 @@ def parse(paths, config, confirm):
 
 def export(paths, confirm):
     os.mkdir(paths["export"])
+    # TODO support list of paths
     if os.path.exists(paths["modules"]):
         shutil.copytree(paths["modules"], paths["export"] + "/modules")
     if os.path.exists(paths["output"]):

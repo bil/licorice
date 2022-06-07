@@ -116,7 +116,11 @@ void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLoca
   }
   sqlite3_open(buf, db);
   strcpy(newNameLocation,buf);
-  chown(buf, atoi(getenv("SUDO_UID")), atoi(getenv("SUDO_GID"))); // set db file ownership to user
+  // printf("GOT HUR 1\n");
+  // fflush(stdout);
+  // chown(buf, atoi(getenv("SUDO_UID")), atoi(getenv("SUDO_GID"))); // set db file ownership to user
+  // printf("GOT HUR 2\n");
+  // fflush(stdout);
 }
 
 static char* cmd;
