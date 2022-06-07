@@ -1,20 +1,20 @@
 # Output a sine wave over line out
 
 config:
-  tick_size: 10000
+  tick_size: 100000
   # num_ticks: 1000
-  init_buffer_ticks: 100
+  init_buffer_ticks: 10
 
 signals:
   audio_signal_source:
-    shape: (960, )
-    dtype: float32
+    shape: (8820, )
+    dtype: int16
     history: 10000
   
   audio_signal_sink:
-    shape: (960, )
-    dtype: float32
-    history: 100
+    shape: (8820, )
+    dtype: int16
+    history: 1000
 
 modules:
   # process_audio:
@@ -35,8 +35,8 @@ modules:
       schema:
         packets_per_tick: 2
         data:
-          dtype: float32
-          size: 960
+          dtype: int16
+          size: 17640
     out:
       - audio_signal_source
 
@@ -58,5 +58,5 @@ modules:
         type: line
       schema:
         data:
-          dtype: float32
-          size: 960
+          dtype: int16
+          size: 8820

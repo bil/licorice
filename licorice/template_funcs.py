@@ -350,7 +350,6 @@ def parse(paths, config, confirm):
         signal_args["tick_numel"] = np.prod(
             np.array(literal_eval(str(signal_args["shape"])))
         )
-        print(signal_args["buf_tot_numel"])
         signal_args["dtype_msgpack"] = fix_dtype_msgpack(signal_args["dtype"])
     for module_name, module_args in iter(modules.items()):
         ext_sig = None

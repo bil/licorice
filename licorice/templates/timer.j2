@@ -74,7 +74,8 @@ static uint8_t *pmem;
 static int64_t *pNumTicks;
 // TODO figure out better synch
 // source buffer offset update synchronization semaphore
-static sem_t *pSourceSem;
+static sem_t *pSourceUpSem;
+static sem_t *pSourceDownSem;
 // per-process tick start semaphore
 // timer signals each proces by upping this semaphore
 static sem_t *pTickUpSems;
@@ -232,11 +233,12 @@ static void check_children() {
     handle_exit(0);
   }
 {%- endif %}
-
+  
   // only trigger sources on first iterations
   if (*pNumTicks < 0) {
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
-      sem_wait(pSourceSem);
+      sem_wait(pSourceDownSem);
+
     atomic_thread_fence(memory_order_seq_cst);
     // printf("Number of internal signals: %d", NUM_INTERNAL_SIGS);
     for (al_i = 0; al_i < NUM_INTERNAL_SIGS; al_i++) {
@@ -256,12 +258,11 @@ static void check_children() {
       *(pCurBufVars + 11) = 0;
     }
     atomic_thread_fence(memory_order_release);
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
-      sem_post(pSourceSem);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
+      sem_post(pSourceUpSem);    
 
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
       kill(so_pids[al_i], SIGALRM);
-    }
   }
   
   // normal behavior on subsequent iterations
@@ -281,8 +282,9 @@ static void check_children() {
     }
   {%- endif %}
 
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
-      sem_wait(pSourceSem);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
+      sem_wait(pSourceDownSem);
+  
     // TODO does this need to be sequentially consistent?
     atomic_thread_fence(memory_order_seq_cst);
 
@@ -336,8 +338,8 @@ static void check_children() {
    }
 
     atomic_thread_fence(memory_order_release);
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
-      sem_post(pSourceSem);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
+      sem_post(pSourceUpSem);
     
     // trigger sources
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
@@ -364,7 +366,7 @@ static void check_children() {
   sigalrm_recv--;
 }
 
-// Handle SIGALRM on millisecond
+// Handle SIGALRM on tick start
 void event_handler(int signum) {
   sigalrm_recv++;
 }
@@ -461,20 +463,23 @@ int main(int argc, char* argv[]) {
   // create shared memory and map it
   printf("Mapping memory...\n");
 
+  // TODO pmem offsets should be constants
   shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS);
   shm_size = ROUND_UP(shm_size, PAGESIZE);
   open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
   pNumTicks = (int64_t *)(pmem);
-  pSourceSem = (sem_t *)(pmem + sizeof(uint64_t));
-  pTickUpSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t));
-  pTickDownSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)));
-  pSigSems = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)));
-  pBufVars = (uint32_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t));
+  pSourceUpSem = (sem_t *)(pmem + sizeof(uint64_t));
+  pSourceDownSem = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t));
+  pTickUpSems = (sem_t *)(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t));
+  pTickDownSems = (sem_t *)(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)));
+  pSigSems = (sem_t *)(pmem + sizeof(uint64_t) +  2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)));
+  pBufVars = (uint32_t *)(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t));
 
   *pNumTicks = -1 * INIT_BUFFER_TICKS;
 
   // initialize source semaphore
-  sem_init(pSourceSem, 1, NUM_SOURCES); 
+  sem_init(pSourceUpSem, 1, 0);
+  sem_init(pSourceDownSem, 1, NUM_SOURCES); 
 
   // initialize up tick semaphores
   for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
@@ -532,9 +537,9 @@ int main(int argc, char* argv[]) {
     //   CPU_SET(i, &mask);
     // }
     printf("Source: {{name}}\n");
-    //CPU_ZERO(&mask);
-    //CPU_SET(NETWORK_CPU, &mask);
-    //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    CPU_ZERO(&mask);
+    CPU_SET(NETWORK_CPU, &mask);
+    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY);
     char* argv[2] = {"./{{name}}", NULL};

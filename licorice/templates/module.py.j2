@@ -139,10 +139,10 @@ shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SI
 shm_size = ROUND_UP(shm_size, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem)
-pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
-pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
-pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
-pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t))
+pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
+pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
+pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 {% if name == 'bufferer' %}
 cdef uint8_t *bmem
 mb_shm_size = {{in_signals.items()|length}} * sizeof(uint32_t) * {{history_pad_length+1}} + {{in_signals.items()|length}} * sizeof(uint8_t) * {{history_pad_length+1}} + sizeof(uint32_t) #[pointer hist(uint*[]), size hist(uint[]), the buffer position(uint[])]
@@ -168,7 +168,11 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
   {{sig}}Raw = in_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+  {%- if top_level %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]//{{in_signals[sig]['tick_numel']}}]
+  {%- else %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  {%- endif %}
 else:
   print("{{sig}} not created")
   die("signal not created")

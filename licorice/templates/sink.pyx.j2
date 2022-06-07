@@ -105,7 +105,6 @@ cdef extern from "<alsa/asoundlib.h>" nogil:
   const char * snd_strerror (int errnum)
   int snd_pcm_prepare(snd_pcm_t* pcm) 
   int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
-  snd_pcm_sframes_t snd_pcm_writei(snd_pcm_t *pcm, const void *buffer, snd_pcm_uframes_t size) 
 
 cdef extern from "lineUtilities.h" nogil:
   int pcm_init_playback(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams)
@@ -224,14 +223,6 @@ cdef extern from "<sys/types.h>":
   ctypedef unsigned int pthread_t
   ctypedef struct pthread_attr_t:
     pass
-  ctypedef struct pthread_mutex_t:
-    pass
-  ctypedef struct pthread_cond_t:
-    pass
-  ctypedef struct pthread_mutexattr_t:
-    pass
-  ctypedef struct pthread_condattr_t:
-    pass
 
 cdef extern from "<pthread.h>" nogil:
   struct sched_param:
@@ -239,16 +230,10 @@ cdef extern from "<pthread.h>" nogil:
   int pthread_create(pthread_t *thread, pthread_attr_t *attr,
                           void *(*start_routine) (void *), void *arg)
   void pthread_exit(void *retval)
-  int pthread_cond_signal(pthread_cond_t *cond)
-  int pthread_mutex_lock(pthread_mutex_t *mutex)
-  int pthread_mutex_unlock(pthread_mutex_t *mutex)
   int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
   int pthread_join(pthread_t thread, void **retval)
-  int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
   int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
   int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
-  int pthread_mutex_init(pthread_mutex_t *mutex, pthread_mutexattr_t *attr)
-  int pthread_cond_init(pthread_cond_t *cond, pthread_condattr_t *attr)
   pthread_t pthread_self()
 {%- endif %}
 
@@ -300,7 +285,7 @@ cdef const char *FIFOFILE = '{{out_signal['args']['filepath']}}'
 cdef void *radio
 cdef void *context
 {%- elif sig_type == 'line' %}
-LINE_BUFFER_PERIODS = 2
+LINE_BUFFER_PERIODS = 4
 cdef snd_pcm_t *play_handle
 cdef snd_pcm_hw_params_t *play_hwparams
 cdef snd_pcm_sw_params_t *play_swparams
@@ -791,10 +776,10 @@ shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SI
 shm_size = ROUND_UP(shm_size, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem)
-pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
-pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
-pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
-pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+pTickUpSems = <sem_t *>(pmem +  sizeof(uint64_t) + 2 * sizeof(sem_t))
+pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
+pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
+pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 
 created_mem = sa.list()
 {% for sig,dtype in sig_types.items() %}

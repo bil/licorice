@@ -1,12 +1,12 @@
 # cimport C libraries
 from libc.stdio cimport printf, stdout, fflush
-from libc.stdlib cimport exit, malloc, free, calloc
+from libc.stdlib cimport exit, malloc, free, calloc, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
 from libc.string cimport memset, memcpy
 from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
-from posix.unistd cimport getppid, pause, close, getpid, read
+from posix.unistd cimport getppid, pause, close, getpid, read, sleep
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.types cimport pid_t
 from posix.fcntl cimport O_RDWR, open, fcntl, O_RDONLY, F_SETFL, O_NONBLOCK
@@ -31,6 +31,42 @@ cimport cython
 
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
+
+##############################################################################
+#Headers For Threading
+{%- if sig_type in ['line', 'udp'] %}
+cdef extern from "<sys/types.h>":
+  ctypedef int pthread_t
+  ctypedef struct pthread_mutex_t:
+    pass
+  ctypedef struct pthread_mutexattr_t:
+    pass
+  ctypedef struct pthread_attr_t:
+    pass
+
+DEF SIG_BLOCK = 1
+
+cdef extern from "<sched.h>":
+  enum: SCHED_FIFO
+  ctypedef struct cpu_set_t:
+    pass
+  void CPU_ZERO(cpu_set_t *set)
+  void CPU_SET(int cpu, cpu_set_t *set)
+
+cdef extern from "<pthread.h>" nogil:
+  struct sched_param:
+    int sched_priority
+  int pthread_join(pthread_t, void **retValue)
+  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
+  int pthread_mutex_lock(pthread_mutex_t *)
+  int pthread_mutex_unlock(pthread_mutex_t *)
+  int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg)
+  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
+  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
+  void pthread_exit(void *retval)
+  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
+{%- endif %}
+###########################################################################
 
 {% if sig_type == 'udp' -%} # headers to declare for UDP source
 cdef extern from "<arpa/inet.h>":
@@ -62,43 +98,6 @@ cdef extern from "<sys/socket.h>":
 
 cdef extern from "sourceUtils.h":
   in_addr get_ip (char* interface_name)
-
-##############################################################################
-#Headers For UDP Threading
-{%- if sig_type == 'udp'%}
-cdef extern from "<sys/types.h>":
-  ctypedef int pthread_t
-  ctypedef struct pthread_mutex_t:
-    pass
-  ctypedef struct pthread_mutexattr_t:
-    pass
-  ctypedef struct pthread_attr_t:
-    pass
-
-DEF SIG_BLOCK = 1
-
-cdef extern from "<sched.h>":
-  enum: SCHED_FIFO
-  ctypedef struct cpu_set_t:
-    pass
-  void CPU_ZERO(cpu_set_t *set)
-  void CPU_SET(int cpu, cpu_set_t *set)
-
-cdef extern from "<pthread.h>":
-  struct sched_param:
-    int sched_priority
-  int pthread_join(pthread_t, void **retValue)
-  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
-  int pthread_mutex_lock(pthread_mutex_t *)
-  int pthread_mutex_unlock(pthread_mutex_t *)
-  int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg)
-  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
-  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
-  void pthread_exit(void *retval)
-  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
-{%- endif %}
-###########################################################################
-
 {% elif sig_type == 'pipe' -%}
 cdef extern from "time.h":
   ctypedef int64_t time_t
@@ -131,35 +130,23 @@ cdef extern from "<alsa/asoundlib.h>":
   const char * snd_strerror (int errnum)   
   int snd_pcm_prepare(snd_pcm_t* pcm) 
   int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
-  snd_pcm_sframes_t snd_pcm_readi (snd_pcm_t *pcm, void *buffer, snd_pcm_uframes_t size)  
 
-cdef extern from "lineUtilities.h":
+cdef extern from "lineUtilities.h" nogil:
   int pcm_init_capture(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams)
   void pcm_close(snd_pcm_t *handle, exitStatus)
+  int pcm_read_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr);
   snd_pcm_sframes_t pcm_get_period_size_bytes()
-
-cdef extern from "<sys/types.h>":
-  ctypedef int pthread_t
-  ctypedef struct pthread_mutex_t:
-    pass
-  ctypedef struct pthread_mutexattr_t:
-    pass
-
-cdef extern from "<pthread.h>":
-  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
-  int pthread_mutex_lock(pthread_mutex_t *)
-  int pthread_mutex_unlock(pthread_mutex_t *)
 {% endif %} # end header declaration
 
 # headers for all sources
-cdef extern from "semaphore.h":
-  enum: __SIZEOF_SEM_T
+cdef extern from "semaphore.h" nogil:
   cdef union sem_union:
-    char __size[__SIZEOF_SEM_T]
-    long int __align
+    pass
   ctypedef sem_union sem_t
+  int sem_init(sem_t *sem, int pshared, unsigned int value)
   int sem_wait(sem_t *)
   int sem_post(sem_t *)
+  int sem_destroy(sem_t *sem)
 
 cdef extern from "utilityFunctions.h":
   void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
@@ -249,12 +236,36 @@ cdef long tNSec = 100000L
 memset(zero_buf, 0, sizeof(zero_buf))
 
 {%- elif sig_type == 'line' %}
+LINE_BUFFER_PERIODS = 100
+cdef int NPERIODS = 2
 cdef snd_pcm_t *cap_handle
 cdef snd_pcm_hw_params_t *cap_hwparams
 cdef snd_pcm_sw_params_t *cap_swparams
-cdef snd_pcm_sframes_t linePeriodSizeFrames
 
 cdef int ret
+
+cdef uint8_t *outBuf
+cdef size_t outBufLen
+
+cdef uint8_t *pLineOutBuf
+cdef uint8_t *pLineOutBufWrite
+cdef uint8_t *pLineOutBufRead
+cdef ssize_t linePeriodSizeBytes
+cdef ssize_t lineBufferSizeBytes
+cdef snd_pcm_uframes_t lineBufferSizeFrames
+cdef snd_pcm_uframes_t linePeriodSizeFrames
+cdef ssize_t lineOutBufSize
+cdef long int lineBytesWrapped
+# threading variables
+cdef int rc
+cdef pthread_t tid
+cdef sem_t lineSem
+cdef bool shouldDie = False
+# worker thread vars
+cdef char *zErrMsg
+cdef void *retVal
+cdef uint32_t lineWriteOffset = 0
+cdef bool lineWrapped
 
 {%- elif sig_type == 'parport' %}
 cdef unsigned char inVal
@@ -274,7 +285,8 @@ parentSetup = True
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
-cdef sem_t *pSourceSem
+cdef sem_t *pSourceUpSem
+cdef sem_t *pSourceDownSem
 cdef uint32_t *pBufVars
 # 0: tick start
 # 1: tick end
@@ -311,6 +323,9 @@ cdef {{dtype}} *{{sig}}StrtPtr
 # function to close the source
 cdef void handle_exit(int exitStatus):
   global pmem, shm_size, pNumTicks, numDropped, udpReadThread, exitMutex, exitRoutine
+  {%- if sig_type in ['line'] %}
+  global shouldDie, retVal, tid
+  {%- endif %}
   {%- if test_throughput %}
   global num_packets
   {%- endif %}
@@ -347,6 +362,10 @@ cdef void handle_exit(int exitStatus):
   zmq_close(dish)
   zmq_ctx_destroy(context)
 {%- elif sig_type == 'line' %}
+  shouldDie = True
+  pthread_join(tid, &retVal)
+  free(pLineOutBuf)
+  sem_destroy(&lineSem)
   pcm_close(cap_handle, exitStatus)
 {%- endif %}
 
@@ -429,6 +448,48 @@ cdef void* readUDP(void *arg):
 {%- endif %}
 ###########################################################################
 
+{% if sig_type == 'line' -%}
+cdef void* processRequests(void *arg) nogil:
+  global shouldDie, exitMask, ret, cap_handle, zErrMsg, pLineOutBuf, pLineOutBufWrite, lineSem, lineOutBufSize, lineBufferSizeFrames, lineBufferSizeBytes, NPERIODS
+  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  cdef snd_pcm_sframes_t pcm_ret
+  cdef int *retVal
+  zErrMsg = <char *>0
+  cdef int i = 0
+
+  while (True):
+    if (shouldDie):
+      retVal[0] = EXIT_SUCCESS
+      pthread_exit(&retVal)
+
+    # printf("write 1: %lu, %lu %lu\n", pLineOutBufWrite - pLineOutBuf, lineBufferSizeFrames, lineBufferSizeBytes)
+    # fflush(stdout)
+    pcm_ret = pcm_read_buffer(cap_handle, pLineOutBufWrite, lineBufferSizeFrames)
+
+    if (pcm_ret < 0):
+      printf("pcm_write_buffer failed.\n")
+      retVal[0] = EXIT_FAILURE
+      pthread_exit(&retVal)
+
+    # i = 0
+    # while (i < lineBufferSizeFrames):
+    #   printf("%d ", (<int16_t *>pLineOutBufWrite)[i])
+    #   i += 1
+    # printf("\n")
+    # fflush(stdout)
+
+    pLineOutBufWrite += lineBufferSizeBytes
+    if (pLineOutBufWrite >= pLineOutBuf + lineOutBufSize):
+      pLineOutBufWrite = pLineOutBuf
+    # printf("write 2: %lu\n", pLineOutBufWrite - pLineOutBuf)
+    # fflush(stdout)
+
+    i = 0
+    while (i < NPERIODS):
+      sem_post(&lineSem)
+      i += 1
+
+{%- endif %}
 
 
 # main
@@ -449,8 +510,9 @@ shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SI
 shm_size = ROUND_UP(shm_size, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem)
-pSourceSem = <sem_t *>(pmem + sizeof(uint64_t))
-pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+pSourceUpSem = <sem_t *>(pmem + sizeof(uint64_t))
+pSourceDownSem = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
+pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
 
 {% if sig_type == 'udp' -%}
 # create a UDP socket
@@ -487,9 +549,33 @@ pipeTimer.tv_nsec = tNSec
 snd_pcm_hw_params_alloca(&cap_hwparams)
 snd_pcm_sw_params_alloca(&cap_swparams)
 pcm_init_capture(&cap_handle, cap_hwparams, cap_swparams)
+sem_init(&lineSem, 0, 0)
+linePeriodSizeBytes = pcm_get_period_size_bytes()
+print("GOT HERE", flush=True)
+linePeriodSizeFrames = snd_pcm_bytes_to_frames(cap_handle, linePeriodSizeBytes)
+lineBufferSizeBytes = linePeriodSizeBytes * NPERIODS
+print("GOT HERE 1", flush=True)
+
+lineBufferSizeFrames = snd_pcm_bytes_to_frames(cap_handle, lineBufferSizeBytes)
+print("GOT HERE 2", flush=True)
+
+lineOutBufSize = LINE_BUFFER_PERIODS * lineBufferSizeBytes
+pLineOutBuf = <uint8_t *>malloc(lineOutBufSize)
+pLineOutBufWrite = pLineOutBuf
+pLineOutBufRead = pLineOutBuf
+lineBufferedPeriods = 0
 snd_pcm_prepare(cap_handle)
-recvLen = pcm_get_period_size_bytes() * 2 # TODO why * 2 here?
-linePeriodSizeFrames = snd_pcm_bytes_to_frames(cap_handle, recvLen)
+
+rc = pthread_create(&tid, NULL, &processRequests, NULL)
+if (rc): die("pthread_create failed")
+
+cdef sched_param param
+param.sched_priority = 39
+pthread_setschedparam(tid, SCHED_FIFO, &param)
+cdef cpu_set_t mask
+CPU_ZERO(&mask)
+CPU_SET(2, &mask)
+pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
 {% elif sig_type == 'parport' -%}
 # make sure parport is writeable
 if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
@@ -527,11 +613,13 @@ else:
   {%- endif %}
 
   {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
+  print({{args['sig_shape']}}, flush=True)
+  print({{args['buf_tot_numel']}}, flush=True)
   {{sig}}BufVars[7] = {{args['buf_tot_numel']}}
 
   {%- if sig_type == 'line' %}
-  {{sig}}BufVars[6] = recvLen // sizeof({{in_dtype}}) * 2 
-  {{sig}}BufVars[5] = recvLen // sizeof({{in_dtype}})
+  {{sig}}BufVars[6] = lineBufferSizeBytes // sizeof({{in_dtype}}) * 2 
+  {{sig}}BufVars[5] = lineBufferSizeBytes // sizeof({{in_dtype}})
   {{sig}}BufVars[0] = 0
 
   {%- elif sig_type == 'udp'%}
@@ -658,17 +746,10 @@ while(True):
   #print bufCurPtr[0]
 
 
-{% elif sig_type == 'line' %}
-  #read from line in
-  ret = snd_pcm_readi(cap_handle, <char *>bufCurPtr, linePeriodSizeFrames)
-  if (ret == -EPIPE):
-    # EPIPE means overrun
-    die("pcm overrun")
-    snd_pcm_prepare(cap_handle)
-  elif (ret < 0):
-    die("pcm read error")
-  elif (ret != linePeriodSizeFrames):
-    die("pcm short error")
+{%- elif sig_type == 'line' %}
+  if (parentSetup):
+    pass
+    # pLineOutBufRead = pLineOutBufWrite
 {%- elif sig_type == 'parport' %}
   # recvLen always 1 for parport
   if (read_source_input):
@@ -691,10 +772,9 @@ while(True):
 {%- endif %}
   if (parentSetup):
     continue
-
   # sempahore needs to be before parser (unfortunately includes memcpy) so that interrupt doesn't happen between 
   # when {{sig}}BufVars[2] is read by the parser and when it is updated below.
-  sem_wait(pSourceSem) 
+  sem_wait(pSourceUpSem) 
   ###############################################################################
   {%- if sig_type == 'udp'%}
   pthread_mutex_lock(&packetsReceivedMutex)
@@ -715,15 +795,47 @@ while(True):
 {%- for sig, args in (out_signals.items()) %}
   # print "source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
   ##########################################################################
-  {%- if sig_type == 'udp'%}
+  {%- if sig_type == 'udp' %}
   {{sig}}BufVars[2] += packetsToTransfer*packetSize
   {{sig}}BufVars[3] += packetsToTransfer*{{sig}}BufVars[5]
   if ({{sig}}BufVars[4] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
   elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
-  {%- else%}
   ##########################################################################
+  {%- elif sig_type == 'line' %}
+  sem_wait(&lineSem)
+  # print({{sig}}BufVars[7], flush=True)
+  # print(bufCurPtr - bufStrtPtr, flush=True)
+  # print(pLineOutBufRead - pLineOutBuf, flush=True)
+
+  # print(linePeriodSizeBytes, flush=True)
+  # print(lineOutBufSize, flush=True)
+  memcpy(bufCurPtr, pLineOutBufRead, linePeriodSizeBytes)
+  
+  # print(flush=True)
+  pLineOutBufRead += linePeriodSizeBytes
+
+  if (pLineOutBufRead >= pLineOutBuf + lineOutBufSize):
+    pLineOutBufRead = pLineOutBuf
+
+  # print(pLineOutBufRead - pLineOutBuf, flush=True)
+
+  {{sig}}BufVars[2] += linePeriodSizeFrames * 2 # TODO should be channel number
+  {{sig}}BufVars[10] += 1
+  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2] 
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  # Somehow when there is no active streaming data, this number just runs upwards
+  {{sig}}BufVars[3] = linePeriodSizeFrames * 2 # TODO should be channel number
+  {{sig}}BufVars[11] = 1
+  # print({{sig}}BufVars[2], flush=True)
+  # print({{sig}}BufVars[3], flush=True)
+  # print(flush=True)
+  {%- else %}
   {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
   {{sig}}BufVars[10] += 1
   if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
@@ -747,5 +859,4 @@ while(True):
   # print "{{sig}} source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
 {%- endfor %}
 
-  sem_post(pSourceSem) #SOMETHING WEIRDS HAPPENING HERE
-
+  sem_post(pSourceDownSem)

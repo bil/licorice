@@ -1,4 +1,4 @@
-sampling_rate = 48000 # TODO make this available from config
+sampling_rate = 44100 # TODO make this available from config
 timestep = .1
 freqs = np.array([261.63,  329.63, 392.]) * 2 # c major chord
 # freqs = [440.]
