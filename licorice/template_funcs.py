@@ -655,36 +655,65 @@ def parse(paths, config, confirm):
                     destruct_code = f.read()
                     destruct_code = destruct_code.replace("\n", "\n  ")
 
-            # if module_args['in']['real_time']:
-            do_jinja(
-                __find_in_path(paths["templates"], template),
-                os.path.join(paths["output"], name + out_extension),
-                name=name,
-                source_num=source_names.index(name),
-                config=config,
-                has_parser=has_parser,
-                parser_code=parser_code,
-                construct_code=construct_code,
-                destruct_code=destruct_code,
-                in_sig_name=module_args["in"]["name"],
-                in_signal=in_signal,
-                out_signals=out_signals,
-                out_signal_name=(
+            driver_template_name = f'{in_signal["args"]["type"]}'
+            driver_output_name = f"{name}_{driver_template_name}"
+            source_template_kwargs = {
+                "name":name,
+                "source_num":source_names.index(name),
+                "config":config,
+                "has_parser":has_parser,
+                "parser_code":parser_code,
+                "construct_code":construct_code,
+                "destruct_code":destruct_code,
+                "in_sig_name":module_args["in"]["name"],
+                "in_signal":in_signal,
+                "out_signals":out_signals,
+                "out_signal_name":(
                     None if (has_parser) else list(out_signals)[0]
                 ),
-                out_signal_type=(
+                "out_signal_type":(
                     None
                     if (has_parser)
                     else out_sig_types[list(out_signals)[0]]
                 ),
-                out_sig_nums=out_sig_nums,
-                default_params=default_params,
-                num_sem_sigs=num_sem_sigs,
-                in_dtype=in_dtype,
-                sig_types=out_sig_types,
-                buf_vars_len=BUF_VARS_LEN,
-                py_maj_version=sys.version_info[0],
+                "out_sig_nums":out_sig_nums,
+                "default_params":default_params,
+                "num_sem_sigs":num_sem_sigs,
+                "in_dtype":in_dtype,
+                "sig_types":out_sig_types,
+                "buf_vars_len":BUF_VARS_LEN,
+                "py_maj_version":sys.version_info[0],
+            }
+
+            # parse source driver
+            driver_template_file = f"{driver_template_name}.pyx.j2"
+            driver_output_path = os.path.join(
+                paths["output"],
+                f"source_drivers/{driver_output_name}.pyx"
             )
+            do_jinja(
+                __find_in_path(
+                    paths["templates"],
+                    f"source_drivers/{driver_template_file}"
+                ),
+                driver_output_path,
+                **source_template_kwargs
+            )
+
+            with open(driver_output_path, "r") as f:
+                driver_code = f.read()
+            driver_code = {
+                code.partition("\n")[0].strip(): code.partition("\n")[2]
+                for code in filter(None, driver_code.split("# __DRIVER_CODE__"))
+            }
+
+            do_jinja(
+                __find_in_path(paths["templates"], template),
+                os.path.join(paths["output"], name + out_extension),
+                driver_code=driver_code,
+                **source_template_kwargs
+            )
+
         ################################################
         elif name in non_real_time_source_names:  # Non-Real Time Source
             if module_language == "python":
@@ -801,7 +830,6 @@ def parse(paths, config, confirm):
                 x: internal_signals.index(x) for x in list(in_signals)
             }
             out_signal = signals[module_args["out"]["name"]]
-            sig_type = out_signal["args"]["type"]
             has_parser = "parser" in module_args and module_args["parser"]
             if (not has_parser) and (out_signal["args"]["type"] != "disk"):
                 assert len(in_signals) == 1
@@ -960,35 +988,62 @@ def parse(paths, config, confirm):
                         in_signals.pop(sig)
                         in_sig_types.pop(sig)
 
+
+            driver_template_name = f'{out_signal["args"]["type"]}'
+            driver_output_name = f"{name}_{driver_template_name}"
+            sink_template_kwargs = {
+                "name":name,
+                "non_source_num":non_source_names.index(name),
+                "config":config,
+                "has_parser":has_parser,
+                "parser_code":parser_code,
+                "construct_code":construct_code,
+                "destruct_code":destruct_code,
+                "in_signal_name":None if has_parser else list(in_signals)[0],
+                "in_signals":in_signals,
+                "msgpack_sigs":msgpack_sigs,
+                "raw_vec_sigs":raw_vec_sigs,
+                "raw_text_sigs":raw_text_sigs,
+                "raw_num_sigs":raw_num_sigs,
+                "in_sig_nums":in_sig_nums,
+                "out_sig_name":module_args["out"]["name"],
+                "out_signal":out_signal,
+                "num_sem_sigs":num_sem_sigs,
+                "m_dep_on":module_depends_on,
+                "sig_types":in_sig_types,
+                "out_dtype":out_dtype,
+                "buf_vars_len":BUF_VARS_LEN,
+                "source_outputs":list(source_outputs),
+                "history_pad_length":HISTORY_PAD_LENGTH,
+            }
+
+            # parse sink driver
+            driver_template_file = f"{driver_template_name}.pyx.j2"
+            driver_output_path = os.path.join(
+                paths["output"],
+                f"sink_drivers/{driver_output_name}.pyx"
+            )
+            do_jinja(
+                __find_in_path(
+                    paths["templates"],
+                    f"sink_drivers/{driver_template_file}"
+                ),
+                driver_output_path,
+                **sink_template_kwargs
+            )
+
+            with open(driver_output_path, "r") as f:
+                driver_code = f.read()
+            driver_code = {
+                code.partition("\n")[0].strip(): code.partition("\n")[2]
+                for code in filter(None, driver_code.split("# __DRIVER_CODE__"))
+            }
+
             do_jinja(
                 __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
-                name=name,
-                non_source_num=non_source_names.index(name),
-                config=config,
-                has_parser=has_parser,
-                parser_code=parser_code,
-                construct_code=construct_code,
-                destruct_code=destruct_code,
-                in_signal_name=None if has_parser else list(in_signals)[0],
-                in_signals=in_signals,
-                msgpack_sigs=msgpack_sigs,
-                raw_vec_sigs=raw_vec_sigs,
-                raw_text_sigs=raw_text_sigs,
-                raw_num_sigs=raw_num_sigs,
-                in_sig_nums=in_sig_nums,
-                out_sig_name=module_args["out"]["name"],
-                out_signal=out_signal,
-                num_sem_sigs=num_sem_sigs,
-                m_dep_on=module_depends_on,
-                sig_types=in_sig_types,
-                out_dtype=out_dtype,
-                sig_type=sig_type,
-                is_vis=(sig_type == "vis_pygame"),
-                is_single_threaded=(sig_type != "line"),
-                buf_vars_len=BUF_VARS_LEN,
-                source_outputs=list(source_outputs),
-                history_pad_length=HISTORY_PAD_LENGTH,
+                driver_code=driver_code,
+                **sink_template_kwargs
             )
 
         # parse module

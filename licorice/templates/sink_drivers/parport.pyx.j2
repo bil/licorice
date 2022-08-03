@@ -1,0 +1,17 @@
+# __DRIVER_CODE__ imports
+import portio
+
+# __DRIVER_CODE__ variables
+
+# __DRIVER_CODE__ setup
+
+# make sure parport is writeable
+if (portio.ioperm(0x{{out_signal['args']['addr']}}, 1, 1)):
+  die("io permission denied\n")
+
+# __DRIVER_CODE__ run
+
+  portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
+
+
+# __DRIVER_CODE__ exit_handler

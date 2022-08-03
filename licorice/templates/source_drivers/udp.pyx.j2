@@ -1,0 +1,225 @@
+# __DRIVER_CODE__ imports
+
+cdef extern from "<sys/types.h>":
+  ctypedef int pthread_t
+  ctypedef struct pthread_mutex_t:
+    pass
+  ctypedef struct pthread_mutexattr_t:
+    pass
+  ctypedef struct pthread_attr_t:
+    pass
+
+DEF SIG_BLOCK = 1
+
+cdef extern from "<sched.h>":
+  enum: SCHED_FIFO
+  ctypedef struct cpu_set_t:
+    pass
+  void CPU_ZERO(cpu_set_t *set)
+  void CPU_SET(int cpu, cpu_set_t *set)
+
+cdef extern from "<pthread.h>" nogil:
+  struct sched_param:
+    int sched_priority
+  int pthread_join(pthread_t, void **retValue)
+  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
+  int pthread_mutex_lock(pthread_mutex_t *)
+  int pthread_mutex_unlock(pthread_mutex_t *)
+  int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg)
+  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
+  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
+  void pthread_exit(void *retval)
+  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
+
+cdef extern from "<arpa/inet.h>":
+  uint16_t htons(uint16_t hostshort)
+
+cdef extern from "<netinet/in.h>":
+  enum: IPPROTO_UDP
+  ctypedef uint16_t in_port_t
+  ctypedef unsigned short sa_family_t
+  struct in_addr:
+    uint32_t s_addr
+  struct sockaddr_in:
+    sa_family_t sin_family
+    in_port_t sin_port
+    in_addr sin_addr
+    unsigned char sin_zero[8]
+
+cdef extern from "<sys/socket.h>":
+  enum: AF_INET
+  enum: SOCK_DGRAM
+  enum: MSG_DONTWAIT
+  struct sockaddr:
+    unsigned char sa_len
+    unsigned char sa_family  
+    char  sa_data[14]
+  ssize_t recvfrom(int, void *restrict, size_t, int, sockaddr *restrict, socklen_t *restrict)
+  int bind(int, const sockaddr *, socklen_t)
+  int socket(int domain, int type, int protocol)
+
+cdef extern from "sourceUtils.h":
+  in_addr get_ip (char* interface_name)
+
+
+# __DRIVER_CODE__ variables
+
+{%- if test_throughput %}
+cdef int num_packets = 0
+{%- endif %}
+
+cdef int s
+cdef sockaddr_in si_me, si_other
+cdef socklen_t slen = sizeof(si_other) 
+cdef in_addr interface_ip
+
+cdef enum:
+  MAX_NUM_PACKETS_PER_MS = {{in_signal['schema']['packets_per_tick']}}
+cdef int totalPacketsReceived = 0
+cdef int packetSizePerTick[2*MAX_NUM_PACKETS_PER_MS] #= {0} #Should be configurable
+cdef pthread_t udpReadThread
+cdef pthread_mutex_t packetsReceivedMutex, udpDataMutex, exitMutex
+cdef {{in_dtype}} *udpCurPtr
+cdef int exitRoutine = 0
+cdef int packetsToTransfer = 0
+
+if(pthread_mutex_init(&packetsReceivedMutex, NULL) != 0):
+  die("Mutex could not be initialized.\n")
+
+if(pthread_mutex_init(&udpDataMutex, NULL) != 0):
+  die("Mutex could not be initialized.\n")
+
+if(pthread_mutex_init(&exitMutex, NULL) != 0):
+  die("Mutex could not be initialized.\n")
+
+cdef void* readUDP(void *arg):
+  #pthread_mutex_lock(&udpDataMutex) #may not need this lock
+
+  global exitMutex, exitRoutine, totalPacketsReceived, udpCurPtr, si_other, slen, packetSize, packetSizePerTick, s
+  printf("Reading udp data\n")
+  printf("Exit Routine = %d\n", exitRoutine)
+  fflush(stdout)
+  while(True):
+    pthread_mutex_lock(&exitMutex)
+    if(exitRoutine == 1):
+      printf("exit routine signaled.")
+      fflush(stdout)
+      pthread_mutex_unlock(&exitMutex)
+      pthread_exit(NULL)
+    pthread_mutex_unlock(&exitMutex)
+
+    recvLen = recvfrom(s, <void *>udpCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
+    if (recvLen == -1 and errno != EINTR):
+      die("NETWORK ERROR: recvfrom()\n")
+    if (recvLen == -1):
+      die("Read error.\n")
+
+    packetSizePerTick[totalPacketsReceived] = recvLen #Updated length per tick
+    pthread_mutex_lock(&packetsReceivedMutex)
+    printf("updating packets\n")
+    fflush(stdout)
+    totalPacketsReceived = totalPacketsReceived + 1
+    udpCurPtr = udpCurPtr + {{out_signal_name}}BufVars[5] #packetSize  ##is this the right update?
+    pthread_mutex_unlock(&packetsReceivedMutex)
+
+
+  #pthread_mutex_unlock(&udpDataMutex)
+
+
+# __DRIVER_CODE__ setup
+
+# create a UDP socket
+s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+if (s == -1):
+  die("NETWORK ERROR: socket\n")
+# zero out the structure
+memset(<char *> &si_me, 0, sizeof(si_me))
+si_me.sin_family = AF_INET
+si_me.sin_port = htons({{in_signal['args']['port']}})
+interface_ip = get_ip("{{in_signal['args']['interface']}}")
+si_me.sin_addr.s_addr = interface_ip.s_addr
+# bind socket to port
+if(bind(s, <sockaddr *>&si_me, sizeof(si_me))  == -1):
+  print errno
+  die("bind\n")
+
+{{sig}}BufVars[6] = 2*MAX_NUM_PACKETS_PER_MS*packetSize #Max size of data that can be received in one tick
+{{sig}}BufVars[5] = packetSize #size of each packet of data
+#^^should this be the same update as below? what is the out signal packet size for udp?
+{{sig}}BufVars[7] = {{6 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
+
+# TODO this used the last thing before the run loop. make sure it stil works here.
+printf("Source has been signaled.\n")
+memset(<char*>packetSizePerTick, 0, sizeof(packetSizePerTick)) #2*MAX_NUM_PACKETS_PER_MS*
+udpCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2] #ask about this...
+if(pthread_create(&udpReadThread, NULL, &readUDP, NULL)):
+  die("pthread_create failed.")
+printf("Finished creating the readThread.\n")
+
+cdef sched_param param
+param.sched_priority = 49
+pthread_setschedparam(udpReadThread, SCHED_FIFO, &param)
+cdef cpu_set_t mask
+CPU_ZERO(&mask)
+CPU_SET(2, &mask)
+pthread_setaffinity_np(udpReadThread, sizeof(cpu_set_t), &mask)
+
+# __DRIVER_CODE__ parser_read
+
+  # recvLen = recvfrom(s, bufCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
+  # if (recvLen == -1 and errno != EINTR):
+  #   die("NETWORK ERROR: recvfrom()\n")
+  # if (recvLen == -1):
+  #   die("Read error.\n")
+
+  ############ TODO: NEED TO CHANGE TO SUPPORT MULTI PACKETS PER TICK
+  {%- if test_throughput %}
+  tmp = ((<unsigned long *>bufCurPtr)[0]) - packetNum
+  if (not parentSetup):
+    if (packetNum and (tmp != 1)):
+      printf("dropped %lu packets\n", <unsigned long>tmp)
+      numDropped += <unsigned long>tmp
+    packetNum = (<unsigned long *>bufCurPtr)[0]
+    num_packets += 1
+  {%- endif %}
+  ############
+
+
+# __DRIVER_CODE__ parser_between
+
+  pthread_mutex_lock(&packetsReceivedMutex)
+  #printf("packetsReceived = %d\n", totalPacketsReceived)
+  packetsToTransfer = totalPacketsReceived
+  totalPacketsReceived = 0
+  memset(<char *>packetSizePerTick, 0, sizeof(packetSizePerTick)) #2*MAX_NUM_PACKETS_PER_MS*
+  pthread_mutex_unlock(&packetsReceivedMutex)
+
+
+# __DRIVER_CODE__ parser_update
+
+  {{sig}}BufVars[2] += packetsToTransfer*packetSize
+  {{sig}}BufVars[3] += packetsToTransfer*{{sig}}BufVars[5]
+  if ({{sig}}BufVars[4] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+
+
+# __DRIVER_CODE__ exit_handler
+
+  printf("closing udp information.\n")
+  pthread_mutex_lock(&exitMutex)
+  exitRoutine = 1
+  pthread_mutex_unlock(&exitMutex)
+  printf("Joining thread.")
+  if(pthread_join(udpReadThread, NULL) != 0):
+    die("Could not join updReadThread.\n")
+  else:
+    printf("Thread sucessfully joined.")
+
+  if (s):
+    close(s)
+
+  {%- if test_throughput %}
+    printf("Received %d packets over %ld ms. Dropped %lu\n", num_packets, pNumTicks[0], numDropped)
+  {%- endif %}

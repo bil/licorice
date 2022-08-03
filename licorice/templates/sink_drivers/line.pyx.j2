@@ -1,0 +1,169 @@
+# __DRIVER_CODE__ imports
+
+# TODO can we remove this?
+# cdef extern from "<pthread.h>":
+#   struct sched_param:
+#     int sched_priority
+
+cdef extern from "<sched.h>":
+  enum: SCHED_FIFO
+  ctypedef struct cpu_set_t:
+    pass
+  void CPU_ZERO(cpu_set_t *set)
+  void CPU_SET(int cpu, cpu_set_t *set)
+
+cdef extern from "<sys/types.h>":
+  ctypedef unsigned int pthread_t
+  ctypedef struct pthread_attr_t:
+    pass
+
+cdef extern from "<pthread.h>" nogil:
+  struct sched_param:
+    int sched_priority
+  int pthread_create(pthread_t *thread, pthread_attr_t *attr,
+                          void *(*start_routine) (void *), void *arg)
+  void pthread_exit(void *retval)
+  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
+  int pthread_join(pthread_t thread, void **retval)
+  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
+  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
+  pthread_t pthread_self()
+
+cdef extern from "<alsa/asoundlib.h>" nogil:
+  struct _snd_pcm:
+    pass
+  ctypedef _snd_pcm snd_pcm_t
+  struct _snd_pcm_hw_params:
+    pass 
+  ctypedef _snd_pcm_hw_params snd_pcm_hw_params_t
+  struct _snd_pcm_sw_params:
+    pass 
+  ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t
+  ctypedef unsigned long snd_pcm_uframes_t
+  ctypedef long snd_pcm_sframes_t
+  void snd_pcm_hw_params_alloca(void *ptr)
+  void snd_pcm_sw_params_alloca(void *ptr)   
+  snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
+  const char * snd_strerror (int errnum)
+  int snd_pcm_prepare(snd_pcm_t* pcm) 
+  int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
+
+cdef extern from "lineUtilities.h" nogil:
+  int pcm_init_playback(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams)
+  void pcm_close(snd_pcm_t *handle, int exitStatus)
+  int pcm_write_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr)
+  snd_pcm_sframes_t pcm_get_period_size_bytes()
+
+
+# __DRIVER_CODE__ variables
+
+LINE_BUFFER_PERIODS = 4
+cdef snd_pcm_t *play_handle
+cdef snd_pcm_hw_params_t *play_hwparams
+cdef snd_pcm_sw_params_t *play_swparams
+cdef uint8_t *pLineOutBuf
+cdef uint8_t *pLineOutBufWrite
+cdef uint8_t *pLineOutBufRead
+cdef ssize_t linePeriodSizeBytes
+cdef snd_pcm_uframes_t linePeriodSizeFrames
+cdef ssize_t lineOutBufSize
+cdef long int lineBytesWrapped
+# threading variables
+cdef int rc
+cdef pthread_t tid
+cdef sem_t lineSem
+cdef bool shouldDie = False
+# worker thread vars
+cdef char *zErrMsg
+cdef void *retVal
+cdef uint32_t lineWriteOffset = 0
+cdef bool lineWrapped
+
+cdef void* processRequests(void *arg) nogil:
+  global shouldDie, exitMask, ret, play_handle, zErrMsg, pLineOutBuf, pLineOutBufRead, lineSem, lineOutBufSize, linePeriodSizeFrames, linePeriodSizeBytes
+  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  cdef snd_pcm_sframes_t pcm_ret
+  cdef int *retVal
+  zErrMsg = <char *>0
+
+  while (True):
+    sem_wait(&lineSem)
+
+    if (shouldDie):
+      retVal[0] = EXIT_SUCCESS
+      pthread_exit(&retVal)
+
+    pcm_ret = pcm_write_buffer(play_handle, pLineOutBufRead, linePeriodSizeFrames)
+    if (pcm_ret < 0):
+      printf("pcm_write_buffer failed.\n")
+      retVal[0] = EXIT_FAILURE
+      pthread_exit(&retVal)
+
+    pLineOutBufRead += linePeriodSizeBytes
+    if (pLineOutBufRead >= pLineOutBuf + lineOutBufSize):
+      pLineOutBufRead = pLineOutBuf
+
+
+# __DRIVER_CODE__ setup
+
+# initiliaze line in
+snd_pcm_hw_params_alloca(&play_hwparams)
+snd_pcm_sw_params_alloca(&play_swparams)
+pcm_init_playback(&play_handle, play_hwparams, play_swparams)
+sem_init(&lineSem, 0, 0) 
+linePeriodSizeBytes = pcm_get_period_size_bytes()
+linePeriodSizeFrames = snd_pcm_bytes_to_frames(play_handle, linePeriodSizeBytes)
+lineOutBufSize = LINE_BUFFER_PERIODS * linePeriodSizeBytes
+pLineOutBuf = <uint8_t *>malloc(lineOutBufSize)
+pLineOutBufWrite = pLineOutBuf
+pLineOutBufRead = pLineOutBuf
+lineBufferedPeriods = 0
+snd_pcm_prepare(play_handle)
+
+rc = pthread_create(&tid, NULL, &processRequests, NULL)
+if (rc): die("pthread_create failed")
+
+cdef sched_param param
+param.sched_priority = 39
+pthread_setschedparam(tid, SCHED_FIFO, &param)
+cdef cpu_set_t mask
+# cdef pthread_t maint = pthread_self()
+# CPU_ZERO(&mask)
+# CPU_SET(3, &mask)
+# pthread_setaffinity_np(maint, sizeof(cpu_set_t), &mask)
+CPU_ZERO(&mask)
+CPU_SET(4, &mask)
+pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
+
+
+# __DRIVER_CODE__ run
+
+  lineBytesWrapped = (pLineOutBufWrite - pLineOutBuf) + outBufLen - lineOutBufSize
+  linePeriodsWritten = 0
+  if (lineBytesWrapped > 0):
+    memcpy(pLineOutBufWrite, outBuf, outBufLen - lineBytesWrapped)
+    memcpy(pLineOutBuf, outBuf + outBufLen - lineBytesWrapped, lineBytesWrapped)
+
+    linePeriodsWritten = ((((pLineOutBufWrite - pLineOutBuf) + outBufLen) // linePeriodSizeBytes) - ((pLineOutBufWrite - pLineOutBuf) // linePeriodSizeBytes))
+    lineBufferedPeriods += linePeriodsWritten 
+
+    pLineOutBufWrite = pLineOutBuf + lineBytesWrapped
+  else:
+    memcpy(pLineOutBufWrite, outBuf, outBufLen)
+    linePeriodsWritten = ((((pLineOutBufWrite - pLineOutBuf) + outBufLen) // linePeriodSizeBytes) - ((pLineOutBufWrite - pLineOutBuf) // linePeriodSizeBytes))
+    lineBufferedPeriods += linePeriodsWritten
+    pLineOutBufWrite += outBufLen
+
+  for i in range(linePeriodsWritten):
+    sem_post(&lineSem)
+  linePeriodsWritten = 0
+
+
+# __DRIVER_CODE__ exit_handler
+  global shouldDie
+  shouldDie = True
+  sem_post(&lineSem)
+  pthread_join(tid, &retVal)
+  free(pLineOutBuf)
+  sem_destroy(&lineSem)
+  pcm_close(play_handle, exitStatus)

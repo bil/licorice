@@ -1,0 +1,37 @@
+# __DRIVER_CODE__ imports
+
+cdef extern from "zmq.h":
+  int zmq_close(void *s)
+  int zmq_ctx_destroy(void *context)
+  void *zmq_ctx_new()
+  void *zmq_socket(void *, int type)
+  int zmq_bind(void *s, const char *addr)
+  int zmq_recv(void *s, void *buf, size_t len, int flags)
+
+
+# __DRIVER_CODE__ variables
+
+cdef void *radio
+cdef void *context
+
+
+# __DRIVER_CODE__ setup
+
+context = zmq_ctx_new() 
+if (not context):
+  die("Could not create ZMQ context.\n")
+radio = zmq_socket(context, ZMQ_RADIO)
+if (not radio):
+  die("Could not create ZMQ socket.\n")
+rc = zmq_connect(radio, "udp://192.168.1.1:5555")
+assert (rc == 0)
+
+
+# __DRIVER_CODE__ run
+
+# TODO?
+
+
+# __DRIVER_CODE__ exit_handler
+  zmq_close(radio)
+  zmq_ctx_destroy(context)

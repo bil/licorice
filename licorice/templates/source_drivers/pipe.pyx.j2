@@ -1,0 +1,111 @@
+# __DRIVER_CODE__ imports
+
+cdef extern from "time.h":
+  ctypedef int64_t time_t
+  int nanosleep(const timespec *req, timespec *rem)
+
+
+# __DRIVER_CODE__ variables
+
+cdef int named_pipe
+cdef int pipe_size = 50
+cdef int read_size
+cdef enum:
+  pack_size = {{in_signal['schema']['data']['size']}} * sizeof({{in_dtype}})
+cdef uint8_t zero_buf[pack_size]
+cdef const char *FIFOFILE = '{{in_signal['args']['filepath']}}'
+cdef char pipe_buf[50] # must be the same as pipe_size
+cdef void *pipe_zero_buf = calloc(1, pipe_size)
+cdef timespec pipeTimer
+cdef timespec remTimer
+cdef time_t tSec = 0
+cdef long tNSec = 100000L
+
+memset(zero_buf, 0, sizeof(zero_buf))
+
+cdef {{in_dtype}} *zeroPtr
+
+
+# __DRIVER_CODE__ setup
+
+#Open Pipe
+named_pipe = open(FIFOFILE, O_RDONLY | O_NONBLOCK)
+if(named_pipe == -1):
+  die("Could not open source pipe")
+
+#Flush Pipe
+read(named_pipe, pipe_buf, pipe_size)
+
+#Set pipe read sleep time
+pipeTimer.tv_sec = tSec
+pipeTimer.tv_nsec = tNSec
+
+#print "Source pre: {0}".format({{sig}}BufVars[0])
+{{sig}}BufVars[0] = 0
+#print "Source post: {0}".format({{sig}}BufVars[0])
+
+zeroPtr = bufStrtPtr
+
+
+# __DRIVER_CODE__ parser_read
+
+  try:
+
+    # try to read from pipe
+    read_size = read(named_pipe, pipe_buf, pipe_size)
+
+    zeroPtr = bufStrtPtr + read_size
+    if(read_size > 0):
+      if(packetSize > read_size):
+        zero_len = packetSize - read_size
+        memcpy(<char *>bufCurPtr, pipe_buf, read_size)
+        memcpy(<char *>zeroPtr, zero_buf, zero_len)
+      else:
+        memcpy(<char *>bufCurPtr, pipe_buf, packetSize)
+    else:
+      # no bytes read
+      read_size = 0
+      zeroPtr = bufStrtPtr + read_size
+      memcpy(<char *>bufCurPtr, pipe_zero_buf, packetSize)
+    # print read_size
+  except OSError as err:
+  # catch error when trying to read from an empty pipe in non_blocking mode
+    if(err.errno == 11):
+      read_size = 0
+      zeroPtr = bufStrtPtr + read_size
+      memcpy(<char *>bufCurPtr, pipe_zero_buf, packetSize)
+    else:
+      die("Source Pipe Read Failed.\n")
+  # nanosleep(&pipeTimer, &remTimer)
+  pause()
+
+  # print "Source 2: {0}".format(fifo_inBufVars[2])
+  #print pipe_buf[0]
+  #print bufCurPtr[0]
+
+
+# __DRIVER_CODE__ parser_update
+
+  {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
+  {{sig}}BufVars[10] += 1
+  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2] 
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  # Somehow when there is no active streaming data, this number just runs upwards
+  {{sig}}BufVars[3] += {{sig}}BufVars[5]
+  {{sig}}BufVars[11] += 1
+  {%- endif %}
+  {%- if not has_parser %}
+  if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[2] = 0
+    {{sig}}BufVars[10] = 0
+  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
+  # if (bufCurPtr >= bufEndPtr):
+  #   bufCurPtr = bufStrtPtr
+
+# __DRIVER_CODE__ exit_handler
+
+  close(named_pipe)

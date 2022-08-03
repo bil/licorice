@@ -1,0 +1,60 @@
+# __DRIVER_CODE__ imports
+import portio
+
+# __DRIVER_CODE__ variables
+
+cdef unsigned char inVal
+read_source_input = False
+recvLen = 1
+
+
+# __DRIVER_CODE__ alrm_handler
+
+  read_source_input = True
+
+
+# __DRIVER_CODE__ setup
+
+# make sure parport is writeable
+if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
+  die("io permission denied\n")
+
+{{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
+{{sig}}BufVars[5] = {{args['schema']['data']['size']}}
+
+
+# __DRIVER_CODE__ parser_read
+
+  # recvLen always 1 for parport
+  if (read_source_input):
+    read_source_input = False
+    inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
+    bufCurPtr[0] = inVal
+  else:
+    pause()
+    continue
+
+
+# __DRIVER_CODE__ parser_update
+
+  {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
+  {{sig}}BufVars[10] += 1
+  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2] 
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  # Somehow when there is no active streaming data, this number just runs upwards
+  {{sig}}BufVars[3] += {{sig}}BufVars[5]
+  {{sig}}BufVars[11] += 1
+  {%- endif %}
+  {%- if not has_parser %}
+  if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[2] = 0
+    {{sig}}BufVars[10] = 0
+  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
+  # if (bufCurPtr >= bufEndPtr):
+  #   bufCurPtr = bufStrtPtr
+
+  

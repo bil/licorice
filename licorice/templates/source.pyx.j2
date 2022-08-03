@@ -17,7 +17,6 @@ from libcpp cimport bool
 # import Python libraries
 import sys
 import os
-import portio
 import SharedArray as sa
 
 # cimport key Python libraries
@@ -26,117 +25,12 @@ cimport numpy as np
 cimport cython
 
 # declare jinja variables
-{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %} ## What is this?
-{% set sig_type = in_signal['args']['type'] -%}
+{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %}
 
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
 
-##############################################################################
-#Headers For Threading
-{%- if sig_type in ['line', 'udp'] %}
-cdef extern from "<sys/types.h>":
-  ctypedef int pthread_t
-  ctypedef struct pthread_mutex_t:
-    pass
-  ctypedef struct pthread_mutexattr_t:
-    pass
-  ctypedef struct pthread_attr_t:
-    pass
-
-DEF SIG_BLOCK = 1
-
-cdef extern from "<sched.h>":
-  enum: SCHED_FIFO
-  ctypedef struct cpu_set_t:
-    pass
-  void CPU_ZERO(cpu_set_t *set)
-  void CPU_SET(int cpu, cpu_set_t *set)
-
-cdef extern from "<pthread.h>" nogil:
-  struct sched_param:
-    int sched_priority
-  int pthread_join(pthread_t, void **retValue)
-  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
-  int pthread_mutex_lock(pthread_mutex_t *)
-  int pthread_mutex_unlock(pthread_mutex_t *)
-  int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg)
-  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
-  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
-  void pthread_exit(void *retval)
-  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
-{%- endif %}
-###########################################################################
-
-{% if sig_type == 'udp' -%} # headers to declare for UDP source
-cdef extern from "<arpa/inet.h>":
-  uint16_t htons(uint16_t hostshort)
-
-cdef extern from "<netinet/in.h>":
-  enum: IPPROTO_UDP
-  ctypedef uint16_t in_port_t
-  ctypedef unsigned short sa_family_t
-  struct in_addr:
-    uint32_t s_addr
-  struct sockaddr_in:
-    sa_family_t sin_family
-    in_port_t sin_port
-    in_addr sin_addr
-    unsigned char sin_zero[8]
-
-cdef extern from "<sys/socket.h>":
-  enum: AF_INET
-  enum: SOCK_DGRAM
-  enum: MSG_DONTWAIT
-  struct sockaddr:
-    unsigned char sa_len
-    unsigned char sa_family  
-    char  sa_data[14]
-  ssize_t recvfrom(int, void *restrict, size_t, int, sockaddr *restrict, socklen_t *restrict)
-  int bind(int, const sockaddr *, socklen_t)
-  int socket(int domain, int type, int protocol)
-
-cdef extern from "sourceUtils.h":
-  in_addr get_ip (char* interface_name)
-{% elif sig_type == 'pipe' -%}
-cdef extern from "time.h":
-  ctypedef int64_t time_t
-  int nanosleep(const timespec *req, timespec *rem)
-
-{% elif sig_type == 'zmq' -%} # header declaration for zmq source
-cdef extern from "zmq.h":
-  int zmq_close(void *s)
-  int zmq_ctx_destroy(void *context)
-  void *zmq_ctx_new()
-  void *zmq_socket(void *, int type)
-  int zmq_bind(void *s, const char *addr)
-  int zmq_recv(void *s, void *buf, size_t len, int flags)
-{% elif sig_type == 'line' %}
-cdef extern from "<alsa/asoundlib.h>":
-  struct _snd_pcm:
-    pass
-  ctypedef _snd_pcm snd_pcm_t
-  struct _snd_pcm_hw_params:
-    pass
-  ctypedef _snd_pcm_hw_params snd_pcm_hw_params_t
-  struct _snd_pcm_sw_params:
-    pass 
-  ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t 
-  ctypedef unsigned long snd_pcm_uframes_t
-  ctypedef long snd_pcm_sframes_t
-  void snd_pcm_hw_params_alloca(void *ptr)
-  void snd_pcm_sw_params_alloca(void *ptr)
-  snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
-  const char * snd_strerror (int errnum)   
-  int snd_pcm_prepare(snd_pcm_t* pcm) 
-  int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
-
-cdef extern from "lineUtilities.h" nogil:
-  int pcm_init_capture(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams)
-  void pcm_close(snd_pcm_t *handle, exitStatus)
-  int pcm_read_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr);
-  snd_pcm_sframes_t pcm_get_period_size_bytes()
-{% endif %} # end header declaration
+{{ driver_code["imports"] }}
 
 # headers for all sources
 cdef extern from "semaphore.h" nogil:
@@ -168,119 +62,13 @@ cdef extern from "constants.h":
   size_t ROUND_UP(int X, int Y)
   enum: BUF_VARS_LEN
 
+# cdef variables
 cdef pid_t ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
 cdef socklen_t recvLen
 cdef char *outbuf
 cdef int parse_idx
-
-# variable initializations
-{%- if sig_type == 'zmq' %} 
-
-{%- if test_throughput %}
-cdef int num_packets = 0
-{%- endif %}
-
-cdef void *dish
-cdef void *context
-
-{%- elif sig_type == 'udp' %} 
-
-{%- if test_throughput %}
-cdef int num_packets = 0
-{%- endif %}
-
-cdef int s
-cdef sockaddr_in si_me, si_other
-cdef socklen_t slen = sizeof(si_other) 
-cdef in_addr interface_ip
-
-##########################################################################
-cdef enum:
-  MAX_NUM_PACKETS_PER_MS = {{in_signal['schema']['packets_per_tick']}}
-cdef int totalPacketsReceived = 0
-cdef int packetSizePerTick[2*MAX_NUM_PACKETS_PER_MS] #= {0} #Should be configurable
-cdef pthread_t udpReadThread
-cdef pthread_mutex_t packetsReceivedMutex, udpDataMutex, exitMutex
-cdef {{in_dtype}} *udpCurPtr
-cdef int exitRoutine = 0
-cdef int packetsToTransfer = 0
-
-if(pthread_mutex_init(&packetsReceivedMutex, NULL) != 0):
-  die("Mutex could not be initialized.\n")
-
-if(pthread_mutex_init(&udpDataMutex, NULL) != 0):
-  die("Mutex could not be initialized.\n")
-
-if(pthread_mutex_init(&exitMutex, NULL) != 0):
-  die("Mutex could not be initialized.\n")
-
-##########################################################################
-
-{%- elif sig_type == 'pipe' %}
-cdef int named_pipe
-cdef int pipe_size = 50
-cdef int read_size
-cdef enum:
-  pack_size = {{in_signal['schema']['data']['size']}} * sizeof({{in_dtype}})
-cdef uint8_t zero_buf[pack_size]
-cdef const char *FIFOFILE = '{{in_signal['args']['filepath']}}'
-cdef char pipe_buf[50] # must be the same as pipe_size
-cdef void *pipe_zero_buf = calloc(1, pipe_size)
-cdef timespec pipeTimer
-cdef timespec remTimer
-cdef time_t tSec = 0
-cdef long tNSec = 100000L
-
-memset(zero_buf, 0, sizeof(zero_buf))
-
-{%- elif sig_type == 'line' %}
-LINE_BUFFER_PERIODS = 100
-cdef int NPERIODS = 2
-cdef snd_pcm_t *cap_handle
-cdef snd_pcm_hw_params_t *cap_hwparams
-cdef snd_pcm_sw_params_t *cap_swparams
-
-cdef int ret
-
-cdef uint8_t *outBuf
-cdef size_t outBufLen
-
-cdef uint8_t *pLineOutBuf
-cdef uint8_t *pLineOutBufWrite
-cdef uint8_t *pLineOutBufRead
-cdef ssize_t linePeriodSizeBytes
-cdef ssize_t lineBufferSizeBytes
-cdef snd_pcm_uframes_t lineBufferSizeFrames
-cdef snd_pcm_uframes_t linePeriodSizeFrames
-cdef ssize_t lineOutBufSize
-cdef long int lineBytesWrapped
-# threading variables
-cdef int rc
-cdef pthread_t tid
-cdef sem_t lineSem
-cdef bool shouldDie = False
-# worker thread vars
-cdef char *zErrMsg
-cdef void *retVal
-cdef uint32_t lineWriteOffset = 0
-cdef bool lineWrapped
-
-{%- elif sig_type == 'parport' %}
-cdef unsigned char inVal
-read_source_input = False
-recvLen = 1
-
-{%- elif sig_type == 'usb_input' %}
-
-read_source_input = False
-
-{%- endif %}
-# end test for variable initializations
-
-# common variable initializations
-parentSetup = True
 
 cdef size_t shm_size
 cdef uint8_t *pmem
@@ -300,32 +88,31 @@ cdef unsigned long packetNum = 0
 cdef unsigned long numDropped = 0
 cdef int i
 
-# declare output signals
-out_sigs = {}
-{%- if not has_parser %} # output packing is handled by parser code
-out_sig = None
-{%- endif %}
-
 cdef uint32_t packetSize = {{in_signal['schema']['data']['size']}} * sizeof({{in_dtype}})
 cdef {{in_dtype}} *bufStrtPtr
 cdef {{in_dtype}} *bufEndPtr
 cdef {{in_dtype}} *bufCurPtr
-
-{%- if sig_type == 'pipe' %}
-cdef {{in_dtype}} *zeroPtr
-{%- endif %}
 
 {%- for sig, dtype in (sig_types.items()) %} # declare signal BufVars pointers (to point into pBufVars)
 cdef uint32_t *{{sig}}BufVars
 cdef {{dtype}} *{{sig}}StrtPtr
 {%- endfor %}
 
+# python variables
+parentSetup = True
+
+# declare output signals
+out_sigs = {}
+{%- if not has_parser %} # output packing is handled by parser code
+out_sig = None
+{%- endif %}
+
+# driver variables
+{{ driver_code["variables"] }}
+
 # function to close the source
 cdef void handle_exit(int exitStatus):
   global pmem, shm_size, pNumTicks, numDropped, udpReadThread, exitMutex, exitRoutine
-  {%- if sig_type in ['line'] %}
-  global shouldDie, retVal, tid
-  {%- endif %}
   {%- if test_throughput %}
   global num_packets
   {%- endif %}
@@ -340,40 +127,7 @@ cdef void handle_exit(int exitStatus):
     printf("Could not delete shared array {{sig}}.\n")
 {%- endfor %}
 
-{%- if sig_type == 'udp' %}
-  #################################################################
-  printf("closing udp information.\n")
-  pthread_mutex_lock(&exitMutex)
-  exitRoutine = 1
-  pthread_mutex_unlock(&exitMutex)
-  printf("Joining thread.")
-  if(pthread_join(udpReadThread, NULL) != 0):
-    die("Could not join updReadThread.\n")
-  else:
-    printf("Thread sucessfully joined.")
-
-  #################################################################
-  if (s):
-    close(s)
-
-
-{%- elif sig_type == 'pipe' %}
-  close(named_pipe)
-
-{%- elif sig_type == 'zmq' %}
-  zmq_close(dish)
-  zmq_ctx_destroy(context)
-{%- elif sig_type == 'line' %}
-  shouldDie = True
-  pthread_join(tid, &retVal)
-  free(pLineOutBuf)
-  sem_destroy(&lineSem)
-  pcm_close(cap_handle, exitStatus)
-{%- endif %}
-
-{%- if test_throughput and (sig_type == 'udp' or sig_type == 'zmq') %}
-  printf("Received %d packets over %ld ms. Dropped %lu\n", num_packets, pNumTicks[0], numDropped)
-{%- endif %}
+{{ driver_code["exit_handler"] }}
 
 {%- if has_parser %}
   free(bufStrtPtr)
@@ -405,94 +159,11 @@ cdef void alrm_handler(int signum):
   if (parentSetup):
     parentSetup = False
 
-# some are triggered to read based on SIGALRM
-{%- if sig_type == 'parport' or sig_type == 'usb_input' %}
-  read_source_input = True
-{%- endif %}
+  # some are triggered to read based on SIGALRM
+{{ driver_code["alrm_handler"] }}
 
 cdef void usr2_handler(int signum):
   pass
-
-###########################################################################
-{% if sig_type == 'udp' %}
-cdef void* readUDP(void *arg):
-  #pthread_mutex_lock(&udpDataMutex) #may not need this lock
-
-  global exitMutex, exitRoutine, totalPacketsReceived, udpCurPtr, si_other, slen, packetSize, packetSizePerTick, s
-  printf("Reading udp data\n")
-  printf("Exit Routine = %d\n", exitRoutine)
-  fflush(stdout)
-  while(True):
-    pthread_mutex_lock(&exitMutex)
-    if(exitRoutine == 1):
-      printf("exit routine signaled.")
-      fflush(stdout)
-      pthread_mutex_unlock(&exitMutex)
-      pthread_exit(NULL)
-    pthread_mutex_unlock(&exitMutex)
-
-    recvLen = recvfrom(s, <void *>udpCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
-    if (recvLen == -1 and errno != EINTR):
-      die("NETWORK ERROR: recvfrom()\n")
-    if (recvLen == -1):
-      die("Read error.\n")
-
-    packetSizePerTick[totalPacketsReceived] = recvLen #Updated length per tick
-    pthread_mutex_lock(&packetsReceivedMutex)
-    printf("updating packets\n")
-    fflush(stdout)
-    totalPacketsReceived = totalPacketsReceived + 1
-    udpCurPtr = udpCurPtr + {{out_signal_name}}BufVars[5] #packetSize  ##is this the right update?
-    pthread_mutex_unlock(&packetsReceivedMutex)
-
-
-  #pthread_mutex_unlock(&udpDataMutex)
-{%- endif %}
-###########################################################################
-
-{% if sig_type == 'line' -%}
-cdef void* processRequests(void *arg) nogil:
-  global shouldDie, exitMask, ret, cap_handle, zErrMsg, pLineOutBuf, pLineOutBufWrite, lineSem, lineOutBufSize, lineBufferSizeFrames, lineBufferSizeBytes, NPERIODS
-  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
-  cdef snd_pcm_sframes_t pcm_ret
-  cdef int *retVal
-  zErrMsg = <char *>0
-  cdef int i = 0
-
-  while (True):
-    if (shouldDie):
-      retVal[0] = EXIT_SUCCESS
-      pthread_exit(&retVal)
-
-    # printf("write 1: %lu, %lu %lu\n", pLineOutBufWrite - pLineOutBuf, lineBufferSizeFrames, lineBufferSizeBytes)
-    # fflush(stdout)
-    pcm_ret = pcm_read_buffer(cap_handle, pLineOutBufWrite, lineBufferSizeFrames)
-
-    if (pcm_ret < 0):
-      printf("pcm_write_buffer failed.\n")
-      retVal[0] = EXIT_FAILURE
-      pthread_exit(&retVal)
-
-    # i = 0
-    # while (i < lineBufferSizeFrames):
-    #   printf("%d ", (<int16_t *>pLineOutBufWrite)[i])
-    #   i += 1
-    # printf("\n")
-    # fflush(stdout)
-
-    pLineOutBufWrite += lineBufferSizeBytes
-    if (pLineOutBufWrite >= pLineOutBuf + lineOutBufSize):
-      pLineOutBufWrite = pLineOutBuf
-    # printf("write 2: %lu\n", pLineOutBufWrite - pLineOutBuf)
-    # fflush(stdout)
-
-    i = 0
-    while (i < NPERIODS):
-      sem_post(&lineSem)
-      i += 1
-
-{%- endif %}
-
 
 # main
 sigfillset(&exitMask)
@@ -515,80 +186,6 @@ pNumTicks = <int64_t *>(pmem)
 pSourceUpSem = <sem_t *>(pmem + sizeof(uint64_t))
 pSourceDownSem = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
 pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
-
-{% if sig_type == 'udp' -%}
-# create a UDP socket
-s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
-if (s == -1):
-  die("NETWORK ERROR: socket\n")
-# zero out the structure
-memset(<char *> &si_me, 0, sizeof(si_me))
-si_me.sin_family = AF_INET
-si_me.sin_port = htons({{in_signal['args']['port']}})
-interface_ip = get_ip("{{in_signal['args']['interface']}}")
-si_me.sin_addr.s_addr = interface_ip.s_addr
-# bind socket to port
-if(bind(s, <sockaddr *>&si_me, sizeof(si_me))  == -1):
-  print errno
-  die("bind\n")
-
-
-{% elif sig_type == 'pipe' %}
-#Open Pipe
-named_pipe = open(FIFOFILE, O_RDONLY | O_NONBLOCK)
-if(named_pipe == -1):
-  die("Could not open source pipe")
-
-#Flush Pipe
-read(named_pipe, pipe_buf, pipe_size)
-
-#Set pipe read sleep time
-pipeTimer.tv_sec = tSec
-pipeTimer.tv_nsec = tNSec
-
-{% elif sig_type == 'line' %}
-# initiliaze line in 
-snd_pcm_hw_params_alloca(&cap_hwparams)
-snd_pcm_sw_params_alloca(&cap_swparams)
-pcm_init_capture(&cap_handle, cap_hwparams, cap_swparams)
-sem_init(&lineSem, 0, 0)
-linePeriodSizeBytes = pcm_get_period_size_bytes()
-linePeriodSizeFrames = snd_pcm_bytes_to_frames(cap_handle, linePeriodSizeBytes)
-lineBufferSizeBytes = linePeriodSizeBytes * NPERIODS
-lineBufferSizeFrames = snd_pcm_bytes_to_frames(cap_handle, lineBufferSizeBytes)
-
-lineOutBufSize = LINE_BUFFER_PERIODS * lineBufferSizeBytes
-pLineOutBuf = <uint8_t *>malloc(lineOutBufSize)
-pLineOutBufWrite = pLineOutBuf
-pLineOutBufRead = pLineOutBuf
-lineBufferedPeriods = 0
-snd_pcm_prepare(cap_handle)
-
-rc = pthread_create(&tid, NULL, &processRequests, NULL)
-if (rc): die("pthread_create failed")
-
-cdef sched_param param
-param.sched_priority = 39
-pthread_setschedparam(tid, SCHED_FIFO, &param)
-cdef cpu_set_t mask
-CPU_ZERO(&mask)
-CPU_SET(2, &mask)
-pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
-{% elif sig_type == 'parport' -%}
-# make sure parport is writeable
-if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
-  die("io permission denied\n")
-
-{% elif sig_type == 'zmq' -%}
-context = zmq_ctx_new()
-if (not context):
-  die("Could not create ZMQ context.\n")
-dish = zmq_socket(context, ZMQ_DISH)
-if (not dish):
-  die("Could not create ZMQ socket.\n")
-rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
-assert (rc == 0)
-{%- endif %}
 
 created_mem = sa.list()
 {% for sig,args in (out_signals.items()) %}
@@ -613,27 +210,9 @@ sa.mlock(out_sigs['{{sig}}'])
 {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
 {{sig}}BufVars[7] = {{args['buf_tot_numel']}}
 
-{%- if sig_type == 'line' %}
-{{sig}}BufVars[6] = recvLen // sizeof({{in_dtype}}) * 2
-{{sig}}BufVars[5] = recvLen // sizeof({{in_dtype}})
-{{sig}}BufVars[0] = 0
-
-{%- elif sig_type == 'udp'%}
-{{sig}}BufVars[6] = 2*MAX_NUM_PACKETS_PER_MS*packetSize #Max size of data that can be received in one tick
-{{sig}}BufVars[5] = packetSize #size of each packet of data
-#^^should this be the same update as below? what is the out signal packet size for udp?
-{{sig}}BufVars[7] = {{6 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
-
-{%- elif sig_type == 'pipe' %}
-#print "Source pre: {0}".format({{sig}}BufVars[0])
-{{sig}}BufVars[0] = 0
-#print "Source post: {0}".format({{sig}}BufVars[0])
-{%- else %}
-{{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
-{{sig}}BufVars[5] = {{args['schema']['data']['size']}}
-{%- endif %}
-
 {%- endfor %}
+
+{{ driver_code["setup"] }}
 
 {%- if has_parser %}
 bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
@@ -647,14 +226,11 @@ bufEndPtr = bufStrtPtr + {{out_signal_name}}BufVars[7]
 {%- endif %}
 
 
-{%- if sig_type == 'pipe' %}
-zeroPtr = bufStrtPtr
-{%- endif %}
-
-
 {% if default_params -%}
 {{in_sig_name}} = {{default_params}}
 {%- endif %}
+
+
   {{construct_code}}
 
 make_realtime()
@@ -663,124 +239,22 @@ kill(ppid, SIGUSR2) # this source is initialized
 
 pause()
 #start the asychronous read thread if signal type is udp
-{%- if sig_type == 'udp' %}
-##############################################################################
-printf("Source has been signaled.\n")
-memset(<char*>packetSizePerTick, 0, sizeof(packetSizePerTick)) #2*MAX_NUM_PACKETS_PER_MS*
-udpCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2] #ask about this...
-if(pthread_create(&udpReadThread, NULL, &readUDP, NULL)):
-  die("pthread_create failed.")
-printf("Finished creating the readThread.\n")
-
-
-cdef sched_param param
-param.sched_priority = 49
-pthread_setschedparam(udpReadThread, SCHED_FIFO, &param)
-cdef cpu_set_t mask
-CPU_ZERO(&mask)
-CPU_SET(2, &mask)
-pthread_setaffinity_np(udpReadThread, sizeof(cpu_set_t), &mask)
-##############################################################################
-{%- endif %}
 
 while(True):
 {%- if not has_parser %}
   bufCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2]
 {%- endif %}
-{%- if sig_type == 'udp' %}
-  # recvLen = recvfrom(s, bufCurPtr, packetSize, 0, <sockaddr *> &si_other, &slen)
-  # if (recvLen == -1 and errno != EINTR):
-  #   die("NETWORK ERROR: recvfrom()\n")
-  # if (recvLen == -1):
-  #   die("Read error.\n")
 
-  ############ TODO: NEED TO CHANGE TO SUPPORT MULTI PACKETS PER TICK
-  {%- if test_throughput %}
-  tmp = ((<unsigned long *>bufCurPtr)[0]) - packetNum
-  if (not parentSetup):
-    if (packetNum and (tmp != 1)):
-      printf("dropped %lu packets\n", <unsigned long>tmp)
-      numDropped += <unsigned long>tmp
-    packetNum = (<unsigned long *>bufCurPtr)[0]
-    num_packets += 1
-  {%- endif %}
-  ############
+{{ driver_code["parser_read"] }}
 
-{% elif sig_type == 'pipe' %}
-  try:
-
-    # try to read from pipe
-    read_size = read(named_pipe, pipe_buf, pipe_size)
-
-    zeroPtr = bufStrtPtr + read_size
-    if(read_size > 0):
-      if(packetSize > read_size):
-        zero_len = packetSize - read_size
-        memcpy(<char *>bufCurPtr, pipe_buf, read_size)
-        memcpy(<char *>zeroPtr, zero_buf, zero_len)
-      else:
-        memcpy(<char *>bufCurPtr, pipe_buf, packetSize)
-    else:
-      # no bytes read
-      read_size = 0
-      zeroPtr = bufStrtPtr + read_size
-      memcpy(<char *>bufCurPtr, pipe_zero_buf, packetSize)
-    # print read_size
-  except OSError as err:
-  # catch error when trying to read from an empty pipe in non_blocking mode
-    if(err.errno == 11):
-      read_size = 0
-      zeroPtr = bufStrtPtr + read_size
-      memcpy(<char *>bufCurPtr, pipe_zero_buf, packetSize)
-    else:
-      die("Source Pipe Read Failed.\n")
-  # nanosleep(&pipeTimer, &remTimer)
-  pause()
-
-  # print "Source 2: {0}".format(fifo_inBufVars[2])
-  #print pipe_buf[0]
-  #print bufCurPtr[0]
-
-
-{%- elif sig_type == 'line' %}
-  if (parentSetup):
-    pass
-    # pLineOutBufRead = pLineOutBufWrite
-{%- elif sig_type == 'parport' %}
-  # recvLen always 1 for parport
-  if (read_source_input):
-    read_source_input = False
-    inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
-    bufCurPtr[0] = inVal
-  else:
-    pause()
-    continue
-{%- elif sig_type == 'zmq' %}
-  recvLen = zmq_recv(dish, bufCurPtr, packetSize, 0)
-  if (recvLen == -1):
-    die("zmq_recv error.\n")
-  {%- if test_throughput %}
-  num_packets += 1
-  {%- endif %}
-
-{%- else %}
-  pause()
-{%- endif %}
   if (parentSetup):
     continue
   # sempahore needs to be before parser (unfortunately includes memcpy) so that interrupt doesn't happen between 
   # when {{sig}}BufVars[2] is read by the parser and when it is updated below.
   sem_wait(pSourceUpSem) 
-  ###############################################################################
-  {%- if sig_type == 'udp'%}
-  pthread_mutex_lock(&packetsReceivedMutex)
-  #printf("packetsReceived = %d\n", totalPacketsReceived)
-  packetsToTransfer = totalPacketsReceived
-  totalPacketsReceived = 0
-  memset(<char *>packetSizePerTick, 0, sizeof(packetSizePerTick)) #2*MAX_NUM_PACKETS_PER_MS*
-  pthread_mutex_unlock(&packetsReceivedMutex)
-  {%- endif %}
-  ###############################################################################
+
+{{ driver_code["parser_between"] }}
+
 {%- if has_parser %}
   # use user parser
   {{parser_code}}
@@ -788,71 +262,7 @@ while(True):
   # memcpy({{out_signal_name}}StrtPtr + {{out_signal_name}}BufVars[2], bufStrtPtr, packetSize)
 {%- endif %}
   # TODO figure out how to step through data for something like line (artificial data packaging per tick)
-{%- for sig, args in (out_signals.items()) %}
-  # print "source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
-  ##########################################################################
-  {%- if sig_type == 'udp' %}
-  {{sig}}BufVars[2] += packetsToTransfer*packetSize
-  {{sig}}BufVars[3] += packetsToTransfer*{{sig}}BufVars[5]
-  if ({{sig}}BufVars[4] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2]
-  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2]
-  ##########################################################################
-  {%- elif sig_type == 'line' %}
-  sem_wait(&lineSem)
-  # print({{sig}}BufVars[7], flush=True)
-  # print(bufCurPtr - bufStrtPtr, flush=True)
-  # print(pLineOutBufRead - pLineOutBuf, flush=True)
 
-  # print(linePeriodSizeBytes, flush=True)
-  # print(lineOutBufSize, flush=True)
-  memcpy(bufCurPtr, pLineOutBufRead, linePeriodSizeBytes)
-  
-  # print(flush=True)
-  pLineOutBufRead += linePeriodSizeBytes
-
-  if (pLineOutBufRead >= pLineOutBuf + lineOutBufSize):
-    pLineOutBufRead = pLineOutBuf
-
-  # print(pLineOutBufRead - pLineOutBuf, flush=True)
-
-  {{sig}}BufVars[2] += linePeriodSizeFrames * 2 # TODO should be channel number
-  {{sig}}BufVars[10] += 1
-  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2]
-    {{sig}}BufVars[12] = {{sig}}BufVars[10]
-  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2] 
-    {{sig}}BufVars[12] = {{sig}}BufVars[10]
-  # Somehow when there is no active streaming data, this number just runs upwards
-  {{sig}}BufVars[3] = linePeriodSizeFrames * 2 # TODO should be channel number
-  {{sig}}BufVars[11] = 1
-  # print({{sig}}BufVars[2], flush=True)
-  # print({{sig}}BufVars[3], flush=True)
-  # print(flush=True)
-  {%- else %}
-  {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
-  {{sig}}BufVars[10] += 1
-  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2]
-    {{sig}}BufVars[12] = {{sig}}BufVars[10]
-  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2] 
-    {{sig}}BufVars[12] = {{sig}}BufVars[10]
-  # Somehow when there is no active streaming data, this number just runs upwards
-  {{sig}}BufVars[3] += {{sig}}BufVars[5]
-  {{sig}}BufVars[11] += 1
-  {%- endif %}
-  {%- if not has_parser %}
-  if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
-    {{sig}}BufVars[2] = 0
-    {{sig}}BufVars[10] = 0
-  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
-  # if (bufCurPtr >= bufEndPtr):
-  #   bufCurPtr = bufStrtPtr
-  {%- endif %}
-  # print "{{sig}} source: {0} {1} {2} {3} {4} {5} {6} {7}".format({{sig}}BufVars[0],{{sig}}BufVars[1],{{sig}}BufVars[2],{{sig}}BufVars[3],{{sig}}BufVars[4],{{sig}}BufVars[5],{{sig}}BufVars[6],{{sig}}BufVars[7])
-{%- endfor %}
+{{ driver_code["parser_update"] }}
 
   sem_post(pSourceDownSem)
