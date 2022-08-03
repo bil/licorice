@@ -55,14 +55,17 @@ However, this directory structure is completely configurable. Users should set `
 
     This script will take 15 to 30 minutes to complete.
 
-1. [Install pyenv](https://github.com/pyenv/pyenv#set-up-your-shell-environment-for-pyenv) and pyenv-virtualenv in your `~/.bashrc` or similar:
+1. [Install pyenv and pyenv-virtualenv in your shell config.](https://github.com/pyenv/pyenv#set-up-your-shell-environment-for-pyenv) Bash users can use the following:
 
     ```bash
-    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-    echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-    echo 'eval "$(pyenv-virtualenv init -)"' >> ~/.bashrc
-    ```` 
+    cat ./install/pyenv_config.sh >> ~/.bashrc
+    if [ -f "~/.bash_profile" ]; then
+      cat ./install/pyenv_config.sh >> ~/.bash_profile
+    else
+      cat ./install/pyenv_config.sh >> ~/.profile
+    fi
+    source ~/.bashrc
+    ```
 
 1. Bind to the newly built virtualenv:
 
@@ -80,26 +83,14 @@ However, this directory structure is completely configurable. Users should set `
 
 1. Ensure Permissions and Paths
 
-    Now go into basrc with ``` vi ~./bashrc```and place this code at the bottom of the file:
+    To ensure you have the correct permissions, create a new limits file with ```sudo vi /etc/security/limits.d/licorice.conf ``` and add these lines to ensure your user can run licorice. _Replace `user` with the user you are using to run licorice_.
 
     ```bash
-    export PYENV_ROOT=$HOME/.pyenv
-    export PATH=$PYENV_ROOT/bin:$PATH
-    if which pyenv > /dev/null; then
-      eval "$(pyenv init --path)";
-      eval "$(pyenv init -)"
-      eval "$(pyenv virtualenv-init -)";
-    fi
-    ```
-
-    Finally, you must ensure you have the correct permissions, create a new limits file with ```sudo vi /etc/security/limit.d/licorice.conf ``` and add these lines to ensure your user can run licorice. _Replace user with the user you are using to run licorice_.
-
-    ```bash
-    user - rtpio 95
+    user - rtprio 95
     user - memlock unlimited
     ```
 
-    Now reboot your machine and licorice(non-realtime) should be ready to run!
+    Now log out and back in and you are set up for non-realtime licorice development and usage!
 
 1. Optional - Modify BIOS settings and compile realtime kernel
 

@@ -35,7 +35,7 @@ TEMPLATE_SOURCE_C = "source.c.j2"
 TEMPLATE_NRT_SOURCE_PY = "nonRealTimeSource.py.j2"
 
 TEMPLATE_MAKEFILE = "Makefile.j2"
-TEMPLATE_TIMER = "timer.j2"
+TEMPLATE_TIMER = "timer.c.j2"
 TEMPLATE_CONSTANTS = "constants.j2"
 TEMPLATE_NUMBA = "numba_pycc.j2"
 

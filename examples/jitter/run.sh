@@ -1,1 +1,1 @@
-LICORICE_WORKING_DIR="$(dirname "$0")" licorice go jitter
+LICORICE_WORKING_PATH="$(dirname "$0")" licorice go jitter

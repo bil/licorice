@@ -11,7 +11,7 @@ case $OSTYPE in
                 libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
                 libncurses5-dev libncursesw5-dev xz-utils tk-dev \
                 libopenblas-base libopenblas-dev sqlite libmsgpack-dev \
-                libevent-dev libasound2-dev
+                libevent-dev libasound2-dev gfortran
         else
             echo "Automatic dependency installation not supported for your " \
                  "flavor of Linux. Please install dependencies manually."
@@ -37,9 +37,7 @@ case $OSTYPE in
 esac
 
 curl https://pyenv.run | bash
-
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
+source "$(dirname "$0")/pyenv_config.sh"
 
 PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -f
 pyenv uninstall -f licorice

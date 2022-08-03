@@ -1,1 +1,1 @@
-LICORICE_WORKING_DIR="$(dirname "$0")" licorice go parallel_toggle
+LICORICE_WORKING_PATH="$(dirname "$0")" licorice go parallel_toggle
