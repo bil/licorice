@@ -1,0 +1,198 @@
+# __DRIVER_CODE__ imports
+
+cdef extern from "<sys/types.h>":
+  ctypedef int pthread_t
+  ctypedef struct pthread_mutex_t:
+    pass
+  ctypedef struct pthread_mutexattr_t:
+    pass
+  ctypedef struct pthread_attr_t:
+    pass
+
+DEF SIG_BLOCK = 1
+
+cdef extern from "<sched.h>":
+  enum: SCHED_FIFO
+  ctypedef struct cpu_set_t:
+    pass
+  void CPU_ZERO(cpu_set_t *set)
+  void CPU_SET(int cpu, cpu_set_t *set)
+
+cdef extern from "<pthread.h>" nogil:
+  struct sched_param:
+    int sched_priority
+  int pthread_join(pthread_t, void **retValue)
+  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
+  int pthread_mutex_lock(pthread_mutex_t *)
+  int pthread_mutex_unlock(pthread_mutex_t *)
+  int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg)
+  int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
+  int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
+  void pthread_exit(void *retval)
+  int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
+
+cdef extern from "<alsa/asoundlib.h>":
+  struct _snd_pcm:
+    pass
+  ctypedef _snd_pcm snd_pcm_t
+  struct _snd_pcm_hw_params:
+    pass
+  ctypedef _snd_pcm_hw_params snd_pcm_hw_params_t
+  struct _snd_pcm_sw_params:
+    pass
+  ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t
+  ctypedef unsigned long snd_pcm_uframes_t
+  ctypedef long snd_pcm_sframes_t
+  void snd_pcm_hw_params_alloca(void *ptr)
+  void snd_pcm_sw_params_alloca(void *ptr)
+  snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
+  const char * snd_strerror (int errnum)
+  int snd_pcm_prepare(snd_pcm_t* pcm)
+  int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
+
+cdef extern from "lineUtilities.h" nogil:
+  int pcm_init_capture(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams)
+  void pcm_close(snd_pcm_t *handle, exitStatus)
+  int pcm_read_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr);
+  snd_pcm_sframes_t pcm_get_period_size_bytes()
+
+# __DRIVER_CODE__ variables
+
+LINE_BUFFER_PERIODS = 100
+cdef int NPERIODS = 2
+cdef snd_pcm_t *cap_handle
+cdef snd_pcm_hw_params_t *cap_hwparams
+cdef snd_pcm_sw_params_t *cap_swparams
+
+cdef int ret
+
+cdef uint8_t *outBuf
+cdef size_t outBufLen
+
+cdef uint8_t *pLineOutBuf
+cdef uint8_t *pLineOutBufWrite
+cdef uint8_t *pLineOutBufRead
+cdef ssize_t linePeriodSizeBytes
+cdef ssize_t lineBufferSizeBytes
+cdef snd_pcm_uframes_t lineBufferSizeFrames
+cdef snd_pcm_uframes_t linePeriodSizeFrames
+cdef ssize_t lineOutBufSize
+cdef long int lineBytesWrapped
+# threading variables
+cdef sem_t lineSem
+cdef bint shouldDie = False
+cdef pthread_t tid
+cdef void *retVal
+
+cdef void* processRequests(void *arg) nogil:
+  global shouldDie, exitMask, ret, cap_handle, pLineOutBuf, pLineOutBufWrite, lineSem, lineOutBufSize, lineBufferSizeFrames, lineBufferSizeBytes, NPERIODS
+  pthread_sigmask(SIG_BLOCK, &exitMask, NULL)
+  cdef snd_pcm_sframes_t pcm_ret
+  cdef int *retVal
+  cdef int i = 0
+
+  while (True):
+    if (shouldDie):
+      retVal[0] = EXIT_SUCCESS
+      pthread_exit(&retVal)
+
+    # printf("write 1: %lu, %lu %lu\n", pLineOutBufWrite - pLineOutBuf, lineBufferSizeFrames, lineBufferSizeBytes)
+    # fflush(stdout)
+    pcm_ret = pcm_read_buffer(cap_handle, pLineOutBufWrite, lineBufferSizeFrames)
+
+    if (pcm_ret < 0):
+      printf("pcm_write_buffer failed.\n")
+      retVal[0] = EXIT_FAILURE
+      pthread_exit(&retVal)
+
+    # i = 0
+    # while (i < lineBufferSizeFrames):
+    #   printf("%d ", (<int16_t *>pLineOutBufWrite)[i])
+    #   i += 1
+    # printf("\n")
+    # fflush(stdout)
+
+    pLineOutBufWrite += lineBufferSizeBytes
+    if (pLineOutBufWrite >= pLineOutBuf + lineOutBufSize):
+      pLineOutBufWrite = pLineOutBuf
+    # printf("write 2: %lu\n", pLineOutBufWrite - pLineOutBuf)
+    # fflush(stdout)
+
+    i = 0
+    while (i < NPERIODS):
+      sem_post(&lineSem)
+      i += 1
+
+
+# __DRIVER_CODE__ setup
+
+# initiliaze line in
+snd_pcm_hw_params_alloca(&cap_hwparams)
+snd_pcm_sw_params_alloca(&cap_swparams)
+pcm_init_capture(&cap_handle, cap_hwparams, cap_swparams)
+sem_init(&lineSem, 0, 0)
+linePeriodSizeBytes = pcm_get_period_size_bytes()
+linePeriodSizeFrames = snd_pcm_bytes_to_frames(cap_handle, linePeriodSizeBytes)
+lineBufferSizeBytes = linePeriodSizeBytes * NPERIODS
+lineBufferSizeFrames = snd_pcm_bytes_to_frames(cap_handle, lineBufferSizeBytes)
+
+lineOutBufSize = LINE_BUFFER_PERIODS * lineBufferSizeBytes
+pLineOutBuf = <uint8_t *>malloc(lineOutBufSize)
+pLineOutBufWrite = pLineOutBuf
+pLineOutBufRead = pLineOutBuf
+lineBufferedPeriods = 0
+snd_pcm_prepare(cap_handle)
+
+{% for sig,args in (out_signals.items()) %}
+{{sig}}BufVars[6] = recvLen // sizeof({{in_dtype}}) * 2
+{{sig}}BufVars[5] = recvLen // sizeof({{in_dtype}})
+{{sig}}BufVars[0] = 0
+{%- endfor %}
+
+# __DRIVER_CODE__ read
+
+
+# __DRIVER_CODE__ update
+
+  sem_wait(&lineSem)
+  # print({{sig}}BufVars[7], flush=True)
+  # print(bufCurPtr - bufStrtPtr, flush=True)
+  # print(pLineOutBufRead - pLineOutBuf, flush=True)
+
+  # print(linePeriodSizeBytes, flush=True)
+  # print(lineOutBufSize, flush=True)
+  memcpy(bufCurPtr, pLineOutBufRead, linePeriodSizeBytes)
+
+  # print(flush=True)
+  pLineOutBufRead += linePeriodSizeBytes
+
+  if (pLineOutBufRead >= pLineOutBuf + lineOutBufSize):
+    pLineOutBufRead = pLineOutBuf
+
+  # print(pLineOutBufRead - pLineOutBuf, flush=True)
+{%- for sig, args in (out_signals.items()) %}
+  {{sig}}BufVars[2] += linePeriodSizeFrames * 2 # TODO should be channel number
+  {{sig}}BufVars[10] += 1
+  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  # Somehow when there is no active streaming data, this number just runs upwards
+  {{sig}}BufVars[3] = linePeriodSizeFrames * 2 # TODO should be channel number
+  {{sig}}BufVars[11] = 1
+  # print({{sig}}BufVars[2], flush=True)
+  # print({{sig}}BufVars[3], flush=True)
+  # print(flush=True)
+{%- endfor %}
+
+
+# __DRIVER_CODE__ exit_handler
+  global retVal, tid, shouldDie
+  shouldDie = True
+  sem_post(&lineSem)
+  pthread_join(tid, &retVal)
+  free(pLineOutBuf)
+  sem_destroy(&lineSem)
+  pcm_close(cap_handle, exitStatus)

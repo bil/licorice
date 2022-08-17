@@ -1,49 +1,39 @@
 # __DRIVER_CODE__ imports
 
+import pygame
+from time import sleep
+
 
 # __DRIVER_CODE__ variables
-
-read_source_input = False
-
-
-# __DRIVER_CODE__ alrm_handler
-
-  read_source_input = True
 
 
 # __DRIVER_CODE__ setup
 {% for sig,args in (out_signals.items()) %}
-{{sig}}BufVars[6] = {{2 * args['schema']['packets_per_tick'] * args['schema']['data']['size']}}
-{{sig}}BufVars[5] = {{args['schema']['data']['size']}}
+{{sig}}BufVars[6] = {{args['schema']['max_packets_per_tick'] * args['packet_size']}}
 {%- endfor %}
 
-# __DRIVER_CODE__ parser_read
+pygame.display.init()
+pygame.joystick.init()
 
-  pause()
+if pygame.joystick.get_count() < 1:
+    die("No joystick found!\n")
 
+pygame_joystick = pygame.joystick.Joystick(0)
+pygame_joystick.init()
+num_buttons = pygame_joystick.get_numbuttons()
+sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
-# __DRIVER_CODE__ parser_update
-{% for sig,args in (out_signals.items()) %}
-  {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
-  {{sig}}BufVars[10] += 1
-  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2]
-    {{sig}}BufVars[12] = {{sig}}BufVars[10]
-  elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
-    {{sig}}BufVars[4] = {{sig}}BufVars[2] 
-    {{sig}}BufVars[12] = {{sig}}BufVars[10]
-  # Somehow when there is no active streaming data, this number just runs upwards
-  {{sig}}BufVars[3] += {{sig}}BufVars[5]
-  {{sig}}BufVars[11] += 1
-  {%- if not has_parser %}
-  if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
-    {{sig}}BufVars[2] = 0
-    {{sig}}BufVars[10] = 0
-  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
-  # if (bufCurPtr >= bufEndPtr):
-  #   bufCurPtr = bufStrtPtr
-  {%- endif %}
-{%- endfor %}
+# __DRIVER_CODE__ read  
+  pygame.event.pump()
+  (<double*>bufCurPtr)[0] = pygame_joystick.get_axis(0)
+  (<double*>bufCurPtr)[1] = pygame_joystick.get_axis(1)
+  for i in range(num_buttons): 
+    bufCurPtr[128 + i] = pygame_joystick.get_button(i)
+
+{%- if async %}
+
+  sleep(sleep_duration)
+{%- endif %}
 
 
 # __DRIVER_CODE__ exit_handler

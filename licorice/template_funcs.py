@@ -32,8 +32,6 @@ TEMPLATE_SINK_C = "sink.c.j2"
 TEMPLATE_SOURCE_PY = "source.pyx.j2"
 TEMPLATE_SOURCE_C = "source.c.j2"
 
-TEMPLATE_NRT_SOURCE_PY = "nonRealTimeSource.py.j2"
-
 TEMPLATE_MAKEFILE = "Makefile.j2"
 TEMPLATE_TIMER = "timer.c.j2"
 TEMPLATE_CONSTANTS = "constants.j2"
@@ -55,12 +53,12 @@ OUTPUT_TIMER = "timer.c"
 OUTPUT_CONSTANTS = "constants.h"
 
 BUF_VARS_LEN = 16
+# TODO maybe a cleaner way to have a default value for this
 HISTORY_PAD_LENGTH = 4999
-
 
 # change dtype to C format
 def fix_dtype(dtype):
-    if "int" in dtype:
+    if "int" in dtype and not dtype.endswith("_t"):
         return dtype + "_t"
     elif dtype == "float64" or dtype == "double":
         return "double"
@@ -347,6 +345,8 @@ def parse(paths, config, confirm):
     internal_signals = list(signals or [])  # list of numpy signal names
     external_signals = []  # list of external signal names
 
+    # TODO need to assert that source output buffer sizes match module input
+    # sizes for no parser (and vice versa for sinks). check for parser case?
     for signal_name, signal_args in iter(signals.items()):
         # store 1D array shape as length of array
         a = np.empty(literal_eval(str(signal_args["shape"])))
@@ -369,37 +369,39 @@ def parse(paths, config, confirm):
         signal_args["buf_tot_numel"] = np.prod(
             np.array(literal_eval(str(signal_args["sig_shape"])))
         )
-        signal_args["tick_numel"] = np.prod(
+        signal_args["packet_size"] = np.prod(
             np.array(literal_eval(str(signal_args["shape"])))
         )
+        signal_args["ctype"] = fix_dtype(signal_args["dtype"])
         signal_args["dtype_msgpack"] = fix_dtype_msgpack(signal_args["dtype"])
+
+        if "max_packets_per_tick" not in signal_args:
+            # TODO top-level signals should potentially inherit from source
+            signal_args["max_packets_per_tick"] = 1
+
     for module_name, module_args in iter(modules.items()):
         ext_sig = None
         if (
             "in" in module_args
             and isinstance(module_args["in"], dict)
             and "name" in module_args["in"]
-        ):
+        ):  # source
             ext_sig = module_args["in"]
 
-            # need 4 times the average per-tick # of bytes since need double
-            # packets_per_tick in the worst case and two full tick lengths to
-            # avoid overlap in wrap. 2 would also likely work, but 4 is very
-            # safe
-            # TODO, maybe packets_per_tick should default to 1 for some inputs?
-            # e.g., default, joystick, parport?
-            ext_sig["schema"]["buf_tot_numel"] = (
-                4
-                * int(ext_sig["schema"]["packets_per_tick"])
-                * int(ext_sig["schema"]["data"]["size"])
-            )
+            max_packets_per_tick = ext_sig["schema"].get("max_packets_per_tick")
+            ext_sig["schema"]["max_packets_per_tick"] = max_packets_per_tick
+            if max_packets_per_tick is None:
+                if ext_sig.get("async"):
+                    ext_sig["schema"]["max_packets_per_tick"] = 0
+                else:
+                    ext_sig["schema"]["max_packets_per_tick"] = 1
         elif (
             "out" in module_args
             and isinstance(module_args["out"], dict)
             and "name" in module_args["out"]
-        ):
+        ):  # sink
             ext_sig = module_args["out"]
-        else:
+        else:  # module
             continue
         external_signals.append(ext_sig["name"])
         signals[ext_sig["name"]] = ext_sig
@@ -413,18 +415,13 @@ def parse(paths, config, confirm):
 
     module_names = []  # list of module names
     source_names = []  # list of source names
+    async_readers_dict = {}  # dict of source: async_readers
     sink_names = []  # list of sink names
     source_outputs = {}
     dependency_graph = {}
     in_signals = {}
     out_signals = {}
     num_threaded_sinks = 0
-
-    ################################################
-    non_real_time_source_names = []
-    non_real_time_source_signals = {}
-    num_non_real_time_sources = 0
-    ################################################
 
     all_names = list(modules)
     assert len(all_names) == len(set(all_names))
@@ -438,42 +435,31 @@ def parse(paths, config, confirm):
             and isinstance(module_args["in"], dict)
             and module_args["in"]["name"] in external_signals
         ):
-            ################################################
-            if module_args.get("real_time") and not module_args["real_time"]:
-                # non-realtime source
-                ################################################
-                in_sig_name = module_args["in"]["name"]
-                non_real_time_source_names.append(module_name)
-                assert "type" in signals[in_sig_name]["args"]
-                non_real_time_source_signals[in_sig_name] = signals[
-                    in_sig_name
-                ]
-                num_non_real_time_sources = num_non_real_time_sources + 1
-                ################################################
-            else:
-                source_names.append(module_name)
-                for sig in module_args["out"]:
-                    source_outputs[sig] = 0
-                in_sig_name = module_args["in"]["name"]
-                assert "type" in signals[in_sig_name]["args"]
-                in_signals[in_sig_name] = signals[in_sig_name]["args"]["type"]
+            source_names.append(module_name)
+            if (module_args["in"].get("async") or False):
+                async_readers_dict[module_name] = f"{module_name}_async_reader"
+            for sig in module_args["out"]:
+                source_outputs[sig] = 0
+            in_sig_name = module_args["in"]["name"]
+            assert "type" in signals[in_sig_name]["args"]
+            in_signals[in_sig_name] = signals[in_sig_name]["args"]["type"]
 
-                out_sig_schema_num = 0
-                for sig, args in iter(
-                    {
-                        x: signals[x]
-                        for x in (sigkeys & set(module_args["out"]))
-                    }.items()
-                ):
-                    # TODO, should packets_per_tick be copied over?
-                    if "schema" in args:
-                        out_sig_schema_num += 1
-                    else:
-                        args["schema"] = signals[module_args["in"]["name"]][
-                            "schema"
-                        ]
-                if out_sig_schema_num > 0:
-                    assert out_sig_schema_num == len(list(out_signals))
+            out_sig_schema_num = 0
+            for sig, args in iter(
+                {
+                    x: signals[x]
+                    for x in (sigkeys & set(module_args["out"]))
+                }.items()
+            ):
+                # TODO, should max_packets_per_tick be copied over?
+                if "schema" in args:
+                    out_sig_schema_num += 1
+                else:
+                    args["schema"] = signals[module_args["in"]["name"]][
+                        "schema"
+                    ]
+            if out_sig_schema_num > 0:
+                assert out_sig_schema_num == len(list(out_signals))
 
         elif (
             "out" in module_args
@@ -529,10 +515,11 @@ def parse(paths, config, confirm):
 
     ################################################
     assert set(all_names) == set(
-        source_names + module_names + sink_names + non_real_time_source_names
+        source_names + module_names + sink_names
     )
     ################################################
 
+    async_reader_names = list(async_readers_dict.values())
     non_source_names = sink_names + module_names
     topo_children = list(map(list, list(toposort(dependency_graph))))
     topo_widths = list(
@@ -580,6 +567,7 @@ def parse(paths, config, confirm):
                 in_extension = ".py"
                 out_extension = ".pyx"
             else:
+                raise NotImplementedError()
                 template = TEMPLATE_SOURCE_C
                 in_extension = ".c"
                 out_extension = ".c"
@@ -611,7 +599,7 @@ def parse(paths, config, confirm):
                     assert (
                         in_dtype == dtype
                     )  # out_signals has length 1 for no parser
-                args["tick_numel"] = np.prod(
+                args["packet_size"] = np.prod(
                     np.array(literal_eval(str(args["shape"])))
                 )
 
@@ -657,32 +645,40 @@ def parse(paths, config, confirm):
 
             driver_template_name = f'{in_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
+            async_source = (name in async_readers_dict.keys())
+            async_reader_name = async_readers_dict.get(name)
             source_template_kwargs = {
-                "name":name,
-                "source_num":source_names.index(name),
-                "config":config,
-                "has_parser":has_parser,
-                "parser_code":parser_code,
-                "construct_code":construct_code,
-                "destruct_code":destruct_code,
-                "in_sig_name":module_args["in"]["name"],
-                "in_signal":in_signal,
-                "out_signals":out_signals,
-                "out_signal_name":(
+                "name": name,
+                "source_num": source_names.index(name),
+                "config": config,
+                "has_parser": has_parser,
+                "parser_code": parser_code,
+                "construct_code": construct_code,
+                "destruct_code": destruct_code,
+                "async": async_source,
+                "async_reader_name": async_reader_name,
+                "async_reader_num": (
+                    async_reader_names.index(async_reader_name) 
+                    if async_source else None
+                ),
+                "in_sig_name": module_args["in"]["name"],
+                "in_signal": in_signal,
+                "out_signals": out_signals,
+                "out_signal_name": (
                     None if (has_parser) else list(out_signals)[0]
                 ),
-                "out_signal_type":(
+                "out_signal_type": (
                     None
                     if (has_parser)
                     else out_sig_types[list(out_signals)[0]]
                 ),
-                "out_sig_nums":out_sig_nums,
-                "default_params":default_params,
-                "num_sem_sigs":num_sem_sigs,
-                "in_dtype":in_dtype,
-                "sig_types":out_sig_types,
-                "buf_vars_len":BUF_VARS_LEN,
-                "py_maj_version":sys.version_info[0],
+                "out_sig_nums": out_sig_nums,
+                "default_params": default_params,
+                "num_sem_sigs": num_sem_sigs,
+                "in_dtype": in_dtype,
+                "sig_types": out_sig_types,
+                "buf_vars_len": BUF_VARS_LEN,
+                "py_maj_version": sys.version_info[0],
             }
 
             # parse source driver
@@ -699,7 +695,6 @@ def parse(paths, config, confirm):
                 driver_output_path,
                 **source_template_kwargs
             )
-
             with open(driver_output_path, "r") as f:
                 driver_code = f.read()
             driver_code = {
@@ -707,108 +702,28 @@ def parse(paths, config, confirm):
                 for code in filter(None, driver_code.split("# __DRIVER_CODE__"))
             }
 
+            # parse source async reader if async
+            if async_source:
+                do_jinja(
+                    __find_in_path(paths["templates"], template),
+                    os.path.join(
+                        paths["output"], async_reader_name + out_extension
+                    ),
+                    driver_code=driver_code,
+                    is_main_process=False,
+                    is_reader=True,
+                    **source_template_kwargs
+                )
+
+            # parse source template
             do_jinja(
                 __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
-                driver_code=driver_code,
+                driver_code=(None if async_source else driver_code),
+                is_main_process=True,
+                is_reader=(not async_source),
                 **source_template_kwargs
             )
-
-        ################################################
-        elif name in non_real_time_source_names:  # Non-Real Time Source
-            if module_language == "python":
-                template = TEMPLATE_NRT_SOURCE_PY
-                in_extension = ".py"
-                out_extension = ".pyx"
-
-            has_parser = "parser" in module_args and module_args["parser"]
-
-            # TODO update list of supported source (and sink) types
-            supported_source_types = ["line"]
-
-            parser_code = ""
-            if has_parser:
-                if module_args["parser"] is True:
-                    module_args["parser"] = name + "_parser"
-                else:
-                    sys.exit(
-                        "Must specify a parser for non-real-time source "
-                        f"{name}."
-                    )
-
-                with open(
-                    __find_in_path(
-                        paths["modules"], module_args["parser"] + in_extension
-                    ),
-                    "r",
-                ) as f:
-                    parser_code = f.read()
-                    # parser_code = parser_code.replace("\n", "\n  ")
-            else:
-                if (
-                    module_args["in"]["args"]["type"]
-                    not in supported_source_types
-                ):
-                    sys.exit(
-                        "Must specify a parser for non-real-time source "
-                        f"{name},"
-                    )
-
-            construct_code = ""
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = name + "_constructor"
-                else:
-                    sys.exit(
-                        "Must specify a constructor for non-real-time source "
-                        f"{name}."
-                    )
-
-                with open(
-                    __find_in_path(
-                        paths["modules"],
-                        module_args["constructor"] + in_extension,
-                    ),
-                    "r",
-                ) as f:
-                    construct_code = f.read()
-
-            destruct_code = ""
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = name + "_destructor"
-                else:
-                    sys.exit(
-                        "Must specify a destructor for non-real-time source "
-                        f"{name}."
-                    )
-
-                with open(
-                    __find_in_path(
-                        paths["modules"],
-                        module_args["destructor"] + in_extension,
-                    ),
-                    "r",
-                ) as f:
-                    destruct_code = f.read()
-                    destruct_code = destruct_code.replace("\n", "\n  ")
-
-            in_signal = signals[module_args["in"]["name"]]
-            do_jinja(
-                __find_in_path(paths["templates"], template),
-                os.path.join(paths["output"], name + out_extension),
-                name=name,
-                in_signal=in_signal,
-                out_signals={
-                    x: signals[x] for x in (sigkeys & set(module_args["out"]))
-                },
-                in_dtype=in_signal["schema"]["data"]["dtype"],
-                has_parser=has_parser,
-                parser_code=parser_code,
-                construct_code=construct_code,
-                destruct_code=destruct_code,
-            )
-        ################################################
 
         # parse sink
         elif name in sink_names:
@@ -818,6 +733,7 @@ def parse(paths, config, confirm):
                 in_extension = ".py"
                 out_extension = ".pyx"
             else:
+                raise NotImplementedError()
                 template = TEMPLATE_SINK_C
                 in_extension = ".c"
                 out_extension = ".c"
@@ -935,9 +851,9 @@ def parse(paths, config, confirm):
                                 if args["shape"] == 1:
                                     raw_num_sigs.append(sig)
                                 else:  # vector
-                                    raw_vec_sigs[sig] = args["tick_numel"]
+                                    raw_vec_sigs[sig] = args["packet_size"]
                                     raw_vec_sigs["total"] += (
-                                        args["tick_numel"] - 1
+                                        args["packet_size"] - 1
                                     )  # only count *extra* columns
                             else:  # shape is matrix
                                 msgpack_sigs.append(sig)
@@ -952,9 +868,9 @@ def parse(paths, config, confirm):
                                 len(args["shape"]) == 1
                             ):  # if 1D signal
                                 if args["log_storage"]["type"] == "vector":
-                                    raw_vec_sigs[sig] = args["tick_numel"]
+                                    raw_vec_sigs[sig] = args["packet_size"]
                                     raw_vec_sigs["total"] += (
-                                        args["tick_numel"] - 1
+                                        args["packet_size"] - 1
                                     )  # only count *extra* columns
                                 elif args["log_storage"]["type"] == "text":
                                     # determine number of bytes in one signal
@@ -988,33 +904,33 @@ def parse(paths, config, confirm):
                         in_signals.pop(sig)
                         in_sig_types.pop(sig)
 
-
             driver_template_name = f'{out_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
             sink_template_kwargs = {
-                "name":name,
-                "non_source_num":non_source_names.index(name),
-                "config":config,
-                "has_parser":has_parser,
-                "parser_code":parser_code,
-                "construct_code":construct_code,
-                "destruct_code":destruct_code,
-                "in_signal_name":None if has_parser else list(in_signals)[0],
-                "in_signals":in_signals,
-                "msgpack_sigs":msgpack_sigs,
-                "raw_vec_sigs":raw_vec_sigs,
-                "raw_text_sigs":raw_text_sigs,
-                "raw_num_sigs":raw_num_sigs,
-                "in_sig_nums":in_sig_nums,
-                "out_sig_name":module_args["out"]["name"],
-                "out_signal":out_signal,
-                "num_sem_sigs":num_sem_sigs,
-                "m_dep_on":module_depends_on,
-                "sig_types":in_sig_types,
-                "out_dtype":out_dtype,
-                "buf_vars_len":BUF_VARS_LEN,
-                "source_outputs":list(source_outputs),
-                "history_pad_length":HISTORY_PAD_LENGTH,
+                "name": name,
+                "non_source_num": non_source_names.index(name),
+                "config": config,
+                "has_parser": has_parser,
+                "parser_code": parser_code,
+                "construct_code": construct_code,
+                "destruct_code": destruct_code,
+                "async": module_args["out"].get("async") or False,
+                "in_signal_name": None if has_parser else list(in_signals)[0],
+                "in_signals": in_signals,
+                "msgpack_sigs": msgpack_sigs,
+                "raw_vec_sigs": raw_vec_sigs,
+                "raw_text_sigs": raw_text_sigs,
+                "raw_num_sigs": raw_num_sigs,
+                "in_sig_nums": in_sig_nums,
+                "out_sig_name": module_args["out"]["name"],
+                "out_signal": out_signal,
+                "num_sem_sigs": num_sem_sigs,
+                "m_dep_on": module_depends_on,
+                "sig_types": in_sig_types,
+                "out_dtype": out_dtype,
+                "buf_vars_len": BUF_VARS_LEN,
+                "source_outputs": list(source_outputs),
+                "history_pad_length": HISTORY_PAD_LENGTH,
             }
 
             # parse sink driver
@@ -1215,9 +1131,6 @@ def parse(paths, config, confirm):
                 os.path.join(paths["output"], name + out_extension),
                 name=name,
                 args=module_args,
-                #################################
-                non_real_time_parser="non_real_time_parser" in module_args,
-                #################################
                 config=config,
                 user_code=user_code,
                 construct_code=construct_code,
@@ -1269,10 +1182,8 @@ def parse(paths, config, confirm):
         os.path.join(paths["output"], OUTPUT_MAKEFILE),
         module_names=module_names,
         source_names=source_names,
+        async_reader_names=async_reader_names,
         sink_names=sink_names,
-        #######################################################################
-        non_real_time_source_names=non_real_time_source_names,
-        #######################################################################
         source_types=list(map(lambda x: modules[x]["language"], source_names)),
         extra_incl=extra_incl,
         numpy_incl=np.get_include(),
@@ -1287,8 +1198,8 @@ def parse(paths, config, confirm):
         config["config"] = {}
     if not config["config"].get("num_ticks"):
         config["config"]["num_ticks"] = -1
-    if not config["config"].get("tick_size"):
-        config["config"]["tick_size"] = 1000
+    if not config["config"].get("tick_len"):
+        config["config"]["tick_len"] = 1000
     parport_tick_addr = None
     if "config" in config and "parport_tick_addr" in config["config"]:
         parport_tick_addr = config["config"]["parport_tick_addr"]
@@ -1308,15 +1219,12 @@ def parse(paths, config, confirm):
         # child names and lengths
         source_names=source_names,
         num_sources=len(source_names),
+        async_reader_names=async_reader_names,
+        num_async_readers=len(async_reader_names),
         module_names=module_names,
         num_modules=len(module_names),
         sink_names=sink_names,
         num_sinks=len(sink_names),
-        ###############################################################
-        # #nonRealTime Source parameters
-        non_real_time_source_names=non_real_time_source_names,
-        num_non_real_time_sources=len(non_real_time_source_names),
-        ###############################################################
         internal_signals={
             x: signals[x] for x in (sigkeys & set(internal_signals))
         },
@@ -1335,11 +1243,12 @@ def parse(paths, config, confirm):
         __find_in_path(paths["templates"], TEMPLATE_CONSTANTS),
         os.path.join(paths["output"], OUTPUT_CONSTANTS),
         num_ticks=config["config"]["num_ticks"],
-        tick_size_us=config["config"]["tick_size"] % 1000000,
-        tick_size_s=config["config"]["tick_size"] // 1000000,
+        tick_len_us=config["config"]["tick_len"] % 1000000,
+        tick_len_s=config["config"]["tick_len"] // 1000000,
         init_buffer_ticks=((config["config"].get("init_buffer_ticks")) or 100),
         num_sem_sigs=num_sem_sigs,
         num_non_sources=len(non_source_names),
+        num_async_readers=len(async_reader_names),
         num_internal_sigs=len(internal_signals),
         num_source_sigs=len(list(source_outputs)),
         buf_vars_len=BUF_VARS_LEN,

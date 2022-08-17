@@ -1,7 +1,7 @@
 #include "lineUtilities.h"
 
-#define DEFAULT_DEVICE "default"
-#define LOOPBACK_DEVICE "hw:2,1"
+#define PLAYBACK_DEVICE "default"
+#define CAPTURE_DEVICE "default"
 #define MODE 0 // SND_PCM_NONBLOCK // SND_PCM_ASYNC
 
 #define ACCESS SND_PCM_ACCESS_RW_INTERLEAVED
@@ -170,7 +170,7 @@ static int set_swparams(snd_pcm_t *handle, snd_pcm_sw_params_t *swparams) {
 
 int pcm_init_capture(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams) {
   int err;
-  if ((err = snd_pcm_open(pHandle, LOOPBACK_DEVICE, SND_PCM_STREAM_CAPTURE, MODE)) < 0) {
+  if ((err = snd_pcm_open(pHandle, CAPTURE_DEVICE, SND_PCM_STREAM_CAPTURE, MODE)) < 0) {
     printf("Playback open error: %s\n", snd_strerror(err));
     return 0;
   }
@@ -187,7 +187,7 @@ int pcm_init_capture(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm
 
 int pcm_init_playback(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams) {
   int err;
-  if ((err = snd_pcm_open(pHandle, DEFAULT_DEVICE, SND_PCM_STREAM_PLAYBACK, MODE)) < 0) {
+  if ((err = snd_pcm_open(pHandle, PLAYBACK_DEVICE, SND_PCM_STREAM_PLAYBACK, MODE)) < 0) {
     printf("Playback open error: %s\n", snd_strerror(err));
     return 0;
   }

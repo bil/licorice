@@ -1,30 +1,23 @@
 # __DRIVER_CODE__ imports
-
-cdef extern from "zmq.h":
-  int zmq_close(void *s)
-  int zmq_ctx_destroy(void *context)
-  void *zmq_ctx_new()
-  void *zmq_socket(void *, int type)
-  int zmq_bind(void *s, const char *addr)
-  int zmq_recv(void *s, void *buf, size_t len, int flags)
-
+import portio
 
 # __DRIVER_CODE__ variables
 
-cdef void *dish
-cdef void *context
+cdef unsigned char inVal
+read_source_input = False
+recvLen = 1
+
+
+# __DRIVER_CODE__ alrm_handler
+
+  read_source_input = True
 
 
 # __DRIVER_CODE__ setup
 
-context = zmq_ctx_new()
-if (not context):
-  die("Could not create ZMQ context.\n")
-dish = zmq_socket(context, ZMQ_DISH)
-if (not dish):
-  die("Could not create ZMQ socket.\n")
-rc = zmq_bind(dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}")
-assert (rc == 0)
+# make sure parport is writeable
+if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
+  die("io permission denied\n")
 
 {{sig}}BufVars[6] = {{2 * args['schema']['max_packets_per_tick'] * args['schema']['data']['size']}}
 {{sig}}BufVars[5] = {{args['schema']['data']['size']}}
@@ -32,12 +25,17 @@ assert (rc == 0)
 
 # __DRIVER_CODE__ read
 
-  recvLen = zmq_recv(dish, bufCurPtr, packetSize, 0)
-  if (recvLen == -1):
-    die("zmq_recv error.\n")
+  # recvLen always 1 for parport
+  if (read_source_input):
+    read_source_input = False
+    inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
+    bufCurPtr[0] = inVal
+  else:
+    pause()
+    continue
 
 
-# __DRIVER_CODE__ parser update
+# __DRIVER_CODE__ update
 
   {{sig}}BufVars[2] += {{args['schema']['data']['size']}} # same as {{sig}}BufVars[5]
   {{sig}}BufVars[10] += 1
@@ -59,8 +57,4 @@ assert (rc == 0)
   # if (bufCurPtr >= bufEndPtr):
   #   bufCurPtr = bufStrtPtr
 
-
-# __DRIVER_CODE__ exit_handler
-
-  zmq_close(dish)
-  zmq_ctx_destroy(context)
+  

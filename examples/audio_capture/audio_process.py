@@ -72,6 +72,9 @@ if midi_avail:
 
 
 res = audio_signal_source[:]
+res = res[::2]
+# print(res, flush=True)
+# print(np.count_nonzero(res), flush=True)
 
 # weird noise
 # max_val = np.max(res)

@@ -1,36 +1,36 @@
 # cimport C libraries
-from libc.stdio cimport printf, stdout, fflush
+from libc.stdio cimport fprintf, printf, stderr, stdout, fflush
 from libc.stdlib cimport exit, malloc, free, calloc, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
-from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
-from libc.string cimport memset, memcpy
+from libc.signal cimport SIGINT, SIGUSR1, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
+from libc.string cimport memset, memcpy, strerror
 from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
-from posix.unistd cimport getppid, pause, close, getpid, read, sleep
+from posix.unistd cimport close, getpid, getppid, pause
 from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.types cimport pid_t
 from posix.fcntl cimport O_RDWR, open, fcntl, O_RDONLY, F_SETFL, O_NONBLOCK
 from posix.ioctl cimport ioctl
 from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
-from libcpp cimport bool
 
 # import Python libraries
 import sys
 import os
+{% if is_reader -%}
 import SharedArray as sa
+{%- endif %}
 
 # cimport key Python libraries
 import numpy as np
 cimport numpy as np
 cimport cython
 
-# declare jinja variables
-{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %}
+cdef extern from "<sys/resource.h>":
+  enum: PRIO_PROCESS
+  int setpriority(int which, int who, int prio)
 
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
-
-{{ driver_code["imports"] }}
 
 # headers for all sources
 cdef extern from "semaphore.h" nogil:
@@ -47,34 +47,64 @@ cdef extern from "utilityFunctions.h":
   void die(char *errorStr)
   void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags)
   void set_sighandler(int signum, void *psh, sigset_t *block_mask)
+  void set_sched_prior(int priority)
   void make_realtime()
 
 cdef extern from "constants.h":
-  enum: NUM_CHANNELSf
   enum: MAX_PATH_LEN
   enum: PAGESIZE
-  enum: INIT_BUFFER_TICKS
-  enum: BYTES_PER_FRAME
   const char *SMEM0_PATHNAME
   enum: NUM_NON_SOURCES
   enum: NUM_SEM_SIGS
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
   enum: BUF_VARS_LEN
+  enum: PRIORITY
+  enum: SHM_SIZE
+  enum: NUM_TICKS_OFFSET
+  enum: SOURCE_UP_SEM_OFFSET
+  enum: SOURCE_DOWN_SEM_OFFSET
+  enum: BUF_VARS_OFFSET
+  enum: ASYNC_MUTEXES_OFFSET
+
+{%- if async %}
+cdef extern from "<sys/types.h>":
+  ctypedef struct pthread_mutex_t:
+    pass
+  ctypedef struct pthread_mutexattr_t:
+    pass
+
+cdef extern from "<pthread.h>" nogil:
+  struct sched_param:
+    int sched_priority
+  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
+  int pthread_mutex_lock(pthread_mutex_t *)
+  int pthread_mutex_unlock(pthread_mutex_t *)
+{%- endif %}
+
+{%- if is_reader %}
+{{ driver_code["imports"] }}
+{%- endif %}
 
 # cdef variables
-cdef pid_t ppid
+cdef pid_t pid, ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
-cdef socklen_t recvLen
 cdef char *outbuf
 cdef int parse_idx
 
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
+{% if is_main_process -%}
 cdef sem_t *pSourceUpSem
 cdef sem_t *pSourceDownSem
+{%- else %}
+shouldExit = False
+{%- endif %}
+{%- if async %}
+cdef pthread_mutex_t *pAsyncMutex
+{%- endif %}
 cdef uint32_t *pBufVars
 # 0: tick start
 # 1: tick end
@@ -88,19 +118,22 @@ cdef unsigned long packetNum = 0
 cdef unsigned long numDropped = 0
 cdef int i
 
-cdef uint32_t packetSize = {{in_signal['schema']['data']['size']}} * sizeof({{in_dtype}})
+{% if is_reader -%}
+cdef uint32_t packetSize = {{in_signal["schema"]["data"]["size"]}} * sizeof({{in_dtype}})
 cdef {{in_dtype}} *bufStrtPtr
 cdef {{in_dtype}} *bufEndPtr
 cdef {{in_dtype}} *bufCurPtr
+{%- endif %}
 
 {%- for sig, dtype in (sig_types.items()) %} # declare signal BufVars pointers (to point into pBufVars)
 cdef uint32_t *{{sig}}BufVars
+  {%- if is_reader and has_parser %}
 cdef {{dtype}} *{{sig}}StrtPtr
+  {%- endif %}
 {%- endfor %}
 
-# python variables
-parentSetup = True
 
+# python variables
 # declare output signals
 out_sigs = {}
 {%- if not has_parser %} # output packing is handled by parser code
@@ -108,29 +141,33 @@ out_sig = None
 {%- endif %}
 
 # driver variables
+{%- if is_reader %}
 {{ driver_code["variables"] }}
+{%- endif %}
 
 # function to close the source
 cdef void handle_exit(int exitStatus):
-  global pmem, shm_size, pNumTicks, numDropped, udpReadThread, exitMutex, exitRoutine
-  {%- if test_throughput %}
-  global num_packets
-  {%- endif %}
+  global pmem, shm_size, udpReadThread, exitMutex, exitRoutine
+
   {{destruct_code}}
 
-# delete the signal's shared memory array
+{%- if is_reader %}
+  
+  # delete the signal's shared memory array
   sa_names = [sig.name for sig in sa.list()]
-{%- for sig in (out_signals.keys()) %}
+  {%- for sig in (out_signals.keys()) %}
   if b"{{sig}}" in sa_names:
     sa.delete("shm://{{sig}}")
   else:
     printf("Could not delete shared array {{sig}}.\n")
-{%- endfor %}
+  {%- endfor %}
+
+  {%- if has_parser %}
+  free(bufStrtPtr)
+  {%- endif %}
 
 {{ driver_code["exit_handler"] }}
 
-{%- if has_parser %}
-  free(bufStrtPtr)
 {%- endif %}
 
   munmap(pmem, shm_size)
@@ -142,8 +179,13 @@ cdef void int_handler(int signum):
   pass
 
 cdef void exit_handler(int signum):
+  global shouldExit
   printf("EXIT HANDLER for {{name}}\n")
+{%- if is_main_process %}
   handle_exit(0)
+{%- else %}
+  shouldExit = True
+{%- endif %}
 
 cdef void bus_handler(int signum):
   printf("Bus Error\n")
@@ -153,15 +195,6 @@ cdef void segv_handler(int signum):
   printf("Seg Fault\n")
   handle_exit(1)
 
-# sources respond to SIGALRM 
-cdef void alrm_handler(int signum):
-  global parentSetup, read_source_input
-  if (parentSetup):
-    parentSetup = False
-
-  # some are triggered to read based on SIGALRM
-{{ driver_code["alrm_handler"] }}
-
 cdef void usr2_handler(int signum):
   pass
 
@@ -169,100 +202,165 @@ cdef void usr2_handler(int signum):
 sigfillset(&exitMask)
 init_utils(&handle_exit, &exitMask)
 
-cdef int pid = getpid()
+pid = getpid()
 ppid = getppid()
 
-set_sighandler(SIGALRM, &alrm_handler, NULL)
 set_sighandler(SIGINT, &int_handler, &exitMask)
 set_sighandler(SIGUSR1, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
-shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
-shm_size = ROUND_UP(shm_size, PAGESIZE)
+shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
-pNumTicks = <int64_t *>(pmem)
-pSourceUpSem = <sem_t *>(pmem + sizeof(uint64_t))
-pSourceDownSem = <sem_t *>(pmem + sizeof(uint64_t) + sizeof(sem_t))
-pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
+{% if is_main_process -%}
+pSourceUpSem = <sem_t *>(pmem + SOURCE_UP_SEM_OFFSET)
+pSourceDownSem = <sem_t *>(pmem + SOURCE_DOWN_SEM_OFFSET)
+{%- endif %}
+pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
+{%- if async %}
+pAsyncMutex = <pthread_mutex_t *>(pmem + ASYNC_MUTEXES_OFFSET + sizeof(pthread_mutex_t) * {{async_reader_num}})
+  {%- if is_main_process %}
+if(pthread_mutex_init(pAsyncMutex, NULL) != 0):
+  die("Mutex could not be initialized.\n")
+  {%- endif %}
+{%- endif %}
 
-created_mem = sa.list()
 {% for sig,args in (out_signals.items()) %}
+{{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
+  {%- if is_main_process %}
+{{sig}}BufVars[5] = {{args["packet_size"]}}
+{{sig}}BufVars[6] = {{args["schema"]["max_packets_per_tick"] * args["packet_size"]}}
+{{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
+  {%- endif %}
+{%- endfor %}
+
+{% if is_reader -%}
+created_mem = sa.list()
+  {% for sig,args in (out_signals.items()) %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
   printf("Numpy signal {{sig}} already created. Overwriting\n")
 
-dtype = np.{{args['dtype']}}
-out_sigs['{{sig}}'] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=dtype)
-{{sig}} = out_sigs['{{sig}}']
-{{sig}}StrtPtr = <{{sig_types[sig]}} *><long>out_sigs['{{sig}}'].__array_interface__['data'][0]
+dtype = np.{{args["dtype"]}}
+out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args["sig_shape"]}}, dtype=dtype)
+    {%- if has_parser %}
+{{sig}}Raw = out_sigs["{{sig}}"]
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]
+{{sig}}StrtPtr = <{{sig_types[sig]}} *><long>{{sig}}Raw.__array_interface__["data"][0]
+    {%- else %}
+out_sig = out_sigs["{{sig}}"]
+    {%- endif %}
 
-{%- if not has_parser %}
-out_sig = out_sigs['{{sig}}']
-{%- endif %}
-
-{%-  if py_maj_ver == 2 %}
+    {%-  if py_maj_ver == 2 %}
 # TODO determine usage in SharedArray>2.0.4
-sa.mlock(out_sigs['{{sig}}'])
-{%- endif %}
-
-{{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
-{{sig}}BufVars[7] = {{args['buf_tot_numel']}}
-
-{%- endfor %}
+sa.mlock(out_sigs["{{sig}}"])
+    {%- endif %}
+  {%- endfor %}
 
 {{ driver_code["setup"] }}
 
-{%- if has_parser %}
+{%- endif %}
+
+{% if is_reader %}
+  {%- if has_parser %}
 bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
 bufCurPtr = bufStrtPtr
 bufEndPtr = bufStrtPtr + packetSize
-{%- else %}
-bufStrtPtr = <{{out_signal_type}} *><long>out_sig.__array_interface__['data'][0]   
+  {%- else %}
+bufStrtPtr = <{{out_signal_type}} *><long>out_sig.__array_interface__["data"][0]   
 bufCurPtr = bufStrtPtr
 bufEndPtr = bufStrtPtr + {{out_signal_name}}BufVars[7]
 # bufEndPtr = bufStrtPtr + packetSize
+  {%- endif %}
 {%- endif %}
-
 
 {% if default_params -%}
 {{in_sig_name}} = {{default_params}}
 {%- endif %}
 
+{%- if is_reader %}
 
   {{construct_code}}
+{%- endif %}
 
 make_realtime()
 fflush(stdout)
 kill(ppid, SIGUSR2) # this source is initialized
-
 pause()
-#start the asychronous read thread if signal type is udp
 
 while(True):
-{%- if not has_parser %}
-  bufCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2]
+{%- if is_main_process %}
+  sem_wait(pSourceUpSem) 
 {%- endif %}
 
-{{ driver_code["parser_read"] }}
+{%- if is_reader %}
+  {%- if not is_main_process %}
+  if (shouldExit):
+    handle_exit(0)
+  {%- endif %}
 
-  if (parentSetup):
-    continue
-  # sempahore needs to be before parser (unfortunately includes memcpy) so that interrupt doesn't happen between 
-  # when {{sig}}BufVars[2] is read by the parser and when it is updated below.
-  sem_wait(pSourceUpSem) 
+  {%- if not has_parser %}
+  bufCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2]
+  {%- endif %}
 
-{{ driver_code["parser_between"] }}
+{{ driver_code["read"] }}
 
-{%- if has_parser %}
+  {%- if has_parser %}
+    {%- for sig, args in out_signals.items() %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]
+    {%- endfor %}
+
   # use user parser
   {{parser_code}}
-{%- else %}
-  # memcpy({{out_signal_name}}StrtPtr + {{out_signal_name}}BufVars[2], bufStrtPtr, packetSize)
+  {%- endif %}
+  
+  # update bufVars
+  {%- for sig,args in (out_signals.items()) %}
+    {%- if async %}
+  pthread_mutex_lock(pAsyncMutex)
+
+  {{sig}}BufVars[6] = max({{sig}}BufVars[6], {{sig}}BufVars[9] - {{sig}}BufVars[8])
+    {%- endif %}
+  {{sig}}BufVars[2] += {{sig}}BufVars[5]
+  # print("2: ", {{sig}}BufVars[2], flush=True)
+  {{sig}}BufVars[10] += 1
+  if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]) or ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
+    {{sig}}BufVars[4] = {{sig}}BufVars[2]
+    {{sig}}BufVars[12] = {{sig}}BufVars[10]
+  # Somehow when there is no active streaming data, this number just runs upwards
+  {{sig}}BufVars[3] += {{sig}}BufVars[5]
+  {{sig}}BufVars[11] += 1
+    {%- if async %}
+  # wrap buffer for async readers during setup. wrap is synchonous after setup meaning
+  # that async readers should not read more than `max_packets_per_tick` packets in a tick
+  if (pNumTicks[0] < 0) and ({{sig}}BufVars[7] < ({{sig}}BufVars[2] + {{sig}}BufVars[6])):
+    {{sig}}BufVars[2] = 0
+    {{sig}}BufVars[10] = 0
+
+  pthread_mutex_unlock(pAsyncMutex)
+    {%- endif %}
+  {%- endfor %}
 {%- endif %}
-  # TODO figure out how to step through data for something like line (artificial data packaging per tick)
 
-{{ driver_code["parser_update"] }}
-
+{%- if is_main_process %}
+  {%- if async %}
+  pthread_mutex_lock(pAsyncMutex)
+  {%- endif %}
+  {%- for sig,args in (out_signals.items()) %}
+  {{sig}}BufVars[1] = {{sig}}BufVars[2];
+  {{sig}}BufVars[9] = {{sig}}BufVars[10];
+  {{sig}}BufVars[0] = {{sig}}BufVars[1] - {{sig}}BufVars[3];
+  {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11];
+  if (({{sig}}BufVars[7] < ({{sig}}BufVars[2]) + {{sig}}BufVars[6])):
+    {{sig}}BufVars[2] = 0;
+    {{sig}}BufVars[10] = 0;
+  {{sig}}BufVars[3] = 0;
+  {{sig}}BufVars[11] = 0;
+  {%- endfor %}
+  {%- if async %}
+  pthread_mutex_unlock(pAsyncMutex)
+  {%- endif %}
   sem_post(pSourceDownSem)
+{%- endif %}

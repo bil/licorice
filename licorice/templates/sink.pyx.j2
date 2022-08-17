@@ -56,6 +56,12 @@ cdef extern from "constants.h":
   enum: NEW_DB_NUM_S
   enum: BUF_VARS_LEN
   enum: SQL_LOGGER_FLUSH
+  enum: SHM_SIZE
+  enum: NUM_TICKS_OFFSET
+  enum: TICK_UP_SEMS_OFFSET
+  enum: TICK_DOWN_SEMS_OFFSET
+  enum: SIG_SEMS_OFFSET
+  enum: BUF_VARS_OFFSET
 
 {{ driver_code["imports"] }}
 
@@ -133,31 +139,34 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
 # open and map shared parent memory
 
-shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
-shm_size = ROUND_UP(shm_size, PAGESIZE)
+shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
-pNumTicks = <int64_t *>(pmem)
-pTickUpSems = <sem_t *>(pmem +  sizeof(uint64_t) + 2 * sizeof(sem_t))
-pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
-pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
-pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
+pTickUpSems = <sem_t *>(pmem + TICK_UP_SEMS_OFFSET)
+pTickDownSems = <sem_t *>(pmem + TICK_DOWN_SEMS_OFFSET)
+pSigSems = <sem_t *>(pmem + SIG_SEMS_OFFSET)
+pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 
 created_mem = sa.list()
-{% for sig,dtype in sig_types.items() %}
+{% for sig,args in in_signals.items() %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
   {{sig}}Raw = in_sigs['{{sig}}']
-{%- if py_maj_ver == 2 %}
+  {%- if py_maj_ver == 2 %}
   # sa.mlock(in_sigs['{{sig}}'])
-{%- endif %}
+  {%- endif %}
   {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
+  {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  {%- else %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {%- endif %}
 else:
   die("numpy signal not created\n")
-{% if out_signal['args']['type'] != 'vis_pygame' %}
-{{sig}}StrtPtr = <{{dtype}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0] 
+  {% if out_signal['args']['type'] != 'vis_pygame' %}
+{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0] 
 {{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
-{% endif %}
+  {% endif %}
 {% endfor %}
 
 {{ driver_code["setup"] }}
@@ -179,12 +188,11 @@ while(True):
 {%- endfor %}
 
 {% for sig,args in in_signals.items() %}
-  {% if top_level %} # TODO a sink could theoretically be top-level
-  # maybe don't do a divide in the future
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]//{{in_signals[sig]['tick_numel']}}]
-  {% else %}
+  {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {% endif %}
+  {%- else %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {%- endif %}
   {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
 {% endfor %}
 

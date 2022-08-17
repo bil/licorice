@@ -66,6 +66,12 @@ cdef extern from "constants.h":
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
   enum: BUF_VARS_LEN
+  enum: SHM_SIZE
+  enum: NUM_TICKS_OFFSET
+  enum: TICK_UP_SEMS_OFFSET
+  enum: TICK_DOWN_SEMS_OFFSET
+  enum: SIG_SEMS_OFFSET
+  enum: BUF_VARS_OFFSET
 
 cdef pid_t pid
 cdef pid_t ppid
@@ -141,14 +147,13 @@ pid = getpid()
 printf("child %d id: %d\n", {{module_num}}, pid)
 
 # open and map shared parent memory
-shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
-shm_size = ROUND_UP(shm_size, PAGESIZE)
+shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
-pNumTicks = <int64_t *>(pmem)
-pTickUpSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t))
-pTickDownSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)))
-pSigSems = <sem_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)))
-pBufVars = <uint32_t *>(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t))
+pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
+pTickUpSems = <sem_t *>(pmem + TICK_UP_SEMS_OFFSET)
+pTickDownSems = <sem_t *>(pmem + TICK_DOWN_SEMS_OFFSET)
+pSigSems = <sem_t *>(pmem + SIG_SEMS_OFFSET)
+pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {% if name == 'bufferer' %}
 cdef uint8_t *bmem
 mb_shm_size = {{in_signals.items()|length}} * sizeof(uint32_t) * {{history_pad_length+1}} + {{in_signals.items()|length}} * sizeof(uint8_t) * {{history_pad_length+1}} + sizeof(uint32_t) #[pointer hist(uint*[]), size hist(uint[]), the buffer position(uint[])]
@@ -174,10 +179,10 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
   {{sig}}Raw = in_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
-  {%- if top_level %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]//{{in_signals[sig]['tick_numel']}}]
-  {%- else %}
+  {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  {%- else %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
   {%- endif %}
 else:
   print("{{sig}} not created")
@@ -193,37 +198,17 @@ else:
   # make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
   out_sigs["{{sig}}"].base.mlock()
 
-  ################################################################################
-  {% if non_real_time_parser -%}
-  if "len" in "{{sig}}": 
-    SA_PATH_LEN = "shm://io.{{sig}}"
-  else:
-    SA_PATH = "shm://io.{{sig}}"
-    SEM_NAME = "/{{sig}}.sem"
-  {%- endif %}
-  ################################################################################
-
   {{sig}}Raw = out_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+  {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {{sig}}BufVars[7] = {{args['buf_tot_numel']}}
-  {{sig}}BufVars[6] = {{args['tick_numel']}}
-  {{sig}}BufVars[5] = {{args['tick_numel']}}
+  {%- else %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {%- endif %}
+  {{sig}}BufVars[5] = {{args["packet_size"]}}
+  {{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
+  {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
 {% endfor %}
-
-###########################################
-#attach to shared arrays
-{% if non_real_time_parser -%}
-raw_sig = sa.attach(SA_PATH)
-#TODO: encode dtype with a variable
-raw_sigStart = <uint8_t *><long>raw_sig.__array_interface__['data'][0]
-raw_len = sa.attach(SA_PATH_LEN)
-raw_lenStart = <uint8_t *><long>raw_len.__array_interface__['data'][0]
-sem = posix_ipc.Semaphore(name = SEM_NAME)
-
-{%- endif %}
-
-###########################################
 
 # set signal mask
 sigfillset(&exitMask)
@@ -263,13 +248,11 @@ while(True):
 #  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
 #  printf("\ttick %lu, module {{name}} deps ready at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {% for sig,args in in_signals.items() %}
-  {% if top_level %}
-  # maybe don't do a divide in the future
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]//{{in_signals[sig]['tick_numel']}}]
-  
-  {% else %}
+  {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {% endif %}
+  {%- else %}
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {%- endif %}
   {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
 {% endfor %}
 {% for sig,args in out_signals.items() %}
@@ -297,61 +280,6 @@ while(True):
     pBufPos[0] = 0
   {% endif %}
 {%- endif %}
-
-####################################################################
-  {%- if non_real_time_parser%}
-  try:
-    sem.acquire(timeout = 0)
-    #Determine the number of samples that need to be transferred over
-    ind = len(raw_len) - 1
-    for i in range(0, len(raw_len)):
-      if raw_len[i] == 0:
-        ind = i
-        break
-
-
-    if ind > 0:
-
-      {% for sig,args in out_signals.items() %}
-      #memcpy to licorice signal and update bufvars
-      print({{sig}})
-      if "len" in "{{sig}}":
-        memcpy(<char *><long>{{sig}}.__array_interface__['data'][0], <char *>raw_lenStart, 2*ind*sizeof({{args['dtype']}}_t)) 
-      else:
-        memcpy(<char *><long>{{sig}}.__array_interface__['data'][0], <char *>raw_sigStart, 2*ind*1472*sizeof({{args['dtype']}}_t)) 
-
-      #TODO: Do I need to also include sizeof and then the dtype
-      {{sig}}BufVars[2] += 2*{{sig}}BufVars[5]*sizeof({{args['dtype']}}_t)
-      {{sig}}BufVars[10] += 1
-      if ({{sig}}BufVars[7] <= ({{sig}}BufVars[2] + {{sig}}BufVars[6])):
-        {{sig}}BufVars[4] = {{sig}}BufVars[2]
-        {{sig}}BufVars[12] = {{sig}}BufVars[10]
-      elif ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
-        {{sig}}BufVars[4] = {{sig}}BufVars[2] 
-        {{sig}}BufVars[12] = {{sig}}BufVars[10]
-      {{sig}}BufVars[3] += 2*{{sig}}BufVars[5]*sizeof({{args['dtype']}}_t)
-      {{sig}}BufVars[11] += 1
-
-      {{sig}}BufVars[1] = {{sig}}BufVars[2]
-      {{sig}}BufVars[9] = {{sig}}BufVars[10]
-      {{sig}}BufVars[0] = {{sig}}BufVars[1] - {{sig}}BufVars[3]
-      {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11]
-      if ({{sig}}BufVars[7] < ({{sig}}BufVars[2] + {{sig}}BufVars[6])):
-        {{sig}}BufVars[2] = 0
-        {{sig}}BufVars[10] = 0
-      {{sig}}BufVars[3] = 0
-      {{sig}}BufVars[11] = 0 
-      {% endfor %}
-      
-      raw_len[:] = bytearray(len(raw_len))
-
-    sem.release()
-  except posix_ipc.BusyError:
-    pass
-  {%- endif %}
-
-
-###################################################################
 
 {%for dep_name, dep_val in dependencies.items() %}
   # printf("module 1 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])

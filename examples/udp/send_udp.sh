@@ -1,23 +1,20 @@
 #!/bin/bash
 
-port=51002     # port number to read from (bind to)
-interface=localhost # interface name
+# TODO move this to a Python program
+
+PORT=51002          # port number to read from (bind to)
+INTERFACE=localhost # interface name
 
 while :
 do
-  echo "STAN" | nc -4vu -w 1 $interface $port
-  echo "FORD" | nc -4vu -w 1 $interface $port
-  echo "TREE" | nc -4vu -w 1 $interface $port
-  echo "MESS" | nc -4vu -w 1 $interface $port
-  echo "AGES" | nc -4vu -w 1 $interface $port
-  # echo "SEND" | nc -4vu -w 1 $interface $port
-  # echo "TIME" | nc -4vu -w 1 $interface $port
-  # echo "FOUR" | nc -4vu -w 1 $interface $port
-  # echo "WORD" | nc -4vu -w 1 $interface $port
-  # echo "DONE" | nc -4vu -w 1 $interface $port
-  #nc = netcat
-  #-4 ipv4 addresses
-  #v verbose
-  #u UDO
-  #w timeout for _
+  # netcat options:
+  # -4 ipv4 address
+  # -u UDP
+  # -w timeout (seconds)
+  # -N    Shutdown the network socket after EOF on stdin
+  echo "STAN" | nc -4u -w 1  $INTERFACE $PORT
+  echo "FORD" | nc -4u -w 1  $INTERFACE $PORT
+  echo "TREE" | nc -4u -w 1  $INTERFACE $PORT
+  echo "MESS" | nc -4u -w 1  $INTERFACE $PORT
+  echo "AGES" | nc -4u -w 1  $INTERFACE $PORT
 done

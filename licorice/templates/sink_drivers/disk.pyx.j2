@@ -124,7 +124,7 @@ ctypedef struct signalsMsData:
   {{dtype}} {{sig}}[{{in_signals[sig]['schema']['data']['size'] * 2}}]
   uint32_t {{sig}}NumSamplesRecvd
   {%- else %}
-  {{dtype}} {{sig}}[{{in_signals[sig]['tick_numel']}}]
+  {{dtype}} {{sig}}[{{in_signals[sig]['packet_size']}}]
   {%- endif %}
 {%- endfor %}
 cdef signalsMsData *pSignalsStructCur
@@ -160,6 +160,12 @@ cdef uint8_t *mbmem
 
 cdef int db_index = 0
 cdef int num_extra_cols = 0 # counter for extra columns added to db
+
+# temporary pointer to pass to output APIs
+cdef uint8_t *outBuf
+cdef size_t sentBytes
+cdef size_t outBufLen
+
 
 cdef void* printBuffer() nogil:
   printf("BUFFER:\n")
@@ -239,8 +245,8 @@ cdef void* processRequests() nogil:
     msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}NumSamplesRecvd)
     for i in range (pSignalsStructFlushStart.{{sig}}NumSamplesRecvd):
     {%- else %}
-    msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
-    for i in range({{args['tick_numel']}}):
+    msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['packet_size']}})
+    for i in range({{args['packet_size']}}):
     {%- endif %}
       msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructFlushStart.{{sig}}[i])
     sql_bind_blob(signalsStmt, {{loop.index}} + num_extra_cols, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
@@ -260,7 +266,7 @@ cdef void* processRequests() nogil:
 
   {%- elif sig in raw_text_sigs %}
     # text signal
-    sql_bind_text(signalsStmt, {{loop.index}} + num_extra_cols, pSignalsStructFlushStart.{{sig}}, {{raw_text_sigs[sig]}} * {{args['tick_numel']}}, SQLITE_STATIC)
+    sql_bind_text(signalsStmt, {{loop.index}} + num_extra_cols, pSignalsStructFlushStart.{{sig}}, {{raw_text_sigs[sig]}} * {{args['packet_size']}}, SQLITE_STATIC)
 
   {%- elif sig in raw_num_sigs %}
     # raw number signal
@@ -359,7 +365,7 @@ sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
 num_extra_cols = 0 # counter for number of extra added columns
 {%- for sig,args in in_signals.items() %}
 # signalsTableArr[{{loop.index0}}].type = "uint64_t"
-# signalsTableArr[{{loop.index0}}].number = {{args['tick_numel']}}
+# signalsTableArr[{{loop.index0}}].number = {{args['packet_size']}}
 # signalsTableArr[{{loop.index0}}].unit = "TODO"
 # signalsTableArr[{{loop.index0}}].data = NULL
 
@@ -419,12 +425,12 @@ msgpack_packer_init(&mpSignals{{sig|capitalize}}Pk, &mpSignals{{sig|capitalize}}
 # enlarge buffer before main execution
 {%- if sig in source_outputs %}
 # this should really be on a packet level
-msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{2 * args['tick_numel']}})
-for i in range({{2 * args['tick_numel']}}):
+msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{2 * args['packet_size']}})
+for i in range({{2 * args['packet_size']}}):
   msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, 0)
 {%- else %}
-msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['tick_numel']}})
-for i in range({{args['tick_numel']}}):
+msgpack_pack_array(&mpSignals{{sig|capitalize}}Pk, {{args['packet_size']}})
+for i in range({{args['packet_size']}}):
   msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, 0)
 {%- endif %}
 {%- endif %}

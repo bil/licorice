@@ -11,6 +11,11 @@ cdef extern from "<sys/stat.h>":
 cdef int named_pipe
 cdef const char *FIFOFILE = '{{out_signal['args']['filepath']}}'
 
+# temporary pointer to pass to output APIs
+cdef uint8_t *outBuf
+cdef size_t sentBytes
+cdef size_t outBufLen
+
 
 # __DRIVER_CODE__ setup
 

@@ -8,19 +8,30 @@ LDFLAGS = -levent -pthread -lsqlite3 {{extra_incl}}
 LDTESTFLAGS = -lsqlite3 -pthread
 CYLDFLAGS = {{py_lib}} -lsqlite3 {% if line %}-lasound{% endif %} {{py_link_flags}} {{extra_incl}} # -lpthread -lm -lutil -ldl should be included in py_link_flags
 
-all: timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in module_names %}{{c}} {% endfor %}{% for nrt in non_real_time_source_names %}{{nrt}} {% endfor %}
+all: timer {% for so in source_names %}{{so}} {% endfor %}{% for ar in async_reader_names %}{{ar}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in module_names %}{{c}} {% endfor %}
 
 timer: timer.c utilityFunctions.c 
 	$(CC) $(CFLAGS) timer.c utilityFunctions.c -o timer $(LDFLAGS)
 
 {% for source in source_names -%}
 {% if source_types[loop.index0] == 'python' -%}
-{{source}}: {{source}}.pyx sourceUtils.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} # lineUtilities.c
+{{source}}: {{source}}.pyx utilityFunctions.c {% if line %}lineUtilities.c{% endif %} # lineUtilities.c
 	cython --embed -3 -o {{source}}.c {{source}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c sourceUtils.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{source}} $(CYLDFLAGS) # remove not a line source
+	$(CC) $(CYFLAGS) -Wno-cpp {{source}}.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{source}} $(CYLDFLAGS) # remove not a line source
 {% else -%}
-{{source}}: {{source}}.c sourceUtils.c utilityFunctions.c
-	$(CC) $(CFLAGS) {{source}}.c sourceUtils.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{source}} $(LDFLAGS)
+{{source}}: {{source}}.c utilityFunctions.c
+	$(CC) $(CFLAGS) {{source}}.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{source}} $(LDFLAGS)
+{% endif -%}
+{%- endfor -%}
+
+{% for async_reader in async_reader_names -%}
+{% if source_types[loop.index0] == 'python' -%}
+{{async_reader}}: {{async_reader}}.pyx utilityFunctions.c {% if line %}lineUtilities.c{% endif %} # lineUtilities.c
+	cython --embed -3 -o {{async_reader}}.c {{async_reader}}.pyx
+	$(CC) $(CYFLAGS) -Wno-cpp {{async_reader}}.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{async_reader}} $(CYLDFLAGS) # remove not a line source
+{% else -%}
+{{async_reader}}: {{async_reader}}.c utilityFunctions.c
+	$(CC) $(CFLAGS) {{async_reader}}.c utilityFunctions.c {% if line %}lineUtilities.c{% endif %} -o {{async_reader}} $(LDFLAGS)
 {% endif -%}
 {%- endfor -%}
 
@@ -36,12 +47,6 @@ timer: timer.c utilityFunctions.c
 	$(CC) $(CYFLAGS) -Wno-cpp {{child}}.c  utilityFunctions.c -o {{child}} $(CYLDFLAGS) #networkUtilities.c
 {% endfor -%}
 
-{% for nrtSource in non_real_time_source_names -%}
-{{nrtSource}}: {{nrtSource}}.pyx utilityFunctions.c #networkUtilities.c
-	cython --embed -3 -o {{nrtSource}}.c {{nrtSource}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{nrtSource}}.c  utilityFunctions.c -o {{nrtSource}} $(CYLDFLAGS) #networkUtilities.c
-{% endfor -%}
-
 clean:
-	rm -f timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %}{% for c in module_names %}{{c}} {% endfor %}{% for nrt in non_real_time_source_names %}{{nrt}} {% endfor %}
+	rm -f timer {% for so in source_names %}{{so}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %}{% for c in module_names %}{{c}} {% endfor %}
 

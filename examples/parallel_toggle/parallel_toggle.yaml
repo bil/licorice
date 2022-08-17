@@ -31,12 +31,12 @@ modules:
       name: parport_in      # needs a name, will be removed later
       args:
         type: parport       # the type of souce this is
-        addr: 379           # the I/O address of the parallel port
+        addr: 0           # the I/O address of the parallel port
       schema:               # define the structure of the data generated from the source
         data:
           dtype: uint8      # data type quantization
           size: 1           # number of units of dtype to read per packet
-        packets_per_tick: 1 # max number of packets to accept per tick (this is not relevant for parallel ports, will be removed for non-appropriate sources later)
+        max_packets_per_tick: 1 # max number of packets to accept per tick (this is not relevant for parallel ports, will be removed for non-appropriate sources later)
     out:
       - parallel_in         # signal to write output of source to
 
@@ -57,4 +57,4 @@ modules:
       name: parport_out     # needs a name, will be removed later
       args:
         type: parport
-        addr: 378
+        addr: 1

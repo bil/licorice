@@ -34,18 +34,18 @@ cdef extern from "<alsa/asoundlib.h>" nogil:
     pass
   ctypedef _snd_pcm snd_pcm_t
   struct _snd_pcm_hw_params:
-    pass 
+    pass
   ctypedef _snd_pcm_hw_params snd_pcm_hw_params_t
   struct _snd_pcm_sw_params:
-    pass 
+    pass
   ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t
   ctypedef unsigned long snd_pcm_uframes_t
   ctypedef long snd_pcm_sframes_t
   void snd_pcm_hw_params_alloca(void *ptr)
-  void snd_pcm_sw_params_alloca(void *ptr)   
+  void snd_pcm_sw_params_alloca(void *ptr)
   snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
   const char * snd_strerror (int errnum)
-  int snd_pcm_prepare(snd_pcm_t* pcm) 
+  int snd_pcm_prepare(snd_pcm_t* pcm)
   int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
 
 cdef extern from "lineUtilities.h" nogil:
@@ -115,7 +115,7 @@ cdef void* processRequests(void *arg) nogil:
 snd_pcm_hw_params_alloca(&play_hwparams)
 snd_pcm_sw_params_alloca(&play_swparams)
 pcm_init_playback(&play_handle, play_hwparams, play_swparams)
-sem_init(&lineSem, 0, 0) 
+sem_init(&lineSem, 0, 0)
 linePeriodSizeBytes = pcm_get_period_size_bytes()
 linePeriodSizeFrames = snd_pcm_bytes_to_frames(play_handle, linePeriodSizeBytes)
 lineOutBufSize = LINE_BUFFER_PERIODS * linePeriodSizeBytes
@@ -150,7 +150,7 @@ pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
     memcpy(pLineOutBuf, outBuf + outBufLen - lineBytesWrapped, lineBytesWrapped)
 
     linePeriodsWritten = ((((pLineOutBufWrite - pLineOutBuf) + outBufLen) // linePeriodSizeBytes) - ((pLineOutBufWrite - pLineOutBuf) // linePeriodSizeBytes))
-    lineBufferedPeriods += linePeriodsWritten 
+    lineBufferedPeriods += linePeriodsWritten
 
     pLineOutBufWrite = pLineOutBuf + lineBytesWrapped
   else:

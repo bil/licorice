@@ -5,7 +5,7 @@
 # Note: model configuration is still in alpha stage and subject to cosmetic changes
 
 config:
-  tick_size: 10000
+  tick_len: 10000
 
 modules:
 

@@ -1,13 +1,15 @@
 #include "utilityFunctions.h"
-#include <sys/mman.h>
 #include <fcntl.h>
-#include <unistd.h>
+#include <sched.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include "constants.h"
 
 static sigset_t exitMask;
 static void (*exit_handler)(int errorStr);
+
 
 /* 
  * prefault stack to avoid faults during execution
@@ -69,6 +71,17 @@ void set_sighandler(int signum, void *psh, sigset_t *block_mask) {
   }
   if (sigaction(signum, &sa, NULL) == -1) {
     die("sigaction failed \n");
+  }
+}
+
+/*
+ * set scheduler to SCHED_FIFO with the given priority
+ */
+void set_sched_prior(int priority) {
+  struct sched_param param;
+  param.sched_priority = priority;
+  if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
+    die("sched_setscheduler failed.\n");
   }
 }
 

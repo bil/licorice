@@ -27,8 +27,8 @@ modules:
         type: pipe
         filepath: /tmp/fifo_sink
       schema:
-        packets_per_tick: 1
+        max_packets_per_tick: 1
         data:
           dtype: uint8
           size: 1
-    parser: true
+    # parser: true # TODO is there a parser for this?

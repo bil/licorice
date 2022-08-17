@@ -129,7 +129,7 @@ Here we define aspects of the setup, timing, and ticks(our metric of time) in or
 
 | Keyword          | Usage                                                        |
 | ---------------- | :----------------------------------------------------------- |
-| tick_size        | Set the time per tick in nanoseconds                         |
+| tick_len        | Set the time per tick in nanoseconds                         |
 | num_ticks        | The number of ticks to run the model for                     |
 | init_tick_buffer | The number of ticks to run before modules start reading data from the source |
 
@@ -167,7 +167,7 @@ _Coming Soon_
 # Example Model
 config:
 
-  tick_size: 100000 # This is equicalent to 1ms
+  tick_len: 100000 # This is equicalent to 1ms
   num_ticks: 10 # How many ticks to run for
   
 signals:
@@ -191,7 +191,7 @@ modules:
       	args:
       		type: usb_input
       	schema:
-      		packets_per_ticket: 1
+      		max_packets_per_tick: 1 # defaults to 1 for sync, None for async
       		data:
       			dtype: double
       			size: 2

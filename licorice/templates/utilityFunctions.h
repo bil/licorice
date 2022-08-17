@@ -27,7 +27,12 @@ void die(char *errorStr);
  * create a signal handler that handles signal signum and runs the function *psh
  * when signum is raised
  */
-void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags);
+void set_sighandler(int signum, void *psh, sigset_t *block_mask);
+
+/*
+ * set scheduler to SCHED_FIFO with the given priority
+ */
+void set_sched_prior(int priority);
 
 /*
  * open a shared memory block with:
@@ -40,6 +45,8 @@ void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int sh
  * If the file descriptor needs to be ftruncated (i.e., this is the first process opening)
  * this shared memory, then make sure the O_CREAT flag is set in shm_flags
  */
-void set_sighandler(int signum, void *psh, sigset_t *block_mask);
+void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags);
+
+
 
 #endif

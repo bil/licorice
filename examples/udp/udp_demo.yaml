@@ -2,93 +2,35 @@
  # tracks multiple data packets per tick
 
 config:
-  tick_size: 10000
+  tick_len: 10000
 
 signals:
   udp_data:
-    shape: (4, 5)
-    #shape: 4
-    dtype: uint8
-    log: False
-
-  udp_data_len:
-    shape: 5
+    shape: 4
     dtype: uint8
     log: False
 
 modules:
-   #source (non real time)
-   #'read' it in from the socket
-   # udp_source:          # define the source
-   #   language: python        # language is currently a required parameter, will later be optional
-   #   parser: True
-   #   constructor: True
-   #   destructor: True
-   #   in:
-   #     name: udp_source #udp_in      # needs a name, will be removed later
-   #     args:
-   #       type: udp      # the type of souce this is
-   #       port: 51002         # port number to read from (bind to)
-   #       interface: 192.168.137.255  # interface name
-   #     schema:               # define the structure of the data generated from the source
-   #       data:
-   #         dtype: uint8      # data type quantization
-   #         size: 1        # number of units of dtype to read per packet
-   #       packets_per_tick: 1 #4 # max number of packets to accept per tick (this is not relevant for parallel ports, will be removed for non-appropriate sources later)
-   #     realTime: False
-   #   out:
-   #     - udp_data
+  # async source
+  udp_source:          # define the source
+    language: python        # language is currently a required parameter
+    in:
+      name: udp_source #udp_in      # needs a name, will be removed later
+      async: True
+      max_packets_per_tick: 2
+      args:
+        type: udp      # the type of souce this is
+        port: 51002         # port number to read from (bind to)
+        interface: localhost # interface name
+      schema:               # define the structure of the data read
+        data:
+          dtype: uint8      # data type quantization
+          size: 4        # number of units of dtype to read per packet
+    out:
+      - udp_data
 
-   # read in from the stored array and output
-   udp_output:          # define the module
-     language: python   # language the module is written in
-     constructor: True   # needs a constructor 
-     out:                # input signals / output signals *(was originally in:)
-       - udp
-       - udp_data_len
-
-# #Simple demo to test that the udp connection is working and correctly
-# #tracks multiple data packets per tick
-
-# '''
-# signals:
-#   udp_data:
-#     shape: (6, 1472)
-#     dtype: uint8
-#     log: False
-
-#   udp_data_len:
-#     shape: 6
-#     dtype: uint8
-#     log: False
-
-# modules:
-#   #source (non real time)
-#   udp_source:          # define the source
-#     language: python        # language is currently a required parameter, will later be optional
-#     parser: True
-#     constructor: True
-#     destructor: True
-#     in:
-#       name: udp_in      # needs a name, will be removed later
-#       args:
-#         type: udp      # the type of souce this is
-#         port: 51009         # port number to read from (bind to)
-#         interface: localhost  # interface name
-#       schema:               # define the structure of the data generated from the source
-#         data:
-#           dtype: uint8      # data type quantization
-#           size: 1472        # number of units of dtype to read per packet
-#         packets_per_tick: 6 # max number of packets to accept per tick (this is not relevant for parallel ports, will be removed for non-appropriate sources later)
-#       realTime: False
-#     out:
-#       - udp_data
-
-#   # empty module 
-#   udp_output:          # define the module
-#     language: python   # language the module is written in
-#     constructor: True   # needs a constructor 
-#     out:                # input signals / output signals *(was originally in:)
-#       - udp_data
-#       - udp_data_len
-# '''
+  # print UDP data
+  udp_print:          # define the module
+    language: python   # language the module is written in
+    in:                # input signal
+      - udp_data

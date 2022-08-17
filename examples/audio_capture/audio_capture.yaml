@@ -1,13 +1,13 @@
 # Output a sine wave over line out
 
 config:
-  tick_size: 100000
+  tick_len: 100000
   # num_ticks: 1000
   init_buffer_ticks: 10
 
 signals:
   audio_signal_source:
-    shape: (8820, )
+    shape: (17640, )
     dtype: int16
     history: 10000
   
@@ -17,26 +17,19 @@ signals:
     history: 1000
 
 modules:
-  # process_audio:
-  #   language: python
-  #   constructor: true
-  #   numba: false
-  #   in:
-  #     - audio_in
-  #     - audio_out
-
   audio_in:
     language: python
-    real_time: True
     in:  
       name: audio_source
+      async: True
       args:
         type: line
-      schema:
-        packets_per_tick: 2
+      schema: # TODO move line constants here
+        max_packets_per_tick: 10
         data:
           dtype: int16
           size: 17640
+
     out:
       - audio_signal_source
 

@@ -1,24 +1,30 @@
 #define _GNU_SOURCE
-#include <stdio.h>
-#include <signal.h>
-#include <sys/time.h>
-#include <string.h>
-#include <stdlib.h>
-#include <sys/io.h>
-#include <unistd.h>
+{%- if parport_tick_addr is not none %}
+#include <linux/parport.h>
+#include <linux/ppdev.h>
+{%- endif %}
+#include <errno.h>
+#include <fcntl.h>
 #include <sched.h>
+#include <semaphore.h>
+#include <signal.h>
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/io.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <stdbool.h>
+#include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
-#include <stdint.h>
-#include <semaphore.h>
 #include <sys/wait.h>
-#include <stdatomic.h>
 #include <time.h>
-#include <stdlib.h>
+#include <unistd.h>
+
 #include "constants.h"
 #include "utilityFunctions.h"
 
@@ -27,21 +33,8 @@
 #define NUM_SINKS {{num_sinks}}
 #define NUM_MODULES {{num_modules}}
 
-//////////////////////////////////////////////////////////////
-#define NUM_NON_REAL_TIME_SOURCES {{num_non_real_time_sources}}
-//////////////////////////////////////////////////////////////
-
-#define NUM_TICKS_OFFSET 0
-#define SOURCE_SEM_OFFSET 0
-#define TICK_SEMS_OFFSET 0
-#define SIG_SEMS_OFFSET 0
-#define BUF_VARS_OFFSET 0
-
 {% set test_start_time = ('test_start_time' in config['config'] and config['config']['test_start_time']) %}
 {% set test_tick_time = ('test_tick_time' in config['config'] and config['config']['test_tick_time']) %}
-// process IDs for each child numbered according to the index of the child's name
-// in moduleProcnames
-static pid_t ch_pids[NUM_MODULES];
 {%- if num_modules != 0 %}
 static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
 {%- endif %}
@@ -52,20 +45,18 @@ static char nonSourceProcnames[NUM_NON_SOURCES][MAX_MODULE_NAME_LEN] = {{'{'}}{%
 static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{{l}}, {% endfor %}{{topo_widths[-1]}}{{'}'}};
 static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
 {%- endif %}
-{%- if num_source_sigs != 0 %}
-static int sourceOutSigNums[NUM_SOURCE_SIGS] = {{'{'}}{% for sig, num in source_out_sig_nums.items() %}{{num}}{{ "," if not loop.last }}{% endfor %}{{source_out_sig_nums[-1]}}{{'}'}};
-{%- else %}
-static int *sourceOutSigNums;
-{%- endif %}
 static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source_module_check[:-1] %}{{i}}, {% endfor %}{{non_source_module_check[-1]}}{{'}'}};
-// network pid
+// child process IDs
 static pid_t so_pids[NUM_SOURCES];
-// logger pid
+static pid_t ar_pids[NUM_ASYNC_READERS];
 static pid_t si_pids[NUM_SINKS];
-{%- if parport_tick_addr %}
+// numbered according to the index of the child's name in moduleProcnames
+static pid_t ch_pids[NUM_MODULES];
+
+{%- if parport_tick_addr is not none %}
+int parportfd, parportRet, parportMode;
 static unsigned char outVal = 0;
 {%- endif %}
-
 
 // pointer to start of shared memory
 static size_t shm_size;
@@ -86,7 +77,6 @@ static sem_t *pTickDownSems;
 static sem_t *pSigSems;
 
 static uint32_t *pBufVars;
-static uint32_t *pCurBufVars;
 
 sigset_t exitMask;
 static sigset_t alrmMask;
@@ -94,10 +84,6 @@ static sigset_t alrmMask;
 static int sigalrm_recv;
 static int sigexit_recv;
 static int sigchld_recv;
-
-////////////////////////////////////////////////
-static pid_t nrtSource_pids[NUM_NON_REAL_TIME_SOURCES];
-////////////////////////////////////////////////
 
 // static int num_cores = {{num_cores}};
 static size_t ex_i, al_i, de_i, m_i;
@@ -158,25 +144,31 @@ void handle_exit(int exitStatus) {
       printf("Killing source: %d\n", so_pids[ex_i]);
       kill(so_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
       //while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
-      while(waitpid(-1, 0, WNOHANG) > 0){
+      while(waitpid(so_pids[ex_i], 0, WNOHANG) > 0){
         printf("waiting for pid: %d\n", so_pids[ex_i]);
         fflush(stdout);
       }
     }
   }
-
- ////////////////////////////////////////////////
-  for(ex_i = 0; ex_i < NUM_NON_REAL_TIME_SOURCES; ex_i++){
-    if(nrtSource_pids[ex_i] != -1){
-      printf("Killing non-real-time source: %d\n", nrtSource_pids[ex_i]);
-      kill(nrtSource_pids[ex_i], SIGUSR1); 
-      while(waitpid(-1, 0, WNOHANG) > 0){
-        printf("waiting for pid: %d\n", nrtSource_pids[ex_i]);
+  printf("Killing async readers...\n");
+  fflush(stdout);
+  for (ex_i = 0; ex_i < NUM_ASYNC_READERS; ex_i++) {
+    if (ar_pids[ex_i] != -1) {
+      printf("Killing async reader: %d\n", ar_pids[ex_i]);
+      fflush(stdout);
+      kill(ar_pids[ex_i], SIGINT);
+      kill(ar_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
+      while(waitpid(ar_pids[ex_i], 0, WNOHANG) > 0){
+        printf("waiting for pid: %d\n", ar_pids[ex_i]);
         fflush(stdout);
       }
     }
   }
-  ////////////////////////////////////////////////
+
+  {%- if parport_tick_addr is not none %} 
+    parportRet = ioctl(parportfd,PPRELEASE);
+    close(parportfd);
+  {%- endif %}
 
   printf("Unmapping shared memory...\n");
   printf("LiCoRICE ran for %ld ticks.\n", *pNumTicks);
@@ -185,14 +177,6 @@ void handle_exit(int exitStatus) {
   shm_unlink(SMEM0_PATHNAME);
   munlockall();
   exit(exitStatus);
-}
-
-void set_sched_prior(int priority) {
-  struct sched_param param;
-  param.sched_priority = priority;
-  if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
-    die("sched_setscheduler failed.\n");
-  }
 }
 
 void set_sched_prior_low(int priority) {
@@ -209,9 +193,11 @@ static void check_children() {
   clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
   printf("tick %li began at %f.\n", (*pNumTicks)+1, tickTimer.tv_nsec/1000000.);
 {% endif %}
-{%- if parport_tick_addr %}
+{%- if parport_tick_addr is not none %}
   // flip bits and output to parallel port
-  outb(outVal,0x{{parport_tick_addr}});
+  printf("FLIP\n");
+  fflush(stdout);
+  ioctl(parportfd, PPWDATA, outVal);
   outVal = ~outVal;
 {%- endif %}
   
@@ -239,30 +225,8 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
       sem_wait(pSourceDownSem);
 
-    atomic_thread_fence(memory_order_seq_cst);
-    // printf("Number of internal signals: %d", NUM_INTERNAL_SIGS);
-    for (al_i = 0; al_i < NUM_INTERNAL_SIGS; al_i++) {
-      pCurBufVars = pBufVars + (BUF_VARS_LEN * al_i);
-      // NON-LATENCY-DEPENDENT BUFFER UPDATE
-      *(pCurBufVars + 1) = *(pCurBufVars + 2);
-      // *(pCurBufVars + 9) = *(pCurBufVars + 10);
-      *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
-      // printf("%u\n", pCurBufVars[0]);
-      // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
-      if ((*(pCurBufVars + 7) < *(pCurBufVars + 2)) + *(pCurBufVars + 6)) {
-        *(pCurBufVars + 2) = 0;
-        *(pCurBufVars + 10) = 0;
-        // *(pCurBufVars + 8) = 0;
-      }
-      *(pCurBufVars + 3) = 0;
-      *(pCurBufVars + 11) = 0;
-    }
-    atomic_thread_fence(memory_order_release);
     for (al_i = 0; al_i < NUM_SOURCES; al_i++)
       sem_post(pSourceUpSem);    
-
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
-      kill(so_pids[al_i], SIGALRM);
   }
   
   // normal behavior on subsequent iterations
@@ -285,66 +249,8 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_SOURCES; al_i++)
       sem_wait(pSourceDownSem);
   
-    // TODO does this need to be sequentially consistent?
-    atomic_thread_fence(memory_order_seq_cst);
-
-
-    for (al_i = 0; al_i < NUM_SOURCE_SIGS; al_i++) {
-      pCurBufVars = pBufVars + (BUF_VARS_LEN * sourceOutSigNums[al_i]);
-
-      // 0: tick start
-      // 1: tick end
-      // 2: next data location
-      // 3: num samples received this tick
-      // 4: buffer end offset (samples)
-      // 5: source output signal packet size (post parser per signal)/module output tick data size (samples)
-      // 6: max samples per tick (same as 5 for module ouputs) (samples)
-      // 7: buffer size offset (samples)
-
-      // 8: current data nd index start
-      // 9: current data nd index end
-      // 10: next data nd index
-      // 11: num packets received this tick (nd index) # don't use this for now. TODO: for 'fixed' sources (e.g., parallel, usb), set this to a constant value
-      // 12: nd 0 axis end offset
-      // 13: none
-      // 14: none
-      // 15: none
-
-      // printf("timer 1: %u %u %u %u %u \n", *(pCurBufVars + 0),*(pCurBufVars + 1),*(pCurBufVars + 2),*(pCurBufVars + 6),*(pCurBufVars + 7));
-      *(pCurBufVars + 1) = *(pCurBufVars + 2);
-      
-      // *(pCurBufVars + 9) = *(pCurBufVars + 10);
-      *(pCurBufVars + 0) = *(pCurBufVars + 1) - *(pCurBufVars + 3);
-      // *(pCurBufVars + 8) = *(pCurBufVars + 9) - *(pCurBufVars + 11);
-      if (*(pCurBufVars + 7) < *(pCurBufVars + 2) + *(pCurBufVars + 6)) {
-        *(pCurBufVars + 2) = 0;
-        *(pCurBufVars + 10) = 0;
-        // *(pCurBufVars + 8) = 0;
-      }
-      *(pCurBufVars + 3) = 0;
-      // *((uint32_t**)(pCurBufVars + 8)) += 1472;
-      *(pCurBufVars + 11) = 0;
-      // printf("timer 2: %u %u %u %u %u \n", *(pCurBufVars + 0),*(pCurBufVars + 1),*(pCurBufVars + 2),*(pCurBufVars + 6),*(pCurBufVars + 7));
-      // if (*(pCurBufVars + 2) == 0) {
-      //   *(pCurBufVars + 1) = *(pCurBufVars + 4);
-      //   *(pCurBufVars + 0) = *(pCurBufVars + 4) - *(pCurBufVars + 3);
-      // }
-      // else {
-      //   *(pCurBufVars + 1) = *(pCurBufVars + 2);
-      //   *(pCurBufVars + 0) = (*(pCurBufVars + 1) - *(pCurBufVars + 3));
-      // }
-      // *(pCurBufVars + 3) = 0;
-
-   }
-
-    atomic_thread_fence(memory_order_release);
     for (al_i = 0; al_i < NUM_SOURCES; al_i++)
       sem_post(pSourceUpSem);
-    
-    // trigger sources
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
-      kill(so_pids[al_i], SIGALRM);
-    }
 
     {%- if num_non_sources %}
     // trigger all non-source processes
@@ -405,14 +311,6 @@ void dead_child() {
     }
   }
 
-  ////////////////////////////////////////////////
-  for (de_i = 0; de_i < NUM_NON_REAL_TIME_SOURCES; de_i++) {
-    if (nrtSource_pids[de_i] == dead_pid) {
-      nrtSource_pids[de_i] = -1;
-    }
-  }
-  ////////////////////////////////////////////////
-
   errno = saved_errno;
   die("I have lost a child :( \n");
 }
@@ -435,11 +333,19 @@ int main(int argc, char* argv[]) {
   startStartNSec = startTimer.tv_nsec;
 {%- endif %}
 
-{%- if parport_tick_addr %}
+{%- if parport_tick_addr is not none %}
 
   // make sure parport is writeable
-  if (ioperm(0x{{parport_tick_addr}}, 1, 1)) {
-    die("io permission denied\n");
+  if ((parportfd = open("/dev/parport{{parport_tick_addr}}", O_RDWR)) == -1) {
+    die("parport open\n");
+  }
+  if ((parportRet = ioctl(parportfd,PPCLAIM))) {
+    die("ioctl PPCLAIM\n");
+  }
+
+  parportMode = IEEE1284_MODE_BYTE;
+  if ((parportRet = ioctl(parportfd,PPNEGOT,&parportMode)) == -1) /* 0 on success, -1 on failure */ {
+    die("ioctl PPNEGOT\n");
   }
 {%- endif %}
 
@@ -463,17 +369,16 @@ int main(int argc, char* argv[]) {
   // create shared memory and map it
   printf("Mapping memory...\n");
 
-  // TODO pmem offsets should be constants
-  shm_size = sizeof(uint64_t) + (sizeof(sem_t) * (1 + NUM_NON_SOURCES + NUM_SEM_SIGS)) + (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS);
-  shm_size = ROUND_UP(shm_size, PAGESIZE);
+  // TODO pmem offsets should be constants, or store in struct
+  shm_size = ROUND_UP(SHM_SIZE, PAGESIZE);
   open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
-  pNumTicks = (int64_t *)(pmem);
-  pSourceUpSem = (sem_t *)(pmem + sizeof(uint64_t));
-  pSourceDownSem = (sem_t *)(pmem + sizeof(uint64_t) + sizeof(sem_t));
-  pTickUpSems = (sem_t *)(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t));
-  pTickDownSems = (sem_t *)(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (NUM_NON_SOURCES * sizeof(sem_t)));
-  pSigSems = (sem_t *)(pmem + sizeof(uint64_t) +  2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)));
-  pBufVars = (uint32_t *)(pmem + sizeof(uint64_t) + 2 * sizeof(sem_t) + (2 * NUM_NON_SOURCES * sizeof(sem_t)) + NUM_SEM_SIGS * sizeof(sem_t));
+  pNumTicks = (int64_t *)(pmem + NUM_TICKS_OFFSET);
+  pSourceUpSem = (sem_t *)(pmem + SOURCE_UP_SEM_OFFSET);
+  pSourceDownSem = (sem_t *)(pmem + SOURCE_DOWN_SEM_OFFSET);
+  pTickUpSems = (sem_t *)(pmem + TICK_UP_SEMS_OFFSET);
+  pTickDownSems = (sem_t *)(pmem + TICK_DOWN_SEMS_OFFSET);
+  pSigSems = (sem_t *)(pmem + SIG_SEMS_OFFSET);
+  pBufVars = (uint32_t *)(pmem + BUF_VARS_OFFSET);
 
   *pNumTicks = -1 * INIT_BUFFER_TICKS;
 
@@ -500,43 +405,22 @@ int main(int argc, char* argv[]) {
   
   // set priority
   set_sched_prior(PRIORITY);
-  cpu_set_t mask;
+  // cpu_set_t mask;
   //CPU_ZERO(&mask);
   //CPU_SET(1, &mask);
   //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
-////////////////////////////////////////////////
-{% for name in non_real_time_source_names -%}
-  if((nrtSource_pids[{{loop.index0}}] = fork()) == -1 ) die("nrtSource fork failed\n");
-
-  if(nrtSource_pids[{{loop.index0}}] == 0){
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(NETWORK_CPU, &mask);
-    sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    setpriority(PRIO_PROCESS, 0, -19);
-    set_sched_prior(PRIORITY);
-    char* argv[3] = {"./{{name}}", "&", NULL};
-    // char* argv[4] = {"python", "nonRealTimeSource.py", "&", NULL};
-    execvp(argv[0],argv);
-    printf("network exec error. %s \n", strerror(errno));
-    exit(1);
-  }
-  pause();
-{%- endfor %}
-////////////////////////////////////////////////
 
 {% for name in source_names -%} // TODO write this loop in C
-  // fork and exec network process
+  // fork and exec source process
   if ((so_pids[{{loop.index0}}] = fork()) == -1) {
     die("fork failed \n");
   }
-  if (so_pids[{{loop.index0}}] == 0) { // only runs for network process
+  if (so_pids[{{loop.index0}}] == 0) { // only runs for source process
     cpu_set_t mask;
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
-    printf("Source: {{name}}\n");
     CPU_ZERO(&mask);
     CPU_SET(NETWORK_CPU, &mask);
     sched_setaffinity(0, sizeof(cpu_set_t), &mask);
@@ -544,10 +428,10 @@ int main(int argc, char* argv[]) {
     set_sched_prior(PRIORITY);
     char* argv[2] = {"./{{name}}", NULL};
     
-    // execute network process
+    // execute source process
     // signal handlers and mmap are not preserved on exec
     execvp(argv[0],argv);
-    printf("network exec error. %s \n", strerror(errno));
+    printf("source exec error. %s \n", strerror(errno));
     exit(1);
     //in case execvp fails
   }
@@ -556,6 +440,40 @@ int main(int argc, char* argv[]) {
   printf("Sources ready.\n");
 {%- for name in source_names %}
   printf("{{name}}: %d\n", so_pids[{{loop.index0}}]);
+{%- endfor %}
+
+
+{% for name in async_reader_names -%} // TODO write this loop in C
+  // fork and exec reader process
+  if ((ar_pids[{{loop.index0}}] = fork()) == -1) {
+    die("fork failed \n");
+  }
+  if (ar_pids[{{loop.index0}}] == 0) { // only runs for reader process
+    // cpu_set_t mask;
+    // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
+    //   CPU_SET(i, &mask);
+    // }
+    // CPU_ZERO(&mask);
+    // CPU_SET(NETWORK_CPU, &mask);
+    // sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    setpriority(PRIO_PROCESS, 0, -19);
+    set_sched_prior(PRIORITY - 1);
+    char* argv[2] = {"./{{name}}", NULL};
+    
+    // execute reader process
+    // signal handlers and mmap are not preserved on exec
+    execvp(argv[0],argv);
+    printf("async reader exec error. %s \n", strerror(errno));
+    exit(1);
+    //in case execvp fails
+  }
+  pause();
+{%- endfor %}
+{%- if num_async_readers > 0 %}
+  printf("Async readers ready.\n");
+{%- endif %}
+{%- for name in async_reader_names %}
+  printf("{{name}}: %d\n", ar_pids[{{loop.index0}}]);
 {%- endfor %}
 
 
@@ -574,7 +492,7 @@ int main(int argc, char* argv[]) {
         die("fork failed\n");
       }
       if (ch_pids[childNum] == 0) {  // only runs for child processes
-        cpu_set_t mask;
+        // cpu_set_t mask;
         //CPU_ZERO(&mask);
         //CPU_SET(m_j + CPU_OFFSET, &mask);
         //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
@@ -634,6 +552,9 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
 
   make_realtime();
 
+  for (m_i = 0; m_i < NUM_ASYNC_READERS; m_i++) {
+    kill(ar_pids[m_i], SIGUSR2);
+  }
   for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
     kill(so_pids[m_i], SIGUSR2);
   }

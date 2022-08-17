@@ -12,7 +12,7 @@
 #
 
 config:
-  tick_size: 10000
+  tick_len: 10000
 
 signals:
 
@@ -81,10 +81,11 @@ modules:
     parser: True
     in:
       name: jdev
+      async: True
       args:
         type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
       schema:
-        packets_per_tick: 1
+        max_packets_per_tick: 2
         data:
           dtype: float
           size: 8
