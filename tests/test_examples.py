@@ -1,3 +1,4 @@
+import os
 import pytest
 import subprocess
 
@@ -20,6 +21,7 @@ def is_joystick_connected():
     reason="No joystick connected."
 )
 def test_joystick(capfd):
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
     subprocess.call("./examples/joystick/run.sh", shell=True)
     captured = capfd.readouterr()
     # TODO snapshottest

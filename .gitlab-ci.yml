@@ -36,8 +36,11 @@ before_script:
   - pip install virtualenv
   - virtualenv venv
   - source venv/bin/activate
-  - pip install -r install/requirements-dev.txt
-  - pip install -r install/linux-requirements.txt
+  - pip install "setuptools<60"
+  - pushd install
+  - pip install -r requirements-dev.txt
+  - pip install -r linux-requirements.txt
+  - popd
   - pip install .
 
 # build-binary:
@@ -63,7 +66,6 @@ test-binary:
   # needs:
   #   - build-binary
   script:
-    - pip install -r install/requirements-dev.txt
     - pyinstaller packaging/licorice_onedir.spec -y # TODO move to build
     - dist/licorice/licorice parse matrix_multiply -y
     - dist/licorice/licorice compile matrix_multiply -y

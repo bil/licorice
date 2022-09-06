@@ -12,3 +12,5 @@ isort
 # packaging
 pyinstaller
 twine
+
+-e file:..#egg=licorice

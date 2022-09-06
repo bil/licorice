@@ -1,23 +1,27 @@
 #!/bin/bash
 
+
+cd $(dirname "$0") # script always runs from install directory
+
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
 pyenv activate licorice
 
-pip install --upgrade pip setuptools
+# numba requires setuptools<60
+pip install --upgrade pip "setuptools<60"
 pip install wheel pip-tools
 
-pip-compile "$(dirname "$0")/requirements.in"
-pip-compile "$(dirname "$0")/requirements-dev.in"
+pip-compile "./requirements.in"
+pip-compile "./requirements-dev.in"
 
 case $OSTYPE in
     linux*)
-        pip-compile "$(dirname "$0")/linux-requirements.in"
-        pip-sync "$(dirname "$0")/requirements.txt" "$(dirname "$0")/requirements-dev.txt" "$(dirname "$0")/linux-requirements.txt"
+        pip-compile "./linux-requirements.in"
+        pip-sync "./requirements.txt" "./requirements-dev.txt" "./linux-requirements.txt"
         ;;
 
     *)
-        pip-sync "$(dirname "$0")/requirements.txt" "$(dirname "$0")/requirements-dev.txt"
+        pip-sync "./requirements.txt" "./requirements-dev.txt"
         ;;
 esac
