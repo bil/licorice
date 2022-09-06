@@ -10,3 +10,4 @@ config:
   # change this address to your parallel port data out address
   # can locate this with: `cat /proc/ioports | grep parport` 
   parport_tick_addr: 0  # typical IO address for motherboard parallel ports
+  tick_len: 1000

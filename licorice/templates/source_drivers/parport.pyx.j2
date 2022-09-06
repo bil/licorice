@@ -8,12 +8,13 @@ cdef unsigned char inVal
 
 # __DRIVER_CODE__ setup
 
-pport = parallel.Parallel(port={{out_signal['args']['addr']}})
+pport = parallel.Parallel(port={{in_signal['args']['addr']}})
+pport.setDataDir(False) # read from data pins, sets PPDATADIR
 sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
 # __DRIVER_CODE__ read
 
-  inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
+  inVal = <unsigned char>pport.getData()
   bufCurPtr[0] = inVal
 
 {%- if async %}
