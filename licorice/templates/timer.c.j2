@@ -195,9 +195,9 @@ static void check_children() {
 {% endif %}
 {%- if parport_tick_addr is not none %}
   // flip bits and output to parallel port
-  printf("FLIP\n");
-  fflush(stdout);
-  ioctl(parportfd, PPWDATA, outVal);
+  if ((parportRet = ioctl(parportfd, PPWDATA, &outVal)) == -1) {
+    die("parport ioctl failed,\n");
+  }
   outVal = ~outVal;
 {%- endif %}
   
@@ -343,7 +343,7 @@ int main(int argc, char* argv[]) {
     die("ioctl PPCLAIM\n");
   }
 
-  parportMode = IEEE1284_MODE_BYTE;
+  parportMode = IEEE1284_MODE_COMPAT;
   if ((parportRet = ioctl(parportfd,PPNEGOT,&parportMode)) == -1) /* 0 on success, -1 on failure */ {
     die("ioctl PPNEGOT\n");
   }

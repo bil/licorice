@@ -11,6 +11,8 @@
 #
 #   parallel_reader -> parallel_in -> parallel_toggle -> parallel_out -> parallel_writer
 #   (source module)      (signal)        (module)          (signal)       (sink module)
+config:
+  tick_len: 1000
 
 signals:
 
