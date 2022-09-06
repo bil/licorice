@@ -1,5 +1,8 @@
+-r requirements.txt
+
 # testing
-pygame # TODO should this be a main dep?
+pygame
+pytest
 
 # formatting
 black

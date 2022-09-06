@@ -36,7 +36,7 @@ before_script:
   - pip install virtualenv
   - virtualenv venv
   - source venv/bin/activate
-  - pip install -r install/requirements.txt
+  - pip install -r install/requirements-dev.txt
   - pip install -r install/linux-requirements.txt
   - pip install .
 
@@ -56,7 +56,7 @@ test-pip:
   script:
     - ulimit -r 49
     - ulimit -l unlimited
-    - examples/matrix_multiply/run.sh
+    - pytest
 
 test-binary:
   stage: test
@@ -65,9 +65,9 @@ test-binary:
   script:
     - pip install -r install/requirements-dev.txt
     - pyinstaller packaging/licorice_onedir.spec -y # TODO move to build
-    - dist/licorice/licorice parse matrix_multiply
-    - dist/licorice/licorice compile matrix_multiply
-    - dist/licorice/licorice go matrix_multiply
+    - dist/licorice/licorice parse matrix_multiply -y
+    - dist/licorice/licorice compile matrix_multiply -y
+    - dist/licorice/licorice run matrix_multiply -y
 
 package-test-pypi:
   stage: package
