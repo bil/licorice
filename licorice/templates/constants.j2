@@ -50,12 +50,12 @@
  * How often sql flushes
  *
  */
-#define SQL_LOGGER_FLUSH 1000
+#define SQL_LOGGER_FLUSH {{config["config"]["sql_logger_flush"]}}
 
 /*
- * Time (seconds) until a new SQL database is created.
+ * Time (ticks) until a new SQL database is created.
  */
-#define NEW_DB_NUM_S 60
+#define NEW_DB_NUM_TICKS {{config["config"]["new_db_num_ticks"]}}
 
 /*
  * Pad length for the database index to be added to the end of each database filename.

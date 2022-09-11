@@ -23,7 +23,7 @@
 
 void sql_bind_int(sqlite3_stmt *stmt, int index, const char* dtype, const void* value);
 void sql_bind_int64(sqlite3_stmt *stmt, int index, const void* value);
-void sql_bind_double(sqlite3_stmt *stmt, int index, const void* value);
+void sql_bind_double(sqlite3_stmt *stmt, int index,  const char* dtype, const void* value);
 void sql_bind_text(sqlite3_stmt *stmt, int index, const void* value, int numBytes, void(*destructor)(void*));
 void sql_bind_blob(sqlite3_stmt *stmt, int index, const void* value, int numBytes, void(*destructor)(void*));
 void sql_prepare(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail);

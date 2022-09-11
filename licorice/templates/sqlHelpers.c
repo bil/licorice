@@ -33,8 +33,16 @@ void sql_bind_int64(sqlite3_stmt *stmt, int index, const void* value) {
   }
 }
 
-void sql_bind_double(sqlite3_stmt *stmt, int index, const void* value) { 
-  prc = sqlite3_bind_double(stmt, index, *(double *)value);
+void sql_bind_double(sqlite3_stmt *stmt, int index, const char* dtype, const void* value) { 
+  double val;
+  if (strstr(dtype, "32") != NULL){
+    // float
+    val = *(float *)value;
+  } else {
+    // double
+    val = *(double *)value;
+  }
+  prc = sqlite3_bind_double(stmt, index, val);
   if (prc != SQLITE_OK) {
     die("sqlite3_bind_double failed \n");
   }
@@ -116,11 +124,8 @@ void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLoca
   }
   sqlite3_open(buf, db);
   strcpy(newNameLocation,buf);
-  // printf("GOT HUR 1\n");
-  // fflush(stdout);
+
   // chown(buf, atoi(getenv("SUDO_UID")), atoi(getenv("SUDO_GID"))); // set db file ownership to user
-  // printf("GOT HUR 2\n");
-  // fflush(stdout);
 }
 
 static char* cmd;

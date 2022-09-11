@@ -1,6 +1,6 @@
 import argparse
 import base64
-import inspect
+import copy
 import hashlib
 import json
 import os
@@ -10,6 +10,7 @@ from distutils.sysconfig import get_python_lib
 from functools import lru_cache
 from warnings import warn
 
+import numpy as np
 import yaml
 
 import licorice.template_funcs as template_funcs
@@ -31,8 +32,10 @@ def __split_path(path):
 
 def __get_licorice_paths(**kwargs):
     # determine model name and output directory
-    model_name = kwargs["model"].split(".")[0]
-    run_dirname = f"{model_name}.lico"
+    if type(kwargs["model"]) is str:
+        run_dirname = f"{kwargs['model'].split('.')[0]}.lico"
+    else:
+        run_dirname = "run.lico"
 
     paths = {}
 
@@ -129,29 +132,32 @@ def __get_licorice_paths(**kwargs):
 
 def __load_and_validate_model(**kwargs):
     paths = __get_licorice_paths(**kwargs)
-    file = kwargs["model"]
-    filepath = None
+    if type(kwargs["model"]) is str:
+        file = kwargs["model"]
+        filepath = None
 
-    # add working dir and/or extension to config filepath if necessary
-    for ext in ["", ".yaml", ".yml"]:
-        filepath = __find_in_path(
-            paths["models"], file + ext, raise_error=False
-        )
-        if filepath:
-            break
+        # add working dir and/or extension to config filepath if necessary
+        for ext in ["", ".yaml", ".yml"]:
+            filepath = __find_in_path(
+                paths["models"], file + ext, raise_error=False
+            )
+            if filepath:
+                break
 
-    if not filepath:
-        raise FileNotFoundError(
-            f"Could not locate model file: {file}. Specify a full path "
-            "or set LICORICE_WORKING_PATH and/or other env vars."
-        )
+        if not filepath:
+            raise FileNotFoundError(
+                f"Could not locate model file: {file}. Specify a full path "
+                "or set LICORICE_WORKING_PATH and/or other env vars."
+            )
 
-    # load model
-    with open(filepath, "r") as f:
-        try:
-            model_dict = yaml.safe_load(f)
-        except yaml.YAMLError as exc:
-            print(exc)
+        # load model
+        with open(filepath, "r") as f:
+            try:
+                model_dict = yaml.safe_load(f)
+            except yaml.YAMLError as exc:
+                print(exc)
+    else:
+        model_dict = copy.deepcopy(kwargs["model"])
 
     # This assumes that a top level object with three primary mappings is
     # loaded. The only three mappings should be: config, signals, and modules
@@ -234,6 +240,11 @@ def __parse_args(input_tuple=None):
 
 
 def __parse_kwargs(func_name, model, **kwargs):
+    model_dict = None
+    if type(model) is dict:
+        model_dict = model
+        model = "placeholder"
+
     input_args = [func_name, model]
     for k, v in kwargs.items():
         # skip value on simple store_true bools
@@ -246,6 +257,8 @@ def __parse_kwargs(func_name, model, **kwargs):
 
     args = __parse_args(tuple(input_args))
     kwargs = vars(args)
+    if model_dict:
+        kwargs["model"] = model_dict
 
     return kwargs
 

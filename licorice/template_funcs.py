@@ -1,3 +1,4 @@
+import copy
 import os
 import platform
 import shutil
@@ -66,7 +67,7 @@ def fix_dtype(dtype):
         return "float"
     elif dtype == "object":
         return "void"
-    return dtype
+    raise ValueError(f"Unsupported dtype: {dtype}")
 
 
 # change dtype to msgpack format
@@ -282,6 +283,24 @@ def generate(paths, config, confirmed):
 
 def parse(paths, config, confirmed):
     print("Parsing")
+
+    # save unmodified config to pass to user-space code 
+    unmodified_config = copy.deepcopy(config)
+
+    # set default values in config
+    if not config.get("config"):
+        config["config"] = {}
+    if not config["config"].get("num_ticks"):
+        config["config"]["num_ticks"] = -1
+    if not config["config"].get("tick_len"):
+        config["config"]["tick_len"] = 1000
+    if not config["config"].get("new_db_num_ticks"):
+        config["config"]["new_db_num_ticks"] = (
+            60000000 // config["config"]["tick_len"]
+        )  # default to approximately one minute
+    if not config["config"].get("sql_logger_flush"):
+        config["config"]["sql_logger_flush"] = 1000
+
     modules = {}
     if "modules" in config and config["modules"]:
         modules = config["modules"]
@@ -603,6 +622,8 @@ def parse(paths, config, confirmed):
                 ) as f:
                     parser_code = f.read()
                     parser_code = parser_code.replace("\n", "\n  ")
+                    parser_code = jinja2.Template(parser_code)
+                    parser_code = parser_code.render(unmodified_config)
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
@@ -616,6 +637,8 @@ def parse(paths, config, confirmed):
                     "r",
                 ) as f:
                     construct_code = f.read()
+                    construct_code = jinja2.Template(construct_code)
+                    construct_code = construct_code.render(unmodified_config)
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
@@ -630,6 +653,8 @@ def parse(paths, config, confirmed):
                 ) as f:
                     destruct_code = f.read()
                     destruct_code = destruct_code.replace("\n", "\n  ")
+                    destruct_code = jinja2.Template(destruct_code)
+                    destruct_code = destruct_code.render(unmodified_config)
 
             driver_template_name = f'{in_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
@@ -646,7 +671,7 @@ def parse(paths, config, confirmed):
                 "async": async_source,
                 "async_reader_name": async_reader_name,
                 "async_reader_num": (
-                    async_reader_names.index(async_reader_name) 
+                    async_reader_names.index(async_reader_name)
                     if async_source else None
                 ),
                 "in_sig_name": module_args["in"]["name"],
@@ -773,6 +798,8 @@ def parse(paths, config, confirmed):
                 ) as f:
                     parser_code = f.read()
                     parser_code = parser_code.replace("\n", "\n  ")
+                    parser_code = jinja2.Template(parser_code)
+                    parser_code = parser_code.render(unmodified_config)
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
@@ -786,6 +813,8 @@ def parse(paths, config, confirmed):
                     "r",
                 ) as f:
                     construct_code = f.read()
+                    construct_code = jinja2.Template(construct_code)
+                    construct_code = construct_code.render(unmodified_config)
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
@@ -800,6 +829,8 @@ def parse(paths, config, confirmed):
                 ) as f:
                     destruct_code = f.read()
                     destruct_code = destruct_code.replace("\n", "\n  ")
+                    destruct_code = jinja2.Template(destruct_code)
+                    destruct_code = destruct_code.render(unmodified_config)
 
             # if logger, group signals in different data structs depending on
             # storage type
@@ -1026,6 +1057,8 @@ def parse(paths, config, confirmed):
                     # if module_language == 'python':
                     #   user_code = user_code.replace("def ", "cpdef ")
                     user_code = user_code.replace("\n", "\n  ")
+                    user_code = jinja2.Template(user_code)
+                    user_code = user_code.render(unmodified_config)
 
             construct_code = ""
             if "constructor" in module_args and module_args["constructor"]:
@@ -1041,6 +1074,8 @@ def parse(paths, config, confirmed):
                     )
                 with open(file_path, "r") as f:
                     construct_code = f.read()
+                    construct_code = jinja2.Template(construct_code)
+                    construct_code = construct_code.render(unmodified_config)
 
             destruct_code = ""
             if "destructor" in module_args and module_args["destructor"]:
@@ -1057,6 +1092,8 @@ def parse(paths, config, confirmed):
                 with open(file_path, "r") as f:
                     destruct_code = f.read()
                     destruct_code = destruct_code.replace("\n", "\n  ")
+                    destruct_code = jinja2.Template(destruct_code)
+                    destruct_code = destruct_code.render(unmodified_config)
 
             sig_nums = {
                 x: internal_signals.index(x)
@@ -1182,12 +1219,6 @@ def parse(paths, config, confirmed):
     )
 
     # parse timer parent
-    if not config.get("config"):
-        config["config"] = {}
-    if not config["config"].get("num_ticks"):
-        config["config"]["num_ticks"] = -1
-    if not config["config"].get("tick_len"):
-        config["config"]["tick_len"] = 1000
     parport_tick_addr = None
     if "config" in config and "parport_tick_addr" in config["config"]:
         parport_tick_addr = config["config"]["parport_tick_addr"]
@@ -1230,6 +1261,7 @@ def parse(paths, config, confirmed):
     do_jinja(
         __find_in_path(paths["templates"], TEMPLATE_CONSTANTS),
         os.path.join(paths["output"], OUTPUT_CONSTANTS),
+        config=config,
         num_ticks=config["config"]["num_ticks"],
         tick_len_us=config["config"]["tick_len"] % 1000000,
         tick_len_s=config["config"]["tick_len"] // 1000000,

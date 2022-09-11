@@ -34,13 +34,6 @@ cdef extern from "loggingStruct.h" nogil:
     char *unit
     void *data
     char *SQLtype
-  cdef const char *INSERT_STR
-  cdef const char *VALUES_STR
-  cdef const char *OPEN_BRACE
-  cdef const char *QUESTION
-  cdef const char *CLOSE_BRACE_SEMI
-  cdef const char *CLOSE_BRACE
-  cdef const char *COMMA
 
   ctypedef struct SQLTable:
     char* tableName
@@ -85,7 +78,7 @@ cdef extern from "sqlite3async.h" nogil:
 cdef extern from "sqlHelpers.h" nogil:
   void sql_bind_int(sqlite3_stmt *stmt, int index, const char* dtype, const void* value)
   void sql_bind_int64(sqlite3_stmt *stmt, int index, const void* value)
-  void sql_bind_double(sqlite3_stmt *stmt, int index, const void* value)
+  void sql_bind_double(sqlite3_stmt *stmt, int index,  const char* dtype, const void* value)
   void sql_bind_text(sqlite3_stmt *stmt, int index, const void* value, int numBytes, destructor destruct)
   void sql_bind_blob(sqlite3_stmt *stmt, int index, const void* value, int numBytes, destructor destruct)
   void sql_prepare(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
@@ -95,6 +88,14 @@ cdef extern from "sqlHelpers.h" nogil:
   void createTables(sqlite3 *db, SQLTable* databaseArr)
   enum: NUM_BUF_S
   enum: NUM_MS_IN_S
+  cdef const char *INSERT_STR
+  cdef const char *VALUES_STR
+  cdef const char *OPEN_BRACE
+  cdef const char *QUESTION
+  cdef const char *CLOSE_BRACE_SEMI
+  cdef const char *CLOSE_BRACE
+  cdef const char *COMMA
+
 
 cdef extern from "stdatomic.h":
   enum memory_order:
@@ -106,13 +107,19 @@ cdef extern from "stdatomic.h":
     memory_order_seq_cst
   void atomic_thread_fence(memory_order)
 
+cdef extern from "constants.h":
+  enum: NUM_TABLES
+  cdef const char *DATALOGGER_SIGNALS_TABLE_NAME
+  cdef const char *DATALOGGER_FILENAME
+  enum: NEW_DB_NUM_TICKS
+  enum: SQL_LOGGER_FLUSH
+
 
 # __DRIVER_CODE__ variables
 
 cdef bool newDB = False
 cdef int ret
 cdef int rc
-cdef bool shouldDie = False
 cdef char currDbName[32]
 # worker thread vars
 cdef char *zErrMsg
@@ -209,8 +216,8 @@ cdef void* copyFromBuffer():
 
 cdef int f
 cdef void* processRequests() nogil:
-  global shouldDie, zErrMsg, db, newDB, db_index, num_extra_cols, exitMask, signalsQuery, signalsStmt\
-         {% for sig in msgpack_sigs %}, mpSignals{{sig|capitalize}}Buf{{"," if not loop.last}} {% endfor %}, \
+  global zErrMsg, db, newDB, db_index, num_extra_cols, exitMask, signalsQuery, signalsStmt, \
+         {% for sig in msgpack_sigs %} mpSignals{{sig|capitalize}}Buf, {% endfor %} \
          pSignalsStructFlushStart, pSignalsStructFlushEnd, pSignalsStructCur
 
   #f=pNumTicks[0]
@@ -254,13 +261,13 @@ cdef void* processRequests() nogil:
   {%- elif sig in raw_vec_sigs %}
     # vector signal
     for i in range({{raw_vec_sigs[sig]}}):
-      if 'int' in '{{args['dtype']}}':
-        if '64' in '{{args['dtype']}}':
+      if "int" in '{{args['dtype']}}':
+        if "64" in '{{args['dtype']}}':
           sql_bind_int64(signalsStmt, {{loop.index}} + num_extra_cols, &(pSignalsStructFlushStart.{{sig}}[i]))
         else:
-          sql_bind_int(signalsStmt, {{loop.index}} + num_extra_cols, '{{args['dtype']}}', &(pSignalsStructFlushStart.{{sig}}[i]))
+          sql_bind_int(signalsStmt, {{loop.index}} + num_extra_cols, "{{args['dtype']}}", &(pSignalsStructFlushStart.{{sig}}[i]))
       else: # float
-        sql_bind_double(signalsStmt, {{loop.index}} + num_extra_cols, &(pSignalsStructFlushStart.{{sig}}[i]))
+        sql_bind_double(signalsStmt, {{loop.index}} + num_extra_cols, "{{args['dtype']}}", &(pSignalsStructFlushStart.{{sig}}[i]))
       num_extra_cols += 1
     num_extra_cols -= 1
 
@@ -270,13 +277,13 @@ cdef void* processRequests() nogil:
 
   {%- elif sig in raw_num_sigs %}
     # raw number signal
-    if 'int' in '{{args['dtype']}}':
-      if '64' in '{{args['dtype']}}':
+    if "int" in "{{args['dtype']}}":
+      if "64" in "{{args['dtype']}}":
         sql_bind_int64(signalsStmt, {{loop.index}} + num_extra_cols, pSignalsStructFlushStart.{{sig}})
       else:
-        sql_bind_int(signalsStmt, {{loop.index}} + num_extra_cols, '{{args['dtype']}}', pSignalsStructFlushStart.{{sig}})
+        sql_bind_int(signalsStmt, {{loop.index}} + num_extra_cols, "{{args['dtype']}}", pSignalsStructFlushStart.{{sig}})
     else: # float
-      sql_bind_double(signalsStmt, {{loop.index}} + num_extra_cols, pSignalsStructFlushStart.{{sig}})
+      sql_bind_double(signalsStmt, {{loop.index}} + num_extra_cols, "{{args['dtype']}}", pSignalsStructFlushStart.{{sig}})
 
   {%- endif %}
   {%- endfor %}
@@ -299,7 +306,6 @@ cdef void* processRequests() nogil:
     newDB = False
 
   sqlite3async_run()
-#  printf("Completed processRequests upto tick %lu...\n",f)
 
 
 # __DRIVER_CODE__ setup
@@ -315,8 +321,19 @@ if (rc != SQLITE_OK):
   die("sqlite3async control failed\n")
 
 # create numpy signals table sql insert queries
-queryLen = strlen(INSERT_STR) + strlen(DATALOGGER_SIGNALS_TABLE_NAME) + strlen(VALUES_STR) + strlen(OPEN_BRACE) + \
- {%for sig in in_signals%}strlen(QUESTION){{" + strlen(COMMA) + " if not loop.last}}{%endfor%} + strlen(CLOSE_BRACE_SEMI)
+cdef int queryLen = (
+  strlen(INSERT_STR) + strlen(DATALOGGER_SIGNALS_TABLE_NAME) + 
+  strlen(VALUES_STR) + strlen(OPEN_BRACE) + 
+{%- for sig in in_signals %}
+  strlen(QUESTION){{" + strlen(COMMA) + " if not loop.last}}
+{%- endfor %} +
+{%- for i in range(raw_vec_sigs['total']) %}
+  strlen(COMMA) + strlen(QUESTION) +
+{%- endfor %}
+  strlen(CLOSE_BRACE_SEMI) 
+)
+printf("%d\n", queryLen)
+fflush(stdout)
 signalsQuery = <char *> malloc(queryLen + 1)
 strcpy(signalsQuery, INSERT_STR)
 strcat(signalsQuery, DATALOGGER_SIGNALS_TABLE_NAME)
@@ -436,27 +453,26 @@ for i in range({{args['packet_size']}}):
 {%- endif %}
 {%- endfor %}
 
-# TODO make_realtime call was removed for disk previously. test this.
-
 
 # __DRIVER_CODE__ run
 
-  if (pNumTicks[0] > 0) and (pNumTicks[0] % (NEW_DB_NUM_S * 1000) == 0):
+  if (pNumTicks[0] > 0) and ((pNumTicks[0] % NEW_DB_NUM_TICKS) == 0):
     newDB = True
   {% for sig,args in in_signals.items() %}
   #printf("LOGGER SEES [{{sig}}]: (%lu->%u), bufFlushStart=%u, bufFlushStop=%u\n",pNumTicks[0],p{{sig}}HistoryBuffer[pBufPos[0]][0],bufFlushStart, bufFlushStop)
   {% endfor %}
   if (pNumTicks[0] % SQL_LOGGER_FLUSH == 0 and pNumTicks[0]>0):
-    bufFlushStop=pBufPos[0]
+    bufFlushStop = pBufPos[0]
     #printBuffer()
     copyFromBuffer()
     processRequests()
 
 
 # __DRIVER_CODE__ exit_handler
-  global shouldDie
-  shouldDie = True
-  #pthread_join(tid, &retVal)  # TODO should logger be single threaded?
+  global bufFlushStop, pBufPos
+  bufFlushStop = pBufPos[0]
+  copyFromBuffer()
+  processRequests()
 {% for sig in msgpack_sigs %}
   msgpack_sbuffer_destroy(&mpSignals{{sig|capitalize}}Buf)
 {%- endfor %}
