@@ -284,7 +284,9 @@ def generate(paths, config, confirmed):
 def parse(paths, config, confirmed):
     print("Parsing")
 
-    # save unmodified config to pass to user-space code 
+    platform_system = platform.system()
+
+    # save unmodified config to pass to user-space code
     unmodified_config = copy.deepcopy(config)
 
     # set default values in config
@@ -763,13 +765,13 @@ def parse(paths, config, confirmed):
             if (not has_parser) and (out_signal["args"]["type"] != "disk"):
                 assert len(in_signals) == 1
 
-            module_depends_on = []
+            in_sig_sems = []
             for sig, args in iter(in_signals.items()):
                 if sig in list(source_outputs):
                     # store the signal name in 0 and location of sem in 1
                     source_outputs[sig] += 1
                 else:
-                    module_depends_on.append((sig, sig_sem_dict[sig]))
+                    in_sig_sems.append((sig, sig_sem_dict[sig]))
 
             out_dtype = None
             if has_parser and out_signal["args"]["type"] != "vis_pygame":
@@ -944,7 +946,7 @@ def parse(paths, config, confirmed):
                 "out_sig_name": module_args["out"]["name"],
                 "out_signal": out_signal,
                 "num_sem_sigs": num_sem_sigs,
-                "m_dep_on": module_depends_on,
+                "in_sig_sems": in_sig_sems,
                 "sig_types": in_sig_types,
                 "out_dtype": out_dtype,
                 "buf_vars_len": BUF_VARS_LEN,
@@ -1013,7 +1015,7 @@ def parse(paths, config, confirmed):
                     sig_sem_dict[dependency],
                 )
 
-            depends_on = []
+            in_sig_sems = []
             default_sig_name = ""
             default_params = None
             for in_sig in module_args["in"]:
@@ -1026,7 +1028,11 @@ def parse(paths, config, confirmed):
                     source_outputs[in_sig] += 1
                 else:
                     # store the signal name in 0 and location of sem in 1
-                    depends_on.append((in_sig, sig_sem_dict[in_sig]))
+                    in_sig_sems.append((in_sig, sig_sem_dict[in_sig]))
+
+            sig_sems = in_sig_sems.copy()
+            for out_sig in module_args["out"]:
+                sig_sems.append((out_sig, sig_sem_dict[out_sig]))
 
             in_signals = {
                 x: signals[x] for x in (sigkeys & set(module_args["in"]))
@@ -1161,7 +1167,8 @@ def parse(paths, config, confirmed):
                 construct_code=construct_code,
                 destruct_code=destruct_code,
                 dependencies=dependencies,
-                depends_on=depends_on,
+                in_sig_sems=in_sig_sems,
+                sig_sems=sig_sems,
                 tick_sem_idx=non_source_names.index(name),
                 in_signal_name=(
                     None if name != "bufferer" else next(iter(in_signals))
@@ -1185,8 +1192,8 @@ def parse(paths, config, confirmed):
                 top_level=all(
                     [k in list(source_outputs) for k in list(in_signals)]
                 ),
-                py_maj_ver=sys.version_info[0],
                 history_pad_length=HISTORY_PAD_LENGTH,
+                platform_system=platform_system,
             )
 
     # parse Makefile
@@ -1199,7 +1206,7 @@ def parse(paths, config, confirmed):
     )
 
     extra_incl = ""
-    if platform.system() == "Linux":
+    if platform_system == "Linux":
         extra_incl = "-lrt"
 
     do_jinja(
@@ -1255,6 +1262,7 @@ def parse(paths, config, confirmed):
         non_source_module_check=non_source_module_check,
         non_source_names=non_source_names,
         num_non_sources=len(module_names) + len(sink_names),
+        platform_system=platform_system,
     )
 
     # parse constants.h

@@ -5,16 +5,21 @@
 {%- endif %}
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h> // includes <stdint.h>
+#include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/io.h>
+#ifdef __APPLE__
+  #include <sys/uio.h>
+#else
+  #include <sys/io.h>
+#endif
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
@@ -35,6 +40,9 @@
 
 {% set test_start_time = ('test_start_time' in config['config'] and config['config']['test_start_time']) %}
 {% set test_tick_time = ('test_tick_time' in config['config'] and config['config']['test_tick_time']) %}
+// process IDs for each child numbered according to the index of the child's
+// name in moduleProcnames
+static pid_t ch_pids[NUM_MODULES] = {};
 {%- if num_modules != 0 %}
 static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
 {%- endif %}
@@ -46,6 +54,7 @@ static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{
 static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
 {%- endif %}
 static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source_module_check[:-1] %}{{i}}, {% endfor %}{{non_source_module_check[-1]}}{{'}'}};
+
 // child process IDs
 static pid_t so_pids[NUM_SOURCES];
 static pid_t ar_pids[NUM_ASYNC_READERS];
@@ -62,19 +71,21 @@ static unsigned char outVal = 0;
 static size_t shm_size;
 static uint8_t *pmem;
 // global tick counter
-static int64_t *pNumTicks;
+static int64_t *pNumTicks = NULL;
 // TODO figure out better synch
 // source buffer offset update synchronization semaphore
 static sem_t *pSourceUpSem;
 static sem_t *pSourceDownSem;
 // per-process tick start semaphore
 // timer signals each proces by upping this semaphore
-static sem_t *pTickUpSems;
+static sem_t *pTickUpSems[NUM_NON_SOURCES];
 // per-process computation end semaphore
 // porcess signals timer by upping this semaphore
-static sem_t *pTickDownSems;
+static sem_t *pTickDownSems[NUM_NON_SOURCES];
 // signal semaphores. synchronizes process hierarchy during runtime 
-static sem_t *pSigSems;
+static sem_t *pSigSems[NUM_SEM_SIGS];
+// buffer for creating named semaphore names
+char semNameBuf[SEM_NAME_LEN];
 
 static uint32_t *pBufVars;
 
@@ -122,9 +133,15 @@ void handle_exit(int exitStatus) {
   rtTimer.it_interval.tv_usec = 0;
   setitimer(ITIMER_REAL, &rtTimer, NULL);
   printf("exiting...\n");
+  if (pNumTicks == NULL) {
+    printf("LiCoRICE ran for %lld ticks.\n", (long long)(-1 * INIT_BUFFER_TICKS));
+  }
+  else {
+    printf("LiCoRICE ran for %lld ticks.\n", *pNumTicks);
+  }
   printf("Killing sinks...\n");
   for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
-    if (si_pids[ex_i] != -1) {
+    if (si_pids[ex_i] && si_pids[ex_i] != -1) {
       printf("Killing sink: %d\n", si_pids[ex_i]);
       kill(si_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
       while (waitpid(si_pids[ex_i], 0, WNOHANG) > 0);
@@ -132,7 +149,7 @@ void handle_exit(int exitStatus) {
   }
   printf("Killing modules...\n");
   for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
-    if (ch_pids[ex_i] != -1) {
+    if (ch_pids[ex_i] && ch_pids[ex_i] != -1) {
       printf("Killing module: %d\n", ch_pids[ex_i]);
       kill(ch_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
       while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
@@ -140,10 +157,9 @@ void handle_exit(int exitStatus) {
   }
   printf("Killing sources...\n");
   for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
-    if (so_pids[ex_i] != -1) {
+    if (so_pids[ex_i] && so_pids[ex_i] != -1) {
       printf("Killing source: %d\n", so_pids[ex_i]);
       kill(so_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      //while (waitpid(so_pids[ex_i], 0, WNOHANG) > 0);
       while(waitpid(so_pids[ex_i], 0, WNOHANG) > 0){
         printf("waiting for pid: %d\n", so_pids[ex_i]);
         fflush(stdout);
@@ -165,10 +181,11 @@ void handle_exit(int exitStatus) {
     }
   }
 
-  {%- if parport_tick_addr is not none %} 
+  {%- if parport_tick_addr is not none %}
     parportRet = ioctl(parportfd,PPRELEASE);
     close(parportfd);
   {%- endif %}
+
 
   printf("Unmapping shared memory...\n");
   printf("LiCoRICE ran for %ld ticks.\n", (*pNumTicks)+1);
@@ -176,14 +193,56 @@ void handle_exit(int exitStatus) {
   munmap(pmem, shm_size);
   shm_unlink(SMEM0_PATHNAME);
   munlockall();
+
+  printf("Closing and unlinking semaphores...\n");
+  // close source semaphores
+  sem_close(pSourceUpSem);
+  sem_unlink("/source_up_sem");
+  sem_close(pSourceDownSem);
+  sem_unlink("/source_down_sem");
+
+  // close up tick semaphores
+  for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
+    sem_close(pTickUpSems[m_i]);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_up_sem_%lu", m_i);
+    sem_unlink(semNameBuf);
+  }
+
+  // close down tick semaphores
+  for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
+    sem_close(pTickDownSems[m_i]);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_down_sem_%lu", m_i);
+    sem_unlink(semNameBuf);
+  }
+
+  // close signal semaphores
+  for (m_i = 0; m_i < NUM_SEM_SIGS; m_i++) {
+    sem_close(pSigSems[m_i]);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", m_i);
+    sem_unlink(semNameBuf);
+  }
   exit(exitStatus);
 }
 
+/*
+ * set scheduler to SCHED_FIFO with the given priority
+ */
+void set_sched_prior(int priority) {
+  struct sched_param param;
+  param.sched_priority = priority;
+  if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) == -1) {
+    die("pthread_setschedparam failed.\n");
+  }
+}
+
+/*
+ * set scheduler to SCHED_OTHER with the given priority
+ */
 void set_sched_prior_low(int priority) {
   struct sched_param param;
   param.sched_priority = priority;
-  if (sched_setscheduler(0, SCHED_OTHER, &param) == -1) {
-    die("sched_setscheduler failed.\n");
+  if (pthread_setschedparam(pthread_self(), SCHED_OTHER, &param) == -1) {
+    die("pthread_setschedparam failed.\n");
   }
 }
 
@@ -201,7 +260,7 @@ static void check_children() {
   outVal = ~outVal;
 {%- endif %}
   
-  // printf("TIMER tick %ld\n", *pNumTicks);
+  // printf("TIMER tick %" PRId64 "\n", *pNumTicks);
   if ((sigalrm_recv > 1))
     die("Timer missed a tick. (>1 unhandled sigalrms)");
 
@@ -219,14 +278,14 @@ static void check_children() {
     handle_exit(0);
   }
 {%- endif %}
-  
+
   // only trigger sources on first iterations
   if (*pNumTicks < 0) {
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++) 
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
       sem_wait(pSourceDownSem);
 
     for (al_i = 0; al_i < NUM_SOURCES; al_i++)
-      sem_post(pSourceUpSem);    
+      sem_post(pSourceUpSem);
   }
   
   // normal behavior on subsequent iterations
@@ -234,13 +293,13 @@ static void check_children() {
   {%- if num_non_sources %}
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
-      if (sem_trywait(pTickDownSems + al_i)) {
+      if (sem_trywait(pTickDownSems[al_i])) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on ms: %lu from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Module timing violation on ms: %lld from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
           die("Module timing violation.\n");
         }
         else {
-          printf("Sink timing violation on ms: %lu from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Sink timing violation on ms: %lld from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
         }
       } 
     }
@@ -248,14 +307,14 @@ static void check_children() {
 
     for (al_i = 0; al_i < NUM_SOURCES; al_i++)
       sem_wait(pSourceDownSem);
-  
+
     for (al_i = 0; al_i < NUM_SOURCES; al_i++)
       sem_post(pSourceUpSem);
 
     {%- if num_non_sources %}
     // trigger all non-source processes
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
-      sem_post(pTickUpSems + al_i);
+      sem_post(pTickUpSems[al_i]);
     }
     {%- endif %}
   }
@@ -351,7 +410,7 @@ int main(int argc, char* argv[]) {
 
   // set signal masks
   sigemptyset(&exitMask);
-  sigaddset(&exitMask, SIGALRM);  
+  sigaddset(&exitMask, SIGALRM);
   sigfillset(&alrmMask);
   // sigdelset(&alrmMask, SIGINT);
   // initialize utilityFunctions
@@ -371,41 +430,58 @@ int main(int argc, char* argv[]) {
 
   // TODO pmem offsets should be constants, or store in struct
   shm_size = ROUND_UP(SHM_SIZE, PAGESIZE);
-  open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE);
+  open_shared_mem(
+    &pmem,
+    SMEM0_PATHNAME,
+    shm_size,
+    O_TRUNC | O_CREAT | O_RDWR,
+    PROT_READ | PROT_WRITE
+  );
   pNumTicks = (int64_t *)(pmem + NUM_TICKS_OFFSET);
-  pSourceUpSem = (sem_t *)(pmem + SOURCE_UP_SEM_OFFSET);
-  pSourceDownSem = (sem_t *)(pmem + SOURCE_DOWN_SEM_OFFSET);
-  pTickUpSems = (sem_t *)(pmem + TICK_UP_SEMS_OFFSET);
-  pTickDownSems = (sem_t *)(pmem + TICK_DOWN_SEMS_OFFSET);
-  pSigSems = (sem_t *)(pmem + SIG_SEMS_OFFSET);
   pBufVars = (uint32_t *)(pmem + BUF_VARS_OFFSET);
-
   *pNumTicks = -1 * INIT_BUFFER_TICKS;
-
-  // initialize source semaphore
-  sem_init(pSourceUpSem, 1, 0);
-  sem_init(pSourceDownSem, 1, NUM_SOURCES); 
+  // initialize source semaphores
+  if ((pSourceUpSem = sem_open("/source_up_sem", O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED) {
+    printf("could not open semaphore: %s \n", strerror(errno));
+    handle_exit(1);
+  }
+  if ((pSourceDownSem = sem_open("/source_down_sem", O_CREAT | O_EXCL, 0600, NUM_SOURCES)) == SEM_FAILED) {
+    printf("could not open semaphore: %s \n", strerror(errno));
+    handle_exit(1);
+  }
 
   // initialize up tick semaphores
   for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
-    sem_init(pTickUpSems + m_i, 1, 0);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_up_sem_%lu", m_i);
+    if ((pTickUpSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED){
+      printf("Could not open semaphore: %s \n", strerror(errno));
+      handle_exit(1);
+    }
   }
 
   // initialize down tick semaphores
   for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
-    sem_init(pTickDownSems + m_i, 1, 1);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_down_sem_%lu", m_i);
+    if ((pTickDownSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 1)) == SEM_FAILED) {
+      printf("Could not open semaphore: %s \n", strerror(errno));
+      handle_exit(1);
+    }
   }
 
   // initialize signal semaphores
   for (m_i = 0; m_i < NUM_SEM_SIGS; m_i++) {
-    sem_init(pSigSems + m_i, 1, 0);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", m_i);
+    if ((pSigSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED) {
+      printf("Could not open semaphore: %s \n", strerror(errno));
+      handle_exit(1);
+    }
   }
 
   printf("Memory mapped.\nForking children...\n");
   
   // set priority
   set_sched_prior(PRIORITY);
-  // cpu_set_t mask;
+  //cpu_set_t mask;
   //CPU_ZERO(&mask);
   //CPU_SET(1, &mask);
   //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
@@ -417,6 +493,7 @@ int main(int argc, char* argv[]) {
     die("fork failed \n");
   }
   if (so_pids[{{loop.index0}}] == 0) { // only runs for source process
+  {%- if platform_system != "Darwin" %}
     cpu_set_t mask;
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
@@ -424,10 +501,13 @@ int main(int argc, char* argv[]) {
     CPU_ZERO(&mask);
     CPU_SET(NETWORK_CPU, &mask);
     sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+  {%- else %}
+    // TODO implement Darwin CPU affinity
+  {%- endif %}
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY);
     char* argv[2] = {"./{{name}}", NULL};
-    
+
     // execute source process
     // signal handlers and mmap are not preserved on exec
     execvp(argv[0],argv);
@@ -453,9 +533,15 @@ int main(int argc, char* argv[]) {
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
+    printf("Source: {{name}}\n");
+    {%- if platform_system != "Darwin" %}
+    // TODO implement CPU affinity
     // CPU_ZERO(&mask);
     // CPU_SET(NETWORK_CPU, &mask);
     // sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    {%- else %}
+    // TODO implement Darwin CPU affinity
+    {%- endif %}
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY - 1);
     char* argv[2] = {"./{{name}}", NULL};
@@ -492,7 +578,7 @@ int main(int argc, char* argv[]) {
         die("fork failed\n");
       }
       if (ch_pids[childNum] == 0) {  // only runs for child processes
-        // cpu_set_t mask;
+        //cpu_set_t mask;
         //CPU_ZERO(&mask);
         //CPU_SET(m_j + CPU_OFFSET, &mask);
         //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
@@ -525,7 +611,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     die("fork failed \n");
   }
   if (si_pids[{{loop.index0}}] == 0) { // only runs for logger process
-    cpu_set_t mask;
+    // cpu_set_t mask;
     // for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
@@ -550,7 +636,9 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
   printf("{{name}}: %d\n", si_pids[{{loop.index0}}]);
 {% endfor %}
 
+{%- if platform_system != "Darwin" %}
   make_realtime();
+{%- endif %}
 
   for (m_i = 0; m_i < NUM_ASYNC_READERS; m_i++) {
     kill(ar_pids[m_i], SIGUSR2);

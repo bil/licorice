@@ -1,6 +1,6 @@
 {% block header %}
 from libc.stdlib cimport atoi, exit
-from libc.stdio cimport printf, fflush, stdout
+from libc.stdio cimport printf, snprintf, fflush, stdout
 from libc.string cimport strcpy, memset, memcpy
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
@@ -27,6 +27,7 @@ cdef extern from "semaphore.h":
     char __size[__SIZEOF_SEM_T]
     long int __align
   ctypedef sem_union sem_t
+  sem_t *sem_open(const char *name, int oflag)
   int sem_wait(sem_t *)
   int sem_post(sem_t *)
 #not used yet, just seeing if it would work
@@ -68,10 +69,8 @@ cdef extern from "constants.h":
   enum: BUF_VARS_LEN
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
-  enum: TICK_UP_SEMS_OFFSET
-  enum: TICK_DOWN_SEMS_OFFSET
-  enum: SIG_SEMS_OFFSET
   enum: BUF_VARS_OFFSET
+  enum: SEM_NAME_LEN
 
 cdef pid_t pid
 cdef pid_t ppid
@@ -90,9 +89,10 @@ cdef size_t mb_shm_size
 {% endif %}
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
-cdef sem_t *pTickUpSems
-cdef sem_t *pTickDownSems
-cdef sem_t *pSigSems
+cdef sem_t *pTickUpSem
+cdef sem_t *pTickDownSem
+cdef sem_t *pSigSems[NUM_SEM_SIGS]
+cdef char semNameBuf[SEM_NAME_LEN]
 cdef uint32_t *pBufVars
 {%- for sig, dtype in out_sig_types.items() %}
 cdef uint32_t *{{sig}}BufVars
@@ -108,13 +108,19 @@ cdef uint32_t *{{sig}}BufVars
 cdef void handle_exit(int exitStatus):
   global pmem, shm_size
   {{destruct_code}}
+{%- if platform_system == "Linux" %}
   sa_names = [sig.name for sig in sa.list()]
-{%- for sig in (out_signals.keys()) %}
+  {%- for sig in (out_signals.keys()) %}
   if b"{{sig}}" in sa_names:
     sa.delete("shm://{{sig}}")
   else:
     printf("Could not delete shared array {{sig}}.\n")
-{%- endfor %}
+  {%- endfor %}
+{%- else %}
+  {%- for sig in (out_signals.keys()) %}
+  sa.delete("shm://{{sig}}")
+  {%- endfor %}
+{%- endif %}
   munmap(pmem, shm_size)
   {% if name=='bufferer'%}
   shm_unlink("/mbmem0")
@@ -148,12 +154,19 @@ printf("child %d id: %d\n", {{module_num}}, pid)
 
 # open and map shared parent memory
 shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
-open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
+open_shared_mem(
+  &pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE
+)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
-pTickUpSems = <sem_t *>(pmem + TICK_UP_SEMS_OFFSET)
-pTickDownSems = <sem_t *>(pmem + TICK_DOWN_SEMS_OFFSET)
-pSigSems = <sem_t *>(pmem + SIG_SEMS_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
+
+pTickUpSem = sem_open("/tick_up_sem_{{non_source_num}}", 0)
+pTickDownSem = sem_open("/tick_down_sem_{{non_source_num}}", 0)
+{%- for sig_sem in sig_sems %}
+snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", {{sig_sem[1]}})
+pSigSems[{{sig_sem[1]}}] = sem_open(semNameBuf, 0)
+{%- endfor %}
+
 {% if name == 'bufferer' %}
 cdef uint8_t *bmem
 mb_shm_size = {{in_signals.items()|length}} * sizeof(uint32_t) * {{history_pad_length+1}} + {{in_signals.items()|length}} * sizeof(uint8_t) * {{history_pad_length+1}} + sizeof(uint32_t) #[pointer hist(uint*[]), size hist(uint[]), the buffer position(uint[])]
@@ -171,25 +184,41 @@ pBufPos = <uint32_t *> (bmem + {{in_signals.items()|length}} * sizeof(uint32_t) 
 pBufPos[0] = 0
 {% endif %}
 
-{#This forces creation of processes one at a time, since otherwise we might get two definitions for the same shared mem #}
-created_mem = sa.list()
+{#This forces creation of processes in graph level order #}
 in_sigs = {}
-{% for sig,args in in_signals.items() %}
+{%- if platform_system == "Linux"  %}
+created_mem = sa.list()
+  {%- for sig,args in in_signals.items() %}
+  {# Extra error checking on Linux #}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
   {{sig}}Raw = in_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
-  {%- if args["max_packets_per_tick"] == 1 %}
+    {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {%- else %}
+    {%- else %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-  {%- endif %}
+    {%- endif %}
 else:
   print("{{sig}} not created")
   die("signal not created")
-{%- endfor %}
+  {%- endfor %}
+{%- else %}
+  {%- for sig,args in in_signals.items() %}
+in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
+{{sig}}Raw = in_sigs["{{sig}}"]
+{{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+    {%- if args["max_packets_per_tick"] == 1 %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+    {%- else %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+    {%- endif %}
+  {%- endfor %}
+{%- endif %}
+
 out_sigs = {}
 {% for sig, args in out_signals.items() %}
+  {%- if platform_system == "Linux"  %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
   die("numpy signal {{sig}} already created")
@@ -197,17 +226,31 @@ else:
   out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
   # make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
   out_sigs["{{sig}}"].base.mlock()
-
   {{sig}}Raw = out_sigs["{{sig}}"]
   {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
-  {%- if args["max_packets_per_tick"] == 1 %}
+    {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {%- else %}
+    {%- else %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-  {%- endif %}
+    {%- endif %}
   {{sig}}BufVars[5] = {{args["packet_size"]}}
   {{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
   {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
+  {%- else %}
+out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}})
+# make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
+out_sigs["{{sig}}"].base.mlock()
+{{sig}}Raw = out_sigs["{{sig}}"]
+{{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+    {%- if args["max_packets_per_tick"] == 1 %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+    {%- else %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+    {%- endif %}
+{{sig}}BufVars[5] = {{args["packet_size"]}}
+{{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
+{{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
+  {%- endif %}
 {% endfor %}
 
 # set signal mask
@@ -231,7 +274,9 @@ import {{numba_mod_name}}
 
 {{construct_code}}
 
+{%- if platform_system != "Darwin" %}
 make_realtime()
+{%- endif %}
 
 kill(ppid,SIGUSR1)
 
@@ -239,11 +284,11 @@ kill(ppid,SIGUSR1)
 cdef int prev_bv=-1
 {% endif %}
 while(True):
-  sem_wait(&pTickUpSems[{{non_source_num}}])
+  sem_wait(pTickUpSem)
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
   #printf("tick %lu, module {{name}} triggered at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
-{%for dep_on in depends_on %}
-  sem_wait(&pSigSems[{{dep_on[1]}}])
+{%for in_sig_sem in in_sig_sems %}
+  sem_wait(pSigSems[{{in_sig_sem[1]}}])
 {%endfor%}
 #  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
 #  printf("\ttick %lu, module {{name}} deps ready at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
@@ -308,11 +353,11 @@ while(True):
   # printf("module 3 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
 
 {%for i in range(dep_val[0]) %}
-  sem_post(&pSigSems[{{dep_val[1]}}])
+  sem_post(pSigSems[{{dep_val[1]}}])
 {%endfor%}
 {%endfor%}
   atomic_thread_fence(memory_order_seq_cst)
-  sem_post(&pTickDownSems[{{non_source_num}}])
+  sem_post(pTickDownSem)
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
   #printf("tick %lu, module {{name}} done at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 

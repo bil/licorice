@@ -1,4 +1,5 @@
 from libc.stdio cimport printf, stdout, fflush, remove
+from libc.stdio cimport printf, snprintf, stdout, fflush, remove
 from libc.stdlib cimport exit, malloc, free, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
@@ -33,7 +34,7 @@ cdef extern from "semaphore.h" nogil:
   cdef union sem_union:
     pass
   ctypedef sem_union sem_t
-  int sem_init(sem_t *sem, int pshared, unsigned int value)
+  sem_t *sem_open(const char *name, int oflag)
   int sem_wait(sem_t *)
   int sem_post(sem_t *)
   int sem_destroy(sem_t *sem)
@@ -53,10 +54,8 @@ cdef extern from "constants.h":
   enum: BUF_VARS_LEN
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
-  enum: TICK_UP_SEMS_OFFSET
-  enum: TICK_DOWN_SEMS_OFFSET
-  enum: SIG_SEMS_OFFSET
   enum: BUF_VARS_OFFSET
+  enum: SEM_NAME_LEN
 
 {{ driver_code["imports"] }}
 
@@ -70,9 +69,10 @@ cdef int sigalrm_recv = 0
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
-cdef sem_t *pTickUpSems
-cdef sem_t *pTickDownSems
-cdef sem_t *pSigSems
+cdef sem_t *pTickUpSem
+cdef sem_t *pTickDownSem
+cdef sem_t *pSigSems[NUM_SEM_SIGS]
+cdef char semNameBuf[SEM_NAME_LEN]
 cdef uint32_t *pBufVars
 lastVal = 1
 
@@ -137,32 +137,50 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
-pTickUpSems = <sem_t *>(pmem + TICK_UP_SEMS_OFFSET)
-pTickDownSems = <sem_t *>(pmem + TICK_DOWN_SEMS_OFFSET)
-pSigSems = <sem_t *>(pmem + SIG_SEMS_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 
+pTickUpSem = sem_open("/tick_up_sem_{{non_source_num}}", 0)
+pTickDownSem = sem_open("/tick_down_sem_{{non_source_num}}", 0)
+{%- for in_sig_sem in in_sig_sems %}
+snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", {{in_sig_sem[1]}})
+pSigSems[{{in_sig_sem[1]}}] = sem_open(semNameBuf, 0)
+{%- endfor %}
+
+{%- if platform_system == "Linux" %}
 created_mem = sa.list()
-{% for sig,args in in_signals.items() %}
+  {% for sig,args in in_signals.items() %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
   {{sig}}Raw = in_sigs['{{sig}}']
-  {%- if py_maj_ver == 2 %}
-  # sa.mlock(in_sigs['{{sig}}'])
-  {%- endif %}
   {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
-  {%- if args["max_packets_per_tick"] == 1 %}
+    {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {%- else %}
+    {%- else %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-  {%- endif %}
+    {%- endif %}
 else:
   die("numpy signal not created\n")
-  {% if out_signal['args']['type'] != 'vis_pygame' %}
-{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0] 
+    {% if out_signal['args']['type'] != 'vis_pygame' %}
+{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0]
 {{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
-  {% endif %}
-{% endfor %}
+    {% endif %}
+  {% endfor %}
+{%- else %}
+  {% for sig,args in in_signals.items() %}
+in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
+{{sig}}Raw = in_sigs['{{sig}}']
+{{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
+    {%- if args["max_packets_per_tick"] == 1 %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+    {%- else %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+    {%- endif %}
+    {% if out_signal['args']['type'] != 'vis_pygame' %}
+{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0]
+{{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
+    {% endif %}
+  {% endfor %}
+{%- endif %}
 
 {{ driver_code["setup"] }}
 
@@ -171,15 +189,16 @@ else:
 {%- endif %}
 {{construct_code}}
 
+{%- if platform_system != "Darwin" %}
 make_realtime()
+{%- endif %}
 
 kill(ppid,SIGUSR1)
 
 while(True):
-  sem_wait(&pTickUpSems[{{non_source_num}}])
-
-{%- for dep_on in m_dep_on %}
-  sem_wait(&pSigSems[{{dep_on[1]}}])
+  sem_wait(pTickUpSem)
+{%- for in_sig_sem in in_sig_sems %}
+  sem_wait(pSigSems[{{in_sig_sem[1]}}])
 {%- endfor %}
 
 {% for sig,args in in_signals.items() %}
@@ -197,8 +216,8 @@ while(True):
   outBuf = <uint8_t *>({{in_signal_name}}StrtPtr + {{in_signal_name}}BufVars[0])
   outBufLen = ({{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0]) * sizeof({{in_signal_name}}StrtPtr[0])
 {%- endif %}
-  
+
 {{ driver_code["run"] }}
 
-  sem_post(&pTickDownSems[{{non_source_num}}])
+  sem_post(pTickDownSem)
   sigalrm_recv -= 1

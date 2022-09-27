@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <errno.h>
 #include "constants.h"
 
 static sigset_t exitMask;
@@ -75,17 +76,6 @@ void set_sighandler(int signum, void *psh, sigset_t *block_mask) {
 }
 
 /*
- * set scheduler to SCHED_FIFO with the given priority
- */
-void set_sched_prior(int priority) {
-  struct sched_param param;
-  param.sched_priority = priority;
-  if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
-    die("sched_setscheduler failed.\n");
-  }
-}
-
-/*
 * open a shared memory block with:
 * name: pName
 * size: numBytes
@@ -96,15 +86,18 @@ void set_sched_prior(int priority) {
 * this shared memory, then make sure the O_CREAT flag is set in shm_flags
 */
 void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags) {
-  int fd = shm_open(pName, shm_flags, 0600);
+  printf("%s\n", pName);
+  int fd = shm_open(pName, shm_flags, 0666);
+  fflush(stdout);
   if(fd == -1) {
-    die("shm_open failed\n");
+    printf("%s\n", strerror(errno));
+    fflush(stdout);
+    die("shm_open failed.\n");
   }
   // check if O_CREAT (1 << 6) is set 
   if (shm_flags & O_CREAT) {
     if (ftruncate(fd, numBytes)) {
       die("ftruncate failed.\n");
-      exit(1);
     } 
   }
   *ppmem = (uint8_t*) mmap(NULL, numBytes, mmap_flags, MAP_SHARED, fd, 0);

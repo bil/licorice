@@ -172,27 +172,20 @@
  * Shared memory constants
  */
 
-// Each section of shared memory's size is defined here: 
+// Each section of shared memory's size is defined here:
 #define NUM_TICKS_SIZE sizeof(int64_t)
-#define SOURCE_UP_SEM_SIZE sizeof(sem_t)
-#define SOURCE_DOWN_SEM_SIZE sizeof(sem_t)
-#define TICK_UP_SEMS_SIZE (sizeof(sem_t) * NUM_NON_SOURCES)
-#define TICK_DOWN_SEMS_SIZE (sizeof(sem_t) * NUM_NON_SOURCES)
-#define SIG_SEMS_SIZE (sizeof(sem_t) * NUM_SEM_SIGS)
 #define BUF_VARS_SIZE (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
 #define ASYNC_MUTEXES_SIZE (sizeof(pthread_mutex_t) * NUM_ASYNC_READERS)
 
 // Each section of shared memory's byte off set is then calculatd
 #define NUM_TICKS_OFFSET 0
-#define SOURCE_UP_SEM_OFFSET (NUM_TICKS_OFFSET + NUM_TICKS_SIZE) 
-#define SOURCE_DOWN_SEM_OFFSET (SOURCE_UP_SEM_OFFSET + SOURCE_UP_SEM_SIZE) 
-#define TICK_UP_SEMS_OFFSET (SOURCE_DOWN_SEM_OFFSET + SOURCE_DOWN_SEM_SIZE) 
-#define TICK_DOWN_SEMS_OFFSET (TICK_UP_SEMS_OFFSET + TICK_UP_SEMS_SIZE) 
-#define SIG_SEMS_OFFSET (TICK_DOWN_SEMS_OFFSET + TICK_DOWN_SEMS_SIZE) 
-#define BUF_VARS_OFFSET (SIG_SEMS_OFFSET + SIG_SEMS_SIZE) 
+#define BUF_VARS_OFFSET (NUM_TICKS_OFFSET + NUM_TICKS_SIZE)
 #define ASYNC_MUTEXES_OFFSET (BUF_VARS_OFFSET + BUF_VARS_SIZE)
 
 // Results in a simple total size calculation
-#define SHM_SIZE (NUM_TICKS_SIZE + SOURCE_UP_SEM_SIZE + SOURCE_DOWN_SEM_SIZE + TICK_UP_SEMS_SIZE + TICK_DOWN_SEMS_SIZE + SIG_SEMS_SIZE + BUF_VARS_SIZE + ASYNC_MUTEXES_SIZE)
+#define SHM_SIZE (NUM_TICKS_SIZE + BUF_VARS_SIZE + ASYNC_MUTEXES_SIZE)
+
+// Named sempahore name buffer length.
+#define SEM_NAME_LEN 32
 
 #endif

@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
     die("bind\n");
   }
 
-  make_realtime();
+  // make_realtime();
 
   fflush(stdout);
   kill(ppid, SIGUSR2); // TODO these kills should probably be semaphores

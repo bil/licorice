@@ -30,11 +30,6 @@ void die(char *errorStr);
 void set_sighandler(int signum, void *psh, sigset_t *block_mask);
 
 /*
- * set scheduler to SCHED_FIFO with the given priority
- */
-void set_sched_prior(int priority);
-
-/*
  * open a shared memory block with:
  * name: pName
  * size: numPages * PAGESIZE

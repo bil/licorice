@@ -11,3 +11,4 @@ if pygame.joystick.get_count() < 1:
 usb_joystick = pygame.joystick.Joystick(0)
 usb_joystick.init()
 num_buttons = usb_joystick.get_numbuttons()
+pygame.event.pump()
