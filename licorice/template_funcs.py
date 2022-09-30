@@ -91,7 +91,7 @@ def do_jinja(template_path, out_path, **data):
 def generate(paths, config, confirmed):
     print("Generating modules...\n")
 
-    if len(paths["modules"] > 1):
+    if len(paths["modules"]) > 1:
         print(
             "Ambiguous module directory specified. Defaulting to "
             f"{paths['modules'][0]}."
@@ -99,29 +99,30 @@ def generate(paths, config, confirmed):
 
     modules_path = paths["modules"][0]
 
-    if os.path.exists(modules_path):
-        if not confirmed:
-            while True:
-                sys.stdout.write("Ok to remove old module directory? ")
-                choice = input().lower()
-                if choice == "y":
-                    break
-                elif choice == "n":
-                    print(
-                        "Could not complete generation. "
-                        "Backup old modules if necessary and try again."
-                    )
-                    sys.exit()
-                else:
-                    print("Please respond with 'y' or 'n'.")
-        if os.path.exists(paths["tmp_modules"]):
-            shutil.rmtree(paths["tmp_modules"])
-        shutil.move(modules_path, paths["tmp_modules"])
-        print("Moved " + modules_path + " to ") + paths["tmp_modules"]
-        shutil.rmtree(modules_path, ignore_errors=True)
-        print("Removed old output directory.\n")
+    # TODO update generate
+    # if os.path.exists(modules_path):
+    #     if not confirmed:
+    #         while True:
+    #             sys.stdout.write("Ok to remove old module directory? ")
+    #             choice = input().lower()
+    #             if choice == "y":
+    #                 break
+    #             elif choice == "n":
+    #                 print(
+    #                     "Could not complete generation. "
+    #                     "Backup old modules if necessary and try again."
+    #                 )
+    #                 sys.exit()
+    #             else:
+    #                 print("Please respond with 'y' or 'n'.")
+    #     if os.path.exists(paths["tmp_modules"]):
+    #         shutil.rmtree(paths["tmp_modules"])
+    #     shutil.move(modules_path, paths["tmp_modules"])
+    #     print("Moved " + modules_path + " to ") + paths["tmp_modules"]
+    #     shutil.rmtree(modules_path, ignore_errors=True)
+    #     print("Removed old output directory.\n")
 
-    os.mkdir(modules_path)
+    # os.mkdir(modules_path)
 
     print("Generated modules:")
 
@@ -145,7 +146,9 @@ def generate(paths, config, confirmed):
         modules["bufferer"] = bufferer
 
     for module_name, module_args in iter(modules.items()):
-        if all(map(lambda x: x in external_signals, module_args["in"])):
+        if module_args.get("in") and all(
+            map(lambda x: x in external_signals, module_args["in"])
+        ):
             # source
             print(" - " + module_name + " (source)")
 
@@ -197,7 +200,9 @@ def generate(paths, config, confirmed):
                     ),
                 )
 
-        elif all(map(lambda x: x in external_signals, module_args["out"])):
+        elif module_args.get("out") and all(
+            map(lambda x: x in external_signals, module_args["out"])
+        ):
             # sink
             print(" - " + module_name + " (sink)")
 
@@ -248,13 +253,25 @@ def generate(paths, config, confirmed):
 
         else:
             # module
-            print(" - ") + module_name
+            print(f" - {module_name}")
+
+            if module_args["language"] == "python":
+                code_template = G_TEMPLATE_MODULE_CODE_PY
+                construct_template = G_TEMPLATE_CONSTRUCTOR_PY
+                destruct_template = G_TEMPLATE_DESTRUCTOR_PY
+                extension = ".py"
+            else:
+                code_template = G_TEMPLATE_MODULE_CODE_C
+                construct_template = G_TEMPLATE_CONSTRUCTOR_C
+                destruct_template = G_TEMPLATE_DESTRUCTOR_C
+                extension = ".c"
+
             do_jinja(
-                __find_in_path(paths["generators"], G_TEMPLATE_MODULE_CODE_PY),
+                __find_in_path(paths["generators"], code_template),
                 os.path.join(modules_path, module_name + ".py"),
                 name=module_name,
-                in_sig=module_args["in"],
-                out_sig=module_args["out"],
+                in_sig=module_args.get("in"),
+                out_sig=module_args.get("out"),
             )
 
             if "constructor" in module_args and module_args["constructor"]:

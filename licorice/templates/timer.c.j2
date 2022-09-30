@@ -133,12 +133,6 @@ void handle_exit(int exitStatus) {
   rtTimer.it_interval.tv_usec = 0;
   setitimer(ITIMER_REAL, &rtTimer, NULL);
   printf("exiting...\n");
-  if (pNumTicks == NULL) {
-    printf("LiCoRICE ran for %lld ticks.\n", (long long)(-1 * INIT_BUFFER_TICKS));
-  }
-  else {
-    printf("LiCoRICE ran for %lld ticks.\n", *pNumTicks);
-  }
   printf("Killing sinks...\n");
   for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
     if (si_pids[ex_i] && si_pids[ex_i] != -1) {
@@ -186,9 +180,15 @@ void handle_exit(int exitStatus) {
     close(parportfd);
   {%- endif %}
 
+  if (pNumTicks == NULL) {
+    printf("LiCoRICE ran for %lld ticks.\n", (long long)(-1 * INIT_BUFFER_TICKS));
+  }
+  else {
+    printf("LiCoRICE ran for %ld ticks.\n", (*pNumTicks)+1);
+  }
 
   printf("Unmapping shared memory...\n");
-  printf("LiCoRICE ran for %ld ticks.\n", (*pNumTicks)+1);
+
   // close shared memory
   munmap(pmem, shm_size);
   shm_unlink(SMEM0_PATHNAME);
@@ -221,6 +221,7 @@ void handle_exit(int exitStatus) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", m_i);
     sem_unlink(semNameBuf);
   }
+
   exit(exitStatus);
 }
 

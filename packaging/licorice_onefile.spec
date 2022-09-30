@@ -13,7 +13,7 @@ py_incl_dst = "/".join(py_incl_src.split("/")[-2:])
 py_lib_src = get_python_lib()
 py_lib_dst = "/".join(py_lib_src.split("/")[-3:])
 
-a = Analysis( # noqa F821
+a = Analysis(  # noqa: F821
     ["../licorice/cli.py"],
     pathex=[],
     binaries=[],
@@ -33,9 +33,9 @@ a = Analysis( # noqa F821
     cipher=block_cipher,
     noarchive=False,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher) # noqa F821
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)  # noqa: F821
 
-exe = EXE( # noqa F821
+exe = EXE(  # noqa: F821
     pyz,
     a.scripts,
     a.binaries,

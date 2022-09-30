@@ -9,6 +9,7 @@ import subprocess
 from distutils.sysconfig import get_python_lib
 from functools import lru_cache
 from warnings import warn
+from typing import overload
 
 import numpy as np
 import yaml
@@ -202,7 +203,7 @@ def __parse_args(input_tuple=None):
         help="LiCoRICE command to run.",
         choices=command_dict.keys(),
     )
-    arg_parser.add_argument("model", type=str, help="YAML model file to parse")
+    arg_parser.add_argument("model", type=str, help="YAML model file name to parse. File extension optional.")
     # LiCoRICE CLI only supports simple store_true bools
     arg_parser.add_argument(
         "-y",
@@ -268,7 +269,30 @@ def __export_model(**kwargs):
     template_funcs.export(paths, kwargs["confirm"])
 
 
-def export_model(model, **kwargs):
+@overload
+def export_model(model: str, **kwargs) -> None:
+    ...
+@overload  # noqa: E302
+def export_model(model: dict, **kwargs) -> None:
+    ...
+def export_model(model, **kwargs):  # noqa: E302
+    """Export a LiCoRICE model.
+
+    This function wraps the core functionality of the LiCoRICE CLI `export` command, but allows users to pass in either a YAML model file string or a full dict detailing the model as well as any CLI flags as keyword arguments.
+
+    Args:
+        model (str): Filename of LiCoRICE model accessible through default or
+            included paths. `.yaml` and `.yml` file extensions are optional.
+        model (dict): LiCoRICE model as a dict. Must adhere to YAML config
+            reference and can be loaded in from a YAML file or created
+            manually.
+
+    Keyword Args:
+        kwargs (dict): Extra LiCoRICE arguments.
+
+    Returns:
+        None
+    """
     kwargs = __parse_kwargs("export", model, **kwargs)
     __export_model(**kwargs)
 
@@ -278,7 +302,30 @@ def __generate_model(**kwargs):
     template_funcs.generate(paths, model_yaml, kwargs["confirm"])
 
 
-def generate_model(model, **kwargs):
+@overload
+def generate_model(model: str, **kwargs) -> None:
+    ...
+@overload  # noqa: E302
+def generate_model(model: dict, **kwargs) -> None:
+    ...
+def generate_model(model, **kwargs):  # noqa: E302
+    """Generate user code scaffolds from model.
+
+    This function wraps the core functionality of the LiCoRICE CLI `generate` command, but allows users to pass in either a YAML model file string or a full dict detailing the model as well as any CLI flags as keyword arguments.
+
+    Args:
+        model (str): Filename of LiCoRICE model accessible through default or
+            included paths. `.yaml` and `.yml` file extensions are optional.
+        model (dict): LiCoRICE model as a dict. Must adhere to YAML config
+            reference and can be loaded in from a YAML file or created
+            manually.
+
+    Keyword Args:
+        kwargs (dict): Extra LiCoRICE arguments.
+
+    Returns:
+        None
+    """
     kwargs = __parse_kwargs("generate", model, **kwargs)
     __generate_model(**kwargs)
 
@@ -288,7 +335,33 @@ def __parse_model(**kwargs):
     template_funcs.parse(paths, model_yaml, kwargs["confirm"])
 
 
-def parse_model(model, **kwargs):
+@overload
+def parse_model(model: str, **kwargs) -> None:
+    ...
+@overload  # noqa: E302
+def parse_model(model: dict, **kwargs) -> None:
+    ...
+def parse_model(model, **kwargs):  # noqa: E302
+    """Parse a given LiCoRICE model.
+
+    This function wraps the core functionality of the LiCoRICE CLI `parse`
+    command, but allows users to pass in either a YAML model file string or a
+    full dict detailing the model as well as any CLI flags as keyword
+    arguments.
+
+    Args:
+        model (str): Filename of LiCoRICE model accessible through default or
+            included paths. `.yaml` and `.yml` file extensions are optional.
+        model (dict): LiCoRICE model as a dict. Must adhere to YAML config
+            reference and can be loaded in from a YAML file or created
+            manually.
+
+    Keyword Args:
+        kwargs (dict): Extra LiCoRICE arguments.
+
+    Returns:
+        None
+    """
     kwargs = __parse_kwargs("parse", model, **kwargs)
     __parse_model(**kwargs)
 
@@ -315,7 +388,34 @@ def __compile_model(**kwargs):
     )
 
 
-def compile_model(model, **kwargs):
+@overload
+def compile_model(model: str, **kwargs) -> None:
+    ...
+@overload  # noqa: E302
+def compile_model(model: dict, **kwargs) -> None:
+    ...
+def compile_model(model, **kwargs):  # noqa: E302
+    """Compile a given LiCoRICE model.
+
+    This function wraps the core functionality of the LiCoRICE CLI `compile`
+    command, but allows users to pass in either a YAML model file string or a
+    full dict detailing the model as well as any CLI flags as keyword
+    arguments.
+
+    Args:
+        model (str): Filename of LiCoRICE model accessible through default or
+            included paths. `.yaml` and `.yml` file extensions are optional.
+        model (dict): LiCoRICE model as a dict. Must adhere to YAML config
+            reference and can be loaded in from a YAML file or created
+            manually.
+
+    Keyword Args:
+        kwargs (dict): Extra LiCoRICE arguments.
+
+    Returns:
+        None
+    """
+
     kwargs = __parse_kwargs("compile", model, **kwargs)
     __compile_model(**kwargs)
 
@@ -337,7 +437,34 @@ def __run_model(**kwargs):
         print(line, end="", flush=True)
 
 
+@overload
+def run_model(model: str, **kwargs) -> None:
+    ...
+@overload  # noqa: E302
+def run_model(model: dict, **kwargs) -> None:
+    ...
 def run_model(model, **kwargs):
+    """Run the given compiled LiCoRICE model.
+
+    This function wraps the core functionality of the LiCoRICE CLI `run`
+    command, but allows users to pass in either a YAML model file string or a
+    full dict detailing the model as well as any CLI flags as keyword
+    arguments.
+
+    Args:
+        model (str): Filename of LiCoRICE model accessible through default or
+            included paths. `.yaml` and `.yml` file extensions are optional.
+        model (dict): LiCoRICE model as a dict. Must adhere to YAML config
+            reference and can be loaded in from a YAML file or created
+            manually.
+
+    Keyword Args:
+        kwargs (dict): Extra LiCoRICE arguments.
+
+    Returns:
+        None
+    """
+
     kwargs = __parse_kwargs("run", model, **kwargs)
     __run_model(**kwargs)
 
@@ -347,17 +474,43 @@ def __go(**kwargs):
     __compile_model(**kwargs)
     __run_model(**kwargs)
 
-def go(model, **kwargs):
+
+@overload
+def go(model: str, **kwargs) -> None:
+    ...
+@overload  # noqa: E302
+def go(model: dict, **kwargs) -> None:
+    ...
+def go(model, **kwargs):  # noqa: E302
+    """Peform LiCoRICE parse, compile, and run in succession.
+
+    This function wraps the core functionality of the LiCoRICE CLI `go`
+    command, but allows users to pass in either a YAML model file string or a
+    full dict detailing the model as well as any CLI flags as keyword
+    arguments.
+
+    Args:
+        model (str): Filename of LiCoRICE model accessible through default or
+            included paths. `.yaml` and `.yml` file extensions are optional.
+        model (dict): LiCoRICE model as a dict. Must adhere to YAML config
+            reference and can be loaded in from a YAML file or created
+            manually.
+
+    Keyword Args:
+        kwargs (dict): Extra LiCoRICE arguments.
+
+    Returns: None
+    """
     kwargs = __parse_kwargs("go", model, **kwargs)
     __go(**kwargs)
 
 
 command_dict = {
-    "go": __go,
+    "generate": __generate_model,
     "parse": __parse_model,
     "compile": __compile_model,
     "run": __run_model,
-    "generate": __generate_model,
+    "go": __go,
     "export": __export_model,
 }
 
@@ -370,4 +523,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

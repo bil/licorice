@@ -13,4 +13,8 @@ isort
 pyinstaller
 twine
 
+# docs
+sphinx
+sphinxcontrib-programoutput
+
 -e file:..#egg=licorice

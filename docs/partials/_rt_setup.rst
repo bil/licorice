@@ -1,0 +1,39 @@
+#.  Disable all USB and ACPI support in the BIOS of the target system
+
+    USB and ACPI features throw CPU interrupts which can interfere with
+    realtime performance.
+
+    If USB support is needed for peripherals, enable only the minimum USB
+    version necessary on as few ports as possible if such options in the
+    BIOS exist.
+
+#.  Compiling a realtime kernel is not a requirement to run LiCoRICE, but
+    realtime performance is one of the central features of the platform.
+    Without a realtime kernel, timing assurances are harder to deliver.
+    Tick violations are more likely to occur as model complexity grows.
+    For basic platform testing and evaluation, a realtime kernel is not
+    necessary, but for any production deployments, realtime kernel
+    compilation is strongly advised.
+
+    The instructions for realtime kernel compilation here should be applied
+    to a stock install of Ubuntu server 20.04 LTS.
+
+    From the top-level LiCoRICE repository directory, run:
+
+    .. code-block:: bash
+
+        ./install/kernel_setup.sh
+
+    This script will take from one to five hours to complete, depeding on
+    the speed and processor count of the system. Reboot to finish
+    installation when notified. Any USB keyboards will not work after this
+    point (USB support is disabled in this realtime kernel), use a PS/2
+    keyboard or ssh into the system.
+
+    Note: if USB support is necessary (e.g., system requires realtime
+    support for a USB peripheral), install the USB enabled kernel instead
+    via ``./install/kernel_setup_usb.sh`` instead. Enabling USB support will
+    degrade system performance by a small amount, but may still fit within
+    application tolerances. In general, a limited number of USB devices do
+    not preclude consistently meeting 1ms ticks. Regardless, it is
+    important to always verify timings for a given system deployment.
