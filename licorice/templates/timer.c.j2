@@ -204,7 +204,7 @@ void handle_exit(int exitStatus) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem%lu", ex_i);
     sem_unlink(semNameBuf);
 
-    sem_close(pSourceDownSems);
+    sem_close(pSourceDownSems[ex_i]);
     snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem%lu", ex_i);
     sem_unlink(semNameBuf);
   }
@@ -288,11 +288,13 @@ static void check_children() {
   }
 {%- endif %}
 
-  for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
-    if (sem_trywait(pSourceDownSems[al_i])) {
-      printf("Source timing violation on tick: %lld from source %s\n", *pNumTicks, sourceProcnames[al_i]);
+  {%- if num_sources %}
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
+      if (sem_trywait(pSourceDownSems[al_i])) {
+        printf("Source timing violation on tick: %ld from source %s\n", *pNumTicks, sourceProcnames[al_i]);
+      }
     }
-  }
+  {%- endif %}
 
   // only trigger sources on first iterations
   if (*pNumTicks < 0) {
@@ -308,11 +310,11 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems[al_i])) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on tick: %lld from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Module timing violation on tick: %ld from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
           die("Module timing violation.\n");
         }
         else {
-          printf("Sink timing violation on tick: %lld from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Sink timing violation on tick: %ld from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
         }
       } 
     }
