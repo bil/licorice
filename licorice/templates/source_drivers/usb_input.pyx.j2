@@ -2,7 +2,10 @@
 
 import pygame
 from time import sleep
-
+{%- if config["config"]["sdl_driver"] %}
+import os
+os.environ["SDL_VIDEODRIVER"] = "{{config["config"]["sdl_driver"]}}"
+{%- endif %}
 
 # __DRIVER_CODE__ variables
 
@@ -20,7 +23,7 @@ if pygame.joystick.get_count() < 1:
 
 pygame_joystick = pygame.joystick.Joystick(0)
 pygame_joystick.init()
-num_buttons = pygame_joystick.get_numbuttons()
+num_buttons = 6 #pygame_joystick.get_numbuttons()
 sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
 # __DRIVER_CODE__ read  
@@ -28,7 +31,7 @@ sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
   (<double*>bufCurPtr)[0] = pygame_joystick.get_axis(0)
   (<double*>bufCurPtr)[1] = pygame_joystick.get_axis(1)
   for i in range(num_buttons): 
-    bufCurPtr[128 + i] = pygame_joystick.get_button(i)
+    (<uint8_t*>bufCurPtr)[128 + i] = pygame_joystick.get_button(i)
 
 {%- if async %}
 

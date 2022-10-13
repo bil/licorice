@@ -1,5 +1,4 @@
 # this parser code brings data into the licorice system
-
 joystick_axis[:] = [ (<double *>bufCurPtr)[0], (<double *>bufCurPtr)[1] ]
 
 joystick_buttons[:] = [

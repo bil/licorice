@@ -4,9 +4,6 @@
 #
 #    pip-compile ./requirements.in
 #
---no-binary numpy
---no-binary scipy
-
 cycler==0.11.0
     # via
     #   -r ./requirements.in

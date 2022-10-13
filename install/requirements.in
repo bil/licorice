@@ -1,7 +1,7 @@
 cython
-numpy --no-binary numpy
+numpy
 llvmlite
-scipy --no-binary scipy
+scipy
 cycler
 posix_ipc
 pyyaml

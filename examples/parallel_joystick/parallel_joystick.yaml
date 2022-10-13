@@ -1,0 +1,95 @@
+# USB Joystick demo
+#
+# A model that outputs values from a joystick axis and buttons
+# This model requires the USB kernel to have been compiled
+#
+#
+# Note: model configuration is still in alpha stage and subject to cosmetic changes
+#
+
+config:
+  num_ticks: 1000
+  tick_len: 10000
+  sdl_driver: dummy
+
+signals:
+
+  parallel_in:              # the signal written to from the parallel input source
+    shape: 1
+    dtype: uint8
+ 
+  parallel_out:             # the signal that the parallel output sink reads from
+    shape: 1
+    dtype: uint8
+
+  joystick_axis:
+    shape: 2
+    dtype: double
+
+  joystick_buttons:
+    shape: 6 # set this to the number of buttons to extract from the joystick
+    dtype: uint8
+
+modules:
+
+  joystick_out:
+    language: python
+    parser: True
+    in:
+      name: jdev
+      args:
+        type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
+      schema:
+        data:
+          # TODO support this syntax
+          # dtype: "(2,)f8, (6,)u1"
+
+          # alternative is to cast in driver and parser
+          dtype: uint8
+          size: 22
+      async: True
+    out:
+      - joystick_axis
+      - joystick_buttons
+
+  joystick_print:
+    language: python
+    in:
+      - joystick_axis
+      - joystick_buttons
+
+  # sources
+  parallel_reader:          # define the source
+    language: python        # language is currently a required parameter, will later be optional
+    in:
+      name: parport_in      # needs a name, will be removed later
+      args:
+        type: parport       # the type of souce this is
+        addr: 0           # the I/O address of the parallel port
+      schema:               # define the structure of the data generated from the source
+        data:
+          dtype: uint8      # data type quantization
+          size: 1           # number of units of dtype to read per packet
+        max_packets_per_tick: 1 # max number of packets to accept per tick (this is not relevant for parallel ports, will be removed for non-appropriate sources later)
+    out:
+      - parallel_in         # signal to write output of source to
+
+  parallel_toggler:         # define the module
+    language: python        # language the module is written in
+    constructor: true       # this permits the use of constructor code to intialize the module
+                            # constructors only execute once, before any ticks have begun
+    in:
+      - parallel_in         # input signal(s) to module
+    out:
+      - parallel_out        # output signal(s) of module
+
+  parallel_writer:          # define the sink
+    language: python
+    in:
+      - parallel_out
+    out:
+      name: parport_out     # needs a name, will be removed later
+      args:
+        type: parport
+        addr: 1
+        

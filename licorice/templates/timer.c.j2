@@ -46,6 +46,9 @@ static pid_t ch_pids[NUM_MODULES] = {};
 {%- if num_modules != 0 %}
 static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
 {%- endif %}
+{%- if num_sources %}
+static char sourceProcnames[NUM_SOURCES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for s in source_names[:-1] %}"{{s}}", {% endfor %}"{{non_source_names[-1]}}"{{'}'}};
+{%- endif %}
 {%- if num_non_sources %}
 static char nonSourceProcnames[NUM_NON_SOURCES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in non_source_names[:-1] %}"{{n}}", {% endfor %}"{{non_source_names[-1]}}"{{'}'}};
 {%- endif %}
@@ -74,8 +77,8 @@ static uint8_t *pmem;
 static int64_t *pNumTicks = NULL;
 // TODO figure out better synch
 // source buffer offset update synchronization semaphore
-static sem_t *pSourceUpSem;
-static sem_t *pSourceDownSem;
+static sem_t *pSourceUpSems[NUM_SOURCES];
+static sem_t *pSourceDownSems[NUM_SOURCES];
 // per-process tick start semaphore
 // timer signals each proces by upping this semaphore
 static sem_t *pTickUpSems[NUM_NON_SOURCES];
@@ -196,29 +199,34 @@ void handle_exit(int exitStatus) {
 
   printf("Closing and unlinking semaphores...\n");
   // close source semaphores
-  sem_close(pSourceUpSem);
-  sem_unlink("/source_up_sem");
-  sem_close(pSourceDownSem);
-  sem_unlink("/source_down_sem");
+  for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
+    sem_close(pSourceUpSems[ex_i]);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem%lu", ex_i);
+    sem_unlink(semNameBuf);
+
+    sem_close(pSourceDownSems);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem%lu", ex_i);
+    sem_unlink(semNameBuf);
+  }
 
   // close up tick semaphores
-  for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
-    sem_close(pTickUpSems[m_i]);
-    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_up_sem_%lu", m_i);
+  for (ex_i = 0; ex_i < NUM_NON_SOURCES; ex_i++) {
+    sem_close(pTickUpSems[ex_i]);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_up_sem_%lu", ex_i);
     sem_unlink(semNameBuf);
   }
 
   // close down tick semaphores
-  for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
-    sem_close(pTickDownSems[m_i]);
-    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_down_sem_%lu", m_i);
+  for (ex_i = 0; ex_i < NUM_NON_SOURCES; ex_i++) {
+    sem_close(pTickDownSems[ex_i]);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/tick_down_sem_%lu", ex_i);
     sem_unlink(semNameBuf);
   }
 
   // close signal semaphores
-  for (m_i = 0; m_i < NUM_SEM_SIGS; m_i++) {
-    sem_close(pSigSems[m_i]);
-    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", m_i);
+  for (ex_i = 0; ex_i < NUM_SEM_SIGS; ex_i++) {
+    sem_close(pSigSems[ex_i]);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", ex_i);
     sem_unlink(semNameBuf);
   }
 
@@ -280,13 +288,17 @@ static void check_children() {
   }
 {%- endif %}
 
+  for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
+    if (sem_trywait(pSourceDownSems[al_i])) {
+      printf("Source timing violation on tick: %lld from source %s\n", *pNumTicks, sourceProcnames[al_i]);
+    }
+  }
+
   // only trigger sources on first iterations
   if (*pNumTicks < 0) {
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
-      sem_wait(pSourceDownSem);
-
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
-      sem_post(pSourceUpSem);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
+      sem_post(pSourceUpSems[al_i]);
+    }
   }
   
   // normal behavior on subsequent iterations
@@ -296,21 +308,19 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems[al_i])) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on ms: %lld from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Module timing violation on tick: %lld from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
           die("Module timing violation.\n");
         }
         else {
-          printf("Sink timing violation on ms: %lld from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Sink timing violation on tick: %lld from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
         }
       } 
     }
   {%- endif %}
 
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
-      sem_wait(pSourceDownSem);
-
-    for (al_i = 0; al_i < NUM_SOURCES; al_i++)
-      sem_post(pSourceUpSem);
+    for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
+      sem_post(pSourceUpSems[al_i]);
+    }
 
     {%- if num_non_sources %}
     // trigger all non-source processes
@@ -442,13 +452,18 @@ int main(int argc, char* argv[]) {
   pBufVars = (uint32_t *)(pmem + BUF_VARS_OFFSET);
   *pNumTicks = -1 * INIT_BUFFER_TICKS;
   // initialize source semaphores
-  if ((pSourceUpSem = sem_open("/source_up_sem", O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED) {
-    printf("could not open semaphore: %s \n", strerror(errno));
-    handle_exit(1);
-  }
-  if ((pSourceDownSem = sem_open("/source_down_sem", O_CREAT | O_EXCL, 0600, NUM_SOURCES)) == SEM_FAILED) {
-    printf("could not open semaphore: %s \n", strerror(errno));
-    handle_exit(1);
+  for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem_%lu", m_i);
+    if ((pSourceUpSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED) {
+      printf("could not open semaphore: %s \n", strerror(errno));
+      handle_exit(1);
+    }
+
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem_%lu", m_i);
+    if ((pSourceDownSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 1)) == SEM_FAILED) {
+      printf("could not open semaphore: %s \n", strerror(errno));
+      handle_exit(1);
+    }
   }
 
   // initialize up tick semaphores

@@ -218,8 +218,8 @@ open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {% if is_main_process -%}
-pSourceUpSem = sem_open("source_up_sem", 0)
-pSourceDownSem = sem_open("source_down_sem", 0)
+pSourceUpSem = sem_open("source_up_sem_{{source_num}}", 0)
+pSourceDownSem = sem_open("source_down_sem_{{source_num}}", 0)
 {%- endif %}
 {%- if async %}
 pAsyncMutex = <pthread_mutex_t *>(pmem + ASYNC_MUTEXES_OFFSET + sizeof(pthread_mutex_t) * {{async_reader_num}})
