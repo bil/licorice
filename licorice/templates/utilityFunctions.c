@@ -86,9 +86,7 @@ void set_sighandler(int signum, void *psh, sigset_t *block_mask) {
 * this shared memory, then make sure the O_CREAT flag is set in shm_flags
 */
 void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags) {
-  printf("%s\n", pName);
   int fd = shm_open(pName, shm_flags, 0666);
-  fflush(stdout);
   if(fd == -1) {
     printf("%s\n", strerror(errno));
     fflush(stdout);
@@ -106,3 +104,21 @@ void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int sh
   }
   close(fd);
 }
+
+sem_t *create_semaphore(const char *pName, int value) {
+  sem_t *sem;
+  // attempt opening semaphore with O_EXCL flag
+  if ((sem = sem_open(pName, O_CREAT | O_EXCL, 0600, value)) == SEM_FAILED) {
+    // issue warning if semaphore name already exists
+    // TODO use proper warning (PyErr_WarnEx)
+    printf(
+      "Warning: semaphore name %s exists: %s \n", pName, strerror(errno)
+    );
+
+    if ((sem = sem_open(pName, O_CREAT, 0600, value)) == SEM_FAILED) {
+      die("Error: could not open semaphore\n");
+    }
+  }
+  return sem;
+}
+

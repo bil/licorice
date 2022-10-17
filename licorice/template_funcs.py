@@ -711,6 +711,7 @@ def parse(paths, config, confirmed):
                 "sig_types": out_sig_types,
                 "buf_vars_len": BUF_VARS_LEN,
                 "py_maj_version": sys.version_info[0],
+                "platform_system": platform_system,
             }
 
             # parse source driver
@@ -969,6 +970,7 @@ def parse(paths, config, confirmed):
                 "buf_vars_len": BUF_VARS_LEN,
                 "source_outputs": list(source_outputs),
                 "history_pad_length": HISTORY_PAD_LENGTH,
+                "platform_system": platform_system,
             }
 
             # parse sink driver

@@ -1,3 +1,4 @@
+#include <semaphore.h>
 #include <stdint.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -42,6 +43,14 @@ void set_sighandler(int signum, void *psh, sigset_t *block_mask);
  */
 void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags);
 
-
+/*
+ * open a semaphore with:
+ * name:pName
+ * value: value
+ *
+ * Tries creating a semaphore with O_EXCL, but falls back to just O_CREAT and issues
+ * a warning if that fails.
+ */
+sem_t *create_semaphore(const char *pName, int value);
 
 #endif

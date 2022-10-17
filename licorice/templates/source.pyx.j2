@@ -7,7 +7,7 @@ from libc.string cimport memset, memcpy, strerror
 from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport close, getpid, getppid, pause
-from posix.mman cimport shm_open, mmap, munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
+from posix.mman cimport munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.types cimport pid_t
 from posix.fcntl cimport O_RDWR, open, fcntl, O_CREAT, O_RDONLY, F_SETFL, O_NONBLOCK
 from posix.ioctl cimport ioctl
@@ -19,6 +19,9 @@ import os
 {% if is_reader -%}
 import SharedArray as sa
 {%- endif %}
+
+# import LiCoRICE utils
+from module_utils import create_shared_array
 
 # cimport key Python libraries
 import numpy as np
@@ -40,7 +43,7 @@ cdef extern from "semaphore.h" nogil:
   sem_t *sem_open(const char *name, int oflag)
   int sem_wait(sem_t *)
   int sem_post(sem_t *)
-  int sem_destroy(sem_t *sem)
+  int sem_close(sem_t *sem)
 
 cdef extern from "utilityFunctions.h":
   void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
@@ -144,7 +147,7 @@ out_sig = None
 
 # function to close the source
 cdef void handle_exit(int exitStatus):
-  global pmem, shm_size, udpReadThread, exitMutex, exitRoutine
+  global pmem, shm_size, udpReadThread, exitMutex, exitRoutine, pSourceUpSem, pSourceDownSem
 
   {{destruct_code}}
 
@@ -174,6 +177,14 @@ cdef void handle_exit(int exitStatus):
 
   munmap(pmem, shm_size)
   munlockall()
+
+{%- if is_main_process %}
+  if (sem_close(pSourceUpSem) == -1):
+    printf("Could not close source up semaphore. \n")
+  if (sem_close(pSourceDownSem) == -1):
+    printf("Could not close source down semaphore. \n")
+{%- endif %}
+
   exit(exitStatus)
 
 
@@ -218,8 +229,8 @@ open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {% if is_main_process -%}
-pSourceUpSem = sem_open("source_up_sem_{{source_num}}", 0)
-pSourceDownSem = sem_open("source_down_sem_{{source_num}}", 0)
+pSourceUpSem = sem_open("/source_up_sem_{{source_num}}", 0)
+pSourceDownSem = sem_open("/source_down_sem_{{source_num}}", 0)
 {%- endif %}
 {%- if async %}
 pAsyncMutex = <pthread_mutex_t *>(pmem + ASYNC_MUTEXES_OFFSET + sizeof(pthread_mutex_t) * {{async_reader_num}})
@@ -250,8 +261,10 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   printf("Numpy signal {{sig}} already created. Overwriting\n")
   {%- endif %}
 
-dtype = np.{{args["dtype"]}}
-out_sigs["{{sig}}"] = sa.create("shm://{{sig}}", {{args["sig_shape"]}}, dtype=dtype)
+out_sigs["{{sig}}"] = create_shared_array(
+  "shm://{{sig}}", {{args["sig_shape"]}}, dtype=np.{{args["dtype"]}}
+)
+
     {%- if has_parser %}
 {{sig}}Raw = out_sigs["{{sig}}"]
 {{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]

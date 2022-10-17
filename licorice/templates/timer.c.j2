@@ -184,10 +184,10 @@ void handle_exit(int exitStatus) {
   {%- endif %}
 
   if (pNumTicks == NULL) {
-    printf("LiCoRICE ran for %lld ticks.\n", (long long)(-1 * INIT_BUFFER_TICKS));
+    printf("LiCoRICE ran for %" PRId64 " ticks.\n", (long long)(-1 * INIT_BUFFER_TICKS));
   }
   else {
-    printf("LiCoRICE ran for %ld ticks.\n", (*pNumTicks)+1);
+    printf("LiCoRICE ran for %" PRId64 " ticks.\n", (*pNumTicks)+1);
   }
 
   printf("Unmapping shared memory...\n");
@@ -269,7 +269,6 @@ static void check_children() {
   outVal = ~outVal;
 {%- endif %}
   
-  // printf("TIMER tick %" PRId64 "\n", *pNumTicks);
   if ((sigalrm_recv > 1))
     die("Timer missed a tick. (>1 unhandled sigalrms)");
 
@@ -291,7 +290,7 @@ static void check_children() {
   {%- if num_sources %}
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
       if (sem_trywait(pSourceDownSems[al_i])) {
-        printf("Source timing violation on tick: %ld from source %s\n", *pNumTicks, sourceProcnames[al_i]);
+        printf("Source timing violation on tick: %" PRId64 " from source %s\n", *pNumTicks, sourceProcnames[al_i]);
       }
     }
   {%- endif %}
@@ -310,11 +309,11 @@ static void check_children() {
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems[al_i])) {
         if (nonSourceModuleCheck[al_i]) {
-          printf("Module timing violation on tick: %ld from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Module timing violation on tick: %" PRId64 " from module %s\n", *pNumTicks, nonSourceProcnames[al_i]);
           die("Module timing violation.\n");
         }
         else {
-          printf("Sink timing violation on tick: %ld from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
+          printf("Sink timing violation on tick: %" PRId64 " from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
         }
       } 
     }
@@ -453,46 +452,32 @@ int main(int argc, char* argv[]) {
   pNumTicks = (int64_t *)(pmem + NUM_TICKS_OFFSET);
   pBufVars = (uint32_t *)(pmem + BUF_VARS_OFFSET);
   *pNumTicks = -1 * INIT_BUFFER_TICKS;
+
   // initialize source semaphores
   for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem_%lu", m_i);
-    if ((pSourceUpSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED) {
-      printf("could not open semaphore: %s \n", strerror(errno));
-      handle_exit(1);
-    }
+    pSourceUpSems[m_i] = create_semaphore(&semNameBuf, 0);
 
     snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem_%lu", m_i);
-    if ((pSourceDownSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 1)) == SEM_FAILED) {
-      printf("could not open semaphore: %s \n", strerror(errno));
-      handle_exit(1);
-    }
+    pSourceDownSems[m_i] = create_semaphore(&semNameBuf, 1);
   }
 
   // initialize up tick semaphores
   for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/tick_up_sem_%lu", m_i);
-    if ((pTickUpSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED){
-      printf("Could not open semaphore: %s \n", strerror(errno));
-      handle_exit(1);
-    }
+    pTickUpSems[m_i] = create_semaphore(&semNameBuf, 0);
   }
 
   // initialize down tick semaphores
   for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/tick_down_sem_%lu", m_i);
-    if ((pTickDownSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 1)) == SEM_FAILED) {
-      printf("Could not open semaphore: %s \n", strerror(errno));
-      handle_exit(1);
-    }
+    pTickDownSems[m_i] = create_semaphore(&semNameBuf, 1);
   }
 
   // initialize signal semaphores
   for (m_i = 0; m_i < NUM_SEM_SIGS; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", m_i);
-    if ((pSigSems[m_i] = sem_open(semNameBuf, O_CREAT | O_EXCL, 0600, 0)) == SEM_FAILED) {
-      printf("Could not open semaphore: %s \n", strerror(errno));
-      handle_exit(1);
-    }
+    pSigSems[m_i] = create_semaphore(&semNameBuf, 0);
   }
 
   printf("Memory mapped.\nForking children...\n");
@@ -668,7 +653,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
 
 {%- if test_start_time %}
   clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
-  printf("Start Time: %ld\n", (startTimer.tv_sec - startStartSec) * 1000000000 + startTimer.tv_nsec - startStartNSec);
+  printf("Start Time: %ld \n", (startTimer.tv_sec - startStartSec) * 1000000000 + startTimer.tv_nsec - startStartNSec);
   handle_exit(0);
 {% endif %}
 
