@@ -220,6 +220,7 @@ while(True):
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
   {%- endif %}
   {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+  # print({{sig}}Len, flush=True)
 {% endfor %}
 
   {{parser_code}} 

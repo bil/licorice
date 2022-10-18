@@ -4,6 +4,7 @@ llvmlite
 scipy
 cycler
 posix_ipc
+pyparallel
 pyyaml
 sharedarray
 numba

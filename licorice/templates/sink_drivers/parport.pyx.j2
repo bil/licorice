@@ -6,7 +6,7 @@ import parallel
 # temporary pointer to pass to output APIs
 cdef uint8_t *outBuf
 cdef size_t outBufLen = 1
-
+outBuf = <uint8_t*>malloc(outBufLen)
 
 # __DRIVER_CODE__ setup
 
@@ -17,5 +17,5 @@ pport = parallel.Parallel(port={{out_signal['args']['addr']}})
 
   pport.setData(<unsigned char>outBuf[0])
 
-
 # __DRIVER_CODE__ exit_handler
+  free(outBuf)
