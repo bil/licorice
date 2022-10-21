@@ -55,7 +55,7 @@ pyyaml==6.0
     # via -r ./requirements.in
 scipy==1.9.1
     # via -r ./requirements.in
-sharedarray==3.2.1
+sharedarray==3.2.2
     # via -r ./requirements.in
 six==1.16.0
     # via python-dateutil

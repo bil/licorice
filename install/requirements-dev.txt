@@ -163,6 +163,8 @@ pyinstaller==5.4.1
     # via -r ./requirements-dev.in
 pyinstaller-hooks-contrib==2022.10
     # via pyinstaller
+pyparallel==0.2.2
+    # via licorice
 pyparsing==3.0.9
     # via
     #   -r ./requirements.txt
@@ -199,7 +201,7 @@ scipy==1.9.1
     #   licorice
 secretstorage==3.3.3
     # via keyring
-sharedarray==3.2.1
+sharedarray==3.2.2
     # via
     #   -r ./requirements.txt
     #   licorice
