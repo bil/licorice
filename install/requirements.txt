@@ -45,6 +45,8 @@ posix-ipc==1.0.5
     # via -r ./requirements.in
 psutil==5.9.2
     # via -r ./requirements.in
+pyparallel==0.2.2
+    # via -r ./requirements.in
 pyparsing==3.0.9
     # via
     #   matplotlib

@@ -1,0 +1,154 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>&lt;no title&gt; &#8212; LiCoRICE  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <ol class="arabic">
+<li><dl>
+<dt>Set user or group permissions by opening <code class="docutils literal notranslate"><span class="pre">/etc/security/limits.conf</span></code> and</dt><dd><p>adding the following line:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&lt;</span><span class="n">user</span><span class="o">&gt;</span> <span class="o">-</span> <span class="n">nice</span> <span class="o">-</span><span class="mi">20</span>
+</pre></div>
+</div>
+<p>Log in and back out for this change to take effect.</p>
+</dd>
+</dl>
+</li>
+<li><p>Disable all USB and ACPI support in the BIOS of the target system</p>
+<p>USB and ACPI features throw CPU interrupts which can interfere with
+realtime performance.</p>
+<p>If USB support is needed for peripherals, enable only the minimum USB
+version necessary on as few ports as possible if such options in the
+BIOS exist.</p>
+</li>
+<li><p>Compiling a realtime kernel is not a requirement to run LiCoRICE, but
+realtime performance is one of the central features of the platform.
+Without a realtime kernel, timing assurances are harder to deliver.
+Tick violations are more likely to occur as model complexity grows.
+For basic platform testing and evaluation, a realtime kernel is not
+necessary, but for any production deployments, realtime kernel
+compilation is strongly advised.</p>
+<p>The instructions for realtime kernel compilation here should be applied
+to a stock install of Ubuntu server 20.04 LTS.</p>
+<p>From the top-level LiCoRICE repository directory, run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./install/kernel_setup.sh
+</pre></div>
+</div>
+<p>This script will take from one to five hours to complete, depeding on
+the speed and processor count of the system. Reboot to finish
+installation when notified. Any USB keyboards will not work after this
+point (USB support is disabled in this realtime kernel), use a PS/2
+keyboard or ssh into the system.</p>
+<p>Note: if USB support is necessary (e.g., system requires realtime
+support for a USB peripheral), install the USB enabled kernel instead
+via <code class="docutils literal notranslate"><span class="pre">./install/kernel_setup_usb.sh</span></code> instead. Enabling USB support will
+degrade system performance by a small amount, but may still fit within
+application tolerances. In general, a limited number of USB devices do
+not preclude consistently meeting 1ms ticks. Regardless, it is
+important to always verify timings for a given system deployment.</p>
+</li>
+</ol>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">LiCoRICE</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">LiCoRICE Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">LiCoRICE examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, The Board of Trustees of the Leland Stanford Junior University.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.2.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/partials/_rt_setup.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

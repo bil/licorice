@@ -2,7 +2,7 @@
 
 # This script installs LiCoRICE system and Python dependencies.
 
-# install some packages
+# install platform-specific packages
 case $OSTYPE in
     linux*)
         if [ -f "/etc/debian_version" ]; then
@@ -36,10 +36,17 @@ case $OSTYPE in
         ;;
 esac
 
+# install pyenv
 curl https://pyenv.run | bash
 source "$(dirname "$0")/pyenv_config.sh"
 
+# install python using pyenv, create a virtualenv, and install python deps
 PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -f
 pyenv uninstall -f licorice
 pyenv virtualenv 3.8.12 licorice
 "$(dirname "$0")/update-deps.sh"
+
+# install pre-commit hooks
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
+pre-commit install

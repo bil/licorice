@@ -1,0 +1,8 @@
+repos:
+- repo: local
+  hooks:
+    - id: make-docs
+      name: Build Sphinx Documentation
+      description: Run make to create Sphinx HTML docs.
+      entry: bash -c './packaging/compile_docs.sh'
+      language: system

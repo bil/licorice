@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Environment Variables &#8212; LiCoRICE  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="LiCoRICE CLI" href="cli.html" />
+    <link rel="prev" title="YAML Configuration Reference" href="yaml_config.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="environment-variables">
+<h1>Environment Variables<a class="headerlink" href="#environment-variables" title="Permalink to this heading">¶</a></h1>
+<p>LiCoRICE uses the following environment variables to search for files and set output directories:</p>
+<section id="paths">
+<h2>Paths<a class="headerlink" href="#paths" title="Permalink to this heading">¶</a></h2>
+<p>The following environment variables instruct LiCORICE where to look for certain files and use PATH-style lists of paths separated by your OS’es path separator (commonly <cite>:</cite> for Linux).</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_WORKING_PATH</span></code></p>
+<p>Overrides LiCoRICE base working path. The default path is the current working directory where LiCoRICE has been run from. A warning will be issued if this is not set. Set <code class="docutils literal notranslate"><span class="pre">LICORICE_WORKING_PATH=.</span></code> to suppress the warning and use the default behavior.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_TEMPLATE_PATH</span></code></p>
+<p>Overrides LiCoRICE’s template search path. The default path is <code class="docutils literal notranslate"><span class="pre">licorice/templates</span></code> in the repo directory.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_GENERATOR_PATH</span></code></p>
+<p>Overrides LiCoRICE’s generator search path. The default path is <code class="docutils literal notranslate"><span class="pre">licorice/generators</span></code> in the repo directory.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_MODULE_PATH</span></code></p>
+<p>Overrides LiCoRICE’s module search path. The default path is the concatenation of the <code class="docutils literal notranslate"><span class="pre">working_path</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/modules</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_MODEL_PATH</span></code></p>
+<p>Overrides LiCoRICE’s model search path. The default path is the concatenation of the <code class="docutils literal notranslate"><span class="pre">working_path</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/models</span></code>.</p>
+</section>
+<section id="directories">
+<h2>Directories<a class="headerlink" href="#directories" title="Permalink to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_OUTPUT_DIR</span></code></p>
+<p>Directory to output the LiCoRICE model. This is where rendered templates and compiled executables will live for a given model. The default is <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/&lt;model_name&gt;.lico/out</span></code> for the CLI and <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/run.lico/out</span></code> for the Python API.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_EXPORT_DIR</span></code></p>
+<p>Directory to export the LiCoRICE model. The default is <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/&lt;model_name&gt;.lico/export</span></code> for the CLI and <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/run.lico/export</span></code> for the Python API.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_TMP_MODULE_DIR</span></code></p>
+<p>Directory to move old LiCoRICE modules. This is used by the <code class="docutils literal notranslate"><span class="pre">generate</span></code> command to prevent accidental deletion of modules. The default is <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/.modules</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LICORICE_TMP_OUTPUT_DIR</span></code></p>
+<p>Directory to output LiCoRICE model. This is where rendered templates and compiled executables will live for a given model. The default is <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/&lt;model_name&gt;.lico/.out</span></code> for the CLI and <code class="docutils literal notranslate"><span class="pre">&lt;working_path&gt;/run.lico/.out</span></code> for the Python API.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">LiCoRICE</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">LiCoRICE Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">LiCoRICE examples</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">LiCoRICE API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="yaml_config.html">YAML Configuration Reference</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Environment Variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">LiCoRICE CLI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python.html">LiCoRICE Python API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">LiCoRICE API Reference</a><ul>
+      <li>Previous: <a href="yaml_config.html" title="previous chapter">YAML Configuration Reference</a></li>
+      <li>Next: <a href="cli.html" title="next chapter">LiCoRICE CLI</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, The Board of Trustees of the Leland Stanford Junior University.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.2.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/api/env_vars.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
