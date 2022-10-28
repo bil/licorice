@@ -1,12 +1,38 @@
 [build-system]
-requires = ["setuptools<60"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[tool.black]
-line-length = 79
-target-version = ['py36', 'py37', 'py38', 'py39', 'py310']
+[project]
+name = "licorice"
+version = "0.0.5"
+description = "Linux Comodular Realtime Interactive Compute Environment"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+  {email = "licorice@bil.stanford.edu"},
+  {name = "Stanford Brain Interfacing Laboratory"}
+]
+classifiers = [
+  "Programming Language :: Python :: 3"
+]
+requires-python = ">=3.6"
+dynamic = ["dependencies"]
+
+[project.scripts]
+licorice = "licorice.cli:main"
+
+[tool.setuptools]
+packages = ["licorice"]
+include-package-data = true
 
 [tool.isort]
 profile = "black"
 multi_line_output = 3
 py_version = 36
+skip_glob = "*.lico/*"
+
+[tool.black]
+line-length = 79
+target-version = ["py36", "py37", "py38", "py39", "py310"]
+extend-exclude = "/(examples/*|tests/*)/"
+

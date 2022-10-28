@@ -5,7 +5,9 @@ vel = (
 )
 pos_cursor_i = [pos_cursor_i[0] + vel[0], pos_cursor_i[1] + vel[1]]
 pos_cursor_i[0] = np.clip(pos_cursor_i[0], 0, screen_width - 2 * size_cursor_i)
-pos_cursor_i[1] = np.clip(pos_cursor_i[1], 0, screen_height - 2 * size_cursor_i)
+pos_cursor_i[1] = np.clip(
+    pos_cursor_i[1], 0, screen_height - 2 * size_cursor_i
+)
 cursor_on_target = False
 
 # update task state

@@ -1,4 +1,5 @@
 import os
+
 import pygame
 
 task_states = {
@@ -11,9 +12,7 @@ task_states = {
 }
 
 # LICORICE_ROOT = os.environ['LICORICE_ROOT'] # this sadly doesn't work because the env isn't present when timer calls it
-LICORICE_ROOT = (
-    "../../../.."  # this is fragile, need a better way to do this
-)
+LICORICE_ROOT = "../../../.."  # this is fragile, need a better way to do this
 AUDIO_PATH = "examples/media"
 os.putenv("AUDIODRIVER", "alsa")
 # os.putenv('AUDIODEV', 'plughw:0,1') # set this to the card,device to output sound to

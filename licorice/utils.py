@@ -1,5 +1,6 @@
 import os
 
+
 def __handle_completed_process(result, print_stdout=False):
     if print_stdout:
         print(result.stdout.decode())

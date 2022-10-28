@@ -1,9 +1,10 @@
 import copy
 import math
-import numpy as np
-import msgpack
-import pytest
 import sqlite3
+
+import msgpack
+import numpy as np
+import pytest
 
 import licorice
 
@@ -19,47 +20,49 @@ logger_model_template = {
         "signal_generator": {
             "language": "python",
             "constructor": True,
-            "out": []
+            "out": [],
         },
         "logger": {
             "language": "python",
             "in": [],
             "out": {
                 "name": "log_sqlite",
-                "args": {
-                    "type": "disk",
-                    "save_file": "./data"
-                }
-            }
-        }
+                "args": {"type": "disk", "save_file": "./data"},
+            },
+        },
     },
-
 }
 
 TEST_DTYPES = [
-    "int8", "int16", "int32", "int64",
-    "uint8", "uint16", "uint32", "uint64",
-    "float32", "float64",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+    "float32",
+    "float64",
 ]
-SIMPLE_TICKS = [
-    10, 1000
-]
+SIMPLE_TICKS = [10, 1000]
 
 
 def get_expected_list(num_ticks, dtype, seed=None):
     if seed is None:
         seed = dtype(1)
-    
-    expected_list = [] 
+
+    expected_list = []
     for i in range(num_ticks):
         expected_list.append(seed + (i % 100))
     return np.array(expected_list)
 
 
 # test logging one signal of each type:
-@pytest.mark.parametrize("sig_type, num_ticks", [
-    (dtype, ticks)for dtype in TEST_DTYPES for ticks in SIMPLE_TICKS 
-])
+@pytest.mark.parametrize(
+    "sig_type, num_ticks",
+    [(dtype, ticks) for dtype in TEST_DTYPES for ticks in SIMPLE_TICKS],
+)
 def test_single_signal(sig_type, num_ticks, capfd):
     sig_name = f"{sig_type}_signal"
 
@@ -81,7 +84,7 @@ def test_single_signal(sig_type, num_ticks, capfd):
     licorice.go(
         logger_model,
         confirm=True,
-        working_path=f"{pytest.test_dir}/module_code"
+        working_path=f"{pytest.test_dir}/module_code",
     )
 
     # check LiCoRICE stdout and stderr output
@@ -107,7 +110,7 @@ def test_vector(capfd):
     vector_shape = 10
     dtype = np.int32
     dtype_str = "int32"
-    
+
     # create LiCoRICE model dict
     logger_model = copy.deepcopy(logger_model_template)
     logger_model["signals"] = {
@@ -115,9 +118,7 @@ def test_vector(capfd):
             "shape": vector_shape,
             "dtype": dtype_str,
             "log": True,
-            "log_storage": {
-                "type": "vector"
-            }
+            "log_storage": {"type": "vector"},
         }
     }
     signal_list = ["vector_signal"]
@@ -128,7 +129,7 @@ def test_vector(capfd):
     licorice.go(
         logger_model,
         confirm=True,
-        working_path=f"{pytest.test_dir}/module_code"
+        working_path=f"{pytest.test_dir}/module_code",
     )
 
     # check LiCoRICE stdout and stderr output
@@ -147,7 +148,7 @@ def test_vector(capfd):
 
     expected_list = get_expected_list(
         NUM_TICKS, dtype, seed=np.array([1] * vector_shape)
-    )  
+    )
     assert np.array_equal(expected_list, values)
 
 
@@ -155,7 +156,7 @@ def test_msgpack(capfd):
     matrix_shape = (4, 4)
     dtype = np.float32
     dtype_str = "float32"
-    
+
     # create LiCoRICE model dict
     logger_model = copy.deepcopy(logger_model_template)
     logger_model["signals"] = {
@@ -173,7 +174,7 @@ def test_msgpack(capfd):
     licorice.go(
         logger_model,
         confirm=True,
-        working_path=f"{pytest.test_dir}/module_code"
+        working_path=f"{pytest.test_dir}/module_code",
     )
 
     # check LiCoRICE stdout and stderr output
@@ -188,14 +189,14 @@ def test_msgpack(capfd):
     cur = conn.cursor()
     cur.execute("SELECT * FROM signals;")
     values = [
-        np.array(msgpack.unpackb(value[0])).reshape(matrix_shape) 
+        np.array(msgpack.unpackb(value[0])).reshape(matrix_shape)
         for value in cur.fetchall()
     ]
     assert len(values) == NUM_TICKS
 
     expected_list = get_expected_list(
         NUM_TICKS, dtype, seed=np.array(np.ones(matrix_shape))
-    )  
+    )
     assert np.array_equal(expected_list, values)
 
 
@@ -203,12 +204,12 @@ def test_multi_signal(capfd):
     signals_dict = {}
     signal_list = []
     dict_vals = [
-        ("scalar", 1, None), 
-        ("vector", 5, {"type": "vector"}), 
-        ("matrix", (2, 2), None)
+        ("scalar", 1, None),
+        ("vector", 5, {"type": "vector"}),
+        ("matrix", (2, 2), None),
     ]
     for dtype in TEST_DTYPES:
-        for name, shape, log_storage in dict_vals: 
+        for name, shape, log_storage in dict_vals:
             sig_name = f"{name}_{dtype}_signal"
             signals_dict[sig_name] = {
                 "shape": shape,
@@ -218,7 +219,7 @@ def test_multi_signal(capfd):
             if log_storage:
                 signals_dict[sig_name]["log_storage"] = log_storage
             signal_list.append(sig_name)
-    
+
     # create LiCoRICE model dict
     logger_model = copy.deepcopy(logger_model_template)
     logger_model["signals"] = signals_dict
@@ -229,7 +230,7 @@ def test_multi_signal(capfd):
     licorice.go(
         logger_model,
         confirm=True,
-        working_path=f"{pytest.test_dir}/module_code"
+        working_path=f"{pytest.test_dir}/module_code",
     )
 
     # check LiCoRICE stdout and stderr output
@@ -249,11 +250,14 @@ def test_multi_signal(capfd):
     assert len(values) == NUM_TICKS
     new_values = []
     for value in values:
-        new_values.append([
-            np.array(msgpack.unpackb(val)).reshape(dict_vals[2][1]) 
-            if type(val) is bytes else val 
-            for val in value
-        ])
+        new_values.append(
+            [
+                np.array(msgpack.unpackb(val)).reshape(dict_vals[2][1])
+                if type(val) is bytes
+                else val
+                for val in value
+            ]
+        )
     values = np.array(new_values)
 
     seed = []
@@ -269,9 +273,9 @@ def test_multi_signal(capfd):
     for i in range(len(values)):
         for j in range(len(values[i])):
             expected = expected_list[i][j]
-            if expected.dtype.char in np.typecodes['AllFloat']:
+            if expected.dtype.char in np.typecodes["AllFloat"]:
                 assert np.allclose(expected, values[i][j])
-            else: 
+            else:
                 assert np.array_equal(expected, values[i][j])
 
     # TODO snapshot this result?
@@ -282,7 +286,7 @@ def test_suffixes(capfd):
     dtype = np.int64
     dtype_str = "int64"
     suffixes = ["x", "y", "z"]
-    
+
     # create LiCoRICE model dict
     logger_model = copy.deepcopy(logger_model_template)
     logger_model["signals"] = {
@@ -290,10 +294,7 @@ def test_suffixes(capfd):
             "shape": vector_shape,
             "dtype": dtype_str,
             "log": True,
-            "log_storage": {
-                "type": "vector",
-                "suffixes": suffixes
-            }
+            "log_storage": {"type": "vector", "suffixes": suffixes},
         }
     }
     signal_list = ["vector_signal"]
@@ -304,7 +305,7 @@ def test_suffixes(capfd):
     licorice.go(
         logger_model,
         confirm=True,
-        working_path=f"{pytest.test_dir}/module_code"
+        working_path=f"{pytest.test_dir}/module_code",
     )
 
     # check LiCoRICE stdout and stderr output
@@ -323,7 +324,7 @@ def test_suffixes(capfd):
 
     expected_list = get_expected_list(
         NUM_TICKS, dtype, seed=np.array([1] * vector_shape)
-    )  
+    )
     assert np.array_equal(expected_list, values)
 
     cur.execute("PRAGMA table_info(signals);")
@@ -348,9 +349,7 @@ def test_create_new_db(capfd):
             "shape": scalar_shape,
             "dtype": dtype_str,
             "log": True,
-            "log_storage": {
-                "type": "vector"
-            }
+            "log_storage": {"type": "vector"},
         }
     }
     signal_list = ["vector_signal"]
@@ -361,7 +360,7 @@ def test_create_new_db(capfd):
     licorice.go(
         logger_model,
         confirm=True,
-        working_path=f"{pytest.test_dir}/module_code"
+        working_path=f"{pytest.test_dir}/module_code",
     )
 
     # check LiCoRICE stdout and stderr output
@@ -373,7 +372,7 @@ def test_create_new_db(capfd):
     # read values written to sqlite databases
     values = []
     i = 0
-    for i in range(math.ceil(NUM_TICKS/new_db_num_ticks)):
+    for i in range(math.ceil(NUM_TICKS / new_db_num_ticks)):
         conn = sqlite3.connect(
             f"{pytest.test_dir}/module_code/run.lico/out/data_000{i}.db"
         )
@@ -383,5 +382,5 @@ def test_create_new_db(capfd):
         values.extend([val[0] for val in vals])
     assert len(values) == NUM_TICKS
 
-    expected_list = get_expected_list(NUM_TICKS, dtype)  
+    expected_list = get_expected_list(NUM_TICKS, dtype)
     assert np.array_equal(expected_list, values)

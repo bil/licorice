@@ -49,7 +49,10 @@ def gen_new_target():
     width_max = screen_width - 2 * size_target_i
     height_max = screen_height - 2 * size_target_i
 
-    return [int(np.random.rand() * width_max), int(np.random.rand() * height_max)]
+    return [
+        int(np.random.rand() * width_max),
+        int(np.random.rand() * height_max),
+    ]
 
 
 # PARAMS

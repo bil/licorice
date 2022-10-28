@@ -1,5 +1,6 @@
-import pytest
 import warnings
+
+import pytest
 
 import licorice
 
@@ -43,15 +44,15 @@ sink_parser_model = {
                     "type": "parport",
                     "addr": "1",
                 },
-            }
-        }
+            },
+        },
     },
-
 }
 
 
 def has_parallel_port():
     import parallel
+
     try:
         parallel.Parallel()
     except FileNotFoundError:
@@ -62,15 +63,14 @@ def has_parallel_port():
 
 
 @pytest.mark.skipif(
-    not has_parallel_port(),
-    reason="No parallel port detected."
+    not has_parallel_port(), reason="No parallel port detected."
 )
 def test_sink_parser(capfd):
     # run LiCoRICE with sink parser
     licorice.go(
         sink_parser_model,
         confirm=True,
-        working_path=f"{pytest.test_dir}/module_code"
+        working_path=f"{pytest.test_dir}/module_code",
     )
 
     # check LiCoRICE stdout and stderr output

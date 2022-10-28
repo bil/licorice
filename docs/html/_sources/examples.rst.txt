@@ -2,7 +2,7 @@
 LiCoRICE examples
 ******************************************************************************
 
-This directory contains examples on how to use LiCoRICE.
+The ``examples/`` directory contains examples on how to use LiCoRICE. Please follow :ref:`instructions for installing LiCoRICE <installation:Installation>` first.
 
 
 Directory structure
@@ -49,7 +49,7 @@ jitter
 This is the simplest demo with no sources, modules, or sinks.
 It is helpful to measure core timing performance of the operating system (e.g., validating the realtime kernel).
 
-This example requires the use of a parallel port. Make sure your parallel port drivers are working and that the port is listed under ``/dev/parport<index>``. Then, make sure the user running LiCoRICE can access the port by adding them to the ``lp`` group as follows:
+This example requires the use of a parallel port. We recommend a PCIe parallel port adapter compatible with Linux. Make sure your parallel port drivers are working and that the port is listed under ``/dev/parport<index>``. Then, make sure the user running LiCoRICE can access the port by adding them to the ``lp`` group as follows:
 
   .. code-block:: bash
 

@@ -1,6 +1,7 @@
-from setuptools import setup
-from sys import platform
 import re
+from sys import platform
+
+from setuptools import setup
 
 with open("install/requirements.in") as fh:
     # removes --no-binary and other options

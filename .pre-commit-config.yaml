@@ -4,5 +4,20 @@ repos:
     - id: make-docs
       name: Build Sphinx Documentation
       description: Run make to create Sphinx HTML docs.
-      entry: bash -c './packaging/compile_docs.sh'
+      entry:
+        bash -c 'echo -e "Make sure to restage files after failing command.\n"
+          && ./packaging/compile_docs.sh "$@"' --
       language: system
+      files: (^docs/|licorice/cli.py)
+- repo: https://github.com/psf/black
+  rev: 22.10.0
+  hooks:
+  - id: black
+- repo: https://github.com/pycqa/flake8
+  rev: 5.0.4
+  hooks:
+  - id: flake8
+- repo: https://github.com/pycqa/isort
+  rev: 5.10.1
+  hooks:
+  - id: isort

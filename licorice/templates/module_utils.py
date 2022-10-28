@@ -1,5 +1,7 @@
-import SharedArray as sa
 import warnings
+
+import SharedArray as sa
+
 
 def create_shared_array(name, shape, dtype):
     """Create a SharedArray safely.
@@ -16,10 +18,8 @@ def create_shared_array(name, shape, dtype):
             stored in POSIX shared memory
     """
     try:
-        sig = sa.create(
-            name, shape, dtype=dtype
-        )
-    except FileExistsError as e:
+        sig = sa.create(name, shape, dtype=dtype)
+    except FileExistsError:
         warnings.warn(f"SharedArray with name {name} already exists.")
         sa.delete(name)
         sig = sa.create(name, shape, dtype=dtype)

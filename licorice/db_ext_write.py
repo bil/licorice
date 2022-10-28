@@ -8,7 +8,7 @@ import yaml
 
 
 def createTables(cur, table):
-    if table is "metadata":
+    if table == "metadata":
         dir_name = "yaml"
     else:
         dir_name = "code"
@@ -25,14 +25,14 @@ def createTables(cur, table):
     con.text_factory = str
 
     for filename in os.listdir(dir_path):
-        if table is "metadata":
+        if table == "metadata":
             if filename[-5:] != ".yaml":  # check if filename is true yaml file
                 continue
         file_path = os.path.join(dir_path, filename)
         file_stat = os.stat(file_path)
         mtime = file_stat.st_mtime
-        if dir_name is "yaml":
-            contents = yaml.safe_load(file(file_path))
+        if dir_name == "yaml":
+            contents = yaml.safe_load(open(file_path, "r"))
         else:
             f = open(file_path, "r")
             contents = f.read()
@@ -44,8 +44,7 @@ def createTables(cur, table):
         )
 
 
-##### MAIN #####
-
+# MAIN
 while True:
     out_dir_path = os.getenv("BINARY_DIR")
 
@@ -74,7 +73,7 @@ while True:
         ("metadata",),
     )
     t1 = cur.fetchone()
-    if t1 == None:
+    if t1 is None:
         createTables(cur, "metadata")
         createTables(cur, "code")
 

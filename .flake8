@@ -1,0 +1,7 @@
+[flake8]
+extend-ignore = E203
+exclude =
+    examples/
+    tests/module_code/
+per-file-ignores =
+    ./examples/*/*.py: F401,F821

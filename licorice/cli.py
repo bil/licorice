@@ -8,10 +8,9 @@ import shlex
 import subprocess
 from distutils.sysconfig import get_python_lib
 from functools import lru_cache
-from warnings import warn
 from typing import overload
+from warnings import warn
 
-import numpy as np
 import yaml
 
 import licorice.template_funcs as template_funcs
@@ -22,6 +21,7 @@ LICORICE_PATHS = ["WORKING", "TEMPLATE", "GENERATOR", "MODULE", "MODEL"]
 
 # LiCoRICE dirs are of the form f"LICORICE_{path}_DIR"
 LICORICE_DIRS = ["OUTPUT", "EXPORT", "TMP_MODULE", "TMP_OUTPUT"]
+
 
 def __split_path(path):
     if path:
@@ -44,18 +44,15 @@ def __get_licorice_paths(**kwargs):
     lico_paths = {}
     for path_key in LICORICE_PATHS:
         kwarg_paths = __split_path(kwargs.get(f"{path_key.lower()}_path"))
-        env_paths = __split_path(
-            os.environ.get(f"LICORICE_{path_key}_PATH")
-        )
+        env_paths = __split_path(os.environ.get(f"LICORICE_{path_key}_PATH"))
         lico_paths[path_key.lower()] = kwarg_paths + env_paths
 
     # no correction needed for output directories
     lico_dirs = {}
     for dir_key in LICORICE_DIRS:
-        lico_dirs[dir_key.lower()] = (
-            kwargs.get(f"{dir_key.lower()}_dir") or
-            os.environ.get(f"LICORICE_{dir_key}_DIR")
-        )
+        lico_dirs[dir_key.lower()] = kwargs.get(
+            f"{dir_key.lower()}_dir"
+        ) or os.environ.get(f"LICORICE_{dir_key}_DIR")
 
     # search paths may be specified as multiple directories
     if len(lico_paths["working"]) == 0:
@@ -67,29 +64,29 @@ def __get_licorice_paths(**kwargs):
         )
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    paths["templates"] = (
-        lico_paths["template"] + [os.path.join(dir_path, "templates")]
-    )
-    paths["generators"] = (
-        lico_paths["generator"] + [os.path.join(dir_path, "generators")]
-    )
+    paths["templates"] = lico_paths["template"] + [
+        os.path.join(dir_path, "templates")
+    ]
+    paths["generators"] = lico_paths["generator"] + [
+        os.path.join(dir_path, "generators")
+    ]
 
     paths["modules"] = (
-        lico_paths["module"] +
-        lico_paths["working"] +
-        [os.path.join(dir, "modules") for dir in lico_paths["working"]]
+        lico_paths["module"]
+        + lico_paths["working"]
+        + [os.path.join(dir, "modules") for dir in lico_paths["working"]]
     )
     paths["models"] = (
-        lico_paths["model"] +
-        lico_paths["working"] +
-        [os.path.join(dir, "models") for dir in lico_paths["working"]]
+        lico_paths["model"]
+        + lico_paths["working"]
+        + [os.path.join(dir, "models") for dir in lico_paths["working"]]
     )
 
     # output paths must be a single directory
     default_lico_working_path = lico_paths["working"][0]
 
-    fallback_output_dir = (
-        os.path.join(default_lico_working_path, f"{run_dirname}/out")
+    fallback_output_dir = os.path.join(
+        default_lico_working_path, f"{run_dirname}/out"
     )
     if not lico_dirs["output"] and len(lico_paths["working"]) > 1:
         print(
@@ -98,8 +95,8 @@ def __get_licorice_paths(**kwargs):
         )
     paths["output"] = lico_dirs["output"] or fallback_output_dir
 
-    fallback_export_dir = (
-        os.path.join(default_lico_working_path, f"{run_dirname}/export")
+    fallback_export_dir = os.path.join(
+        default_lico_working_path, f"{run_dirname}/export"
     )
     if not lico_dirs["export"] and len(lico_paths["working"]) > 1:
         print(
@@ -108,8 +105,8 @@ def __get_licorice_paths(**kwargs):
         )
     paths["export"] = lico_dirs["export"] or fallback_export_dir
 
-    fallback_tmp_module_dir = (
-        os.path.join(default_lico_working_path, ".modules")
+    fallback_tmp_module_dir = os.path.join(
+        default_lico_working_path, ".modules"
     )
     if not lico_dirs["tmp_module"] and len(lico_paths["working"]) > 1:
         print(
@@ -118,8 +115,8 @@ def __get_licorice_paths(**kwargs):
         )
     paths["tmp_modules"] = lico_dirs["tmp_module"] or fallback_tmp_module_dir
 
-    fallback_tmp_output_dir = (
-        os.path.join(default_lico_working_path, f"{run_dirname}/.out")
+    fallback_tmp_output_dir = os.path.join(
+        default_lico_working_path, f"{run_dirname}/.out"
     )
     if not lico_dirs["tmp_output"] and len(lico_paths["working"]) > 1:
         print(
@@ -203,7 +200,11 @@ def __parse_args(input_tuple=None):
         help="LiCoRICE command to run.",
         choices=command_dict.keys(),
     )
-    arg_parser.add_argument("model", type=str, help="YAML model file name to parse. File extension optional.")
+    arg_parser.add_argument(
+        "model",
+        type=str,
+        help="YAML model file name to parse. File extension optional.",
+    )
     # LiCoRICE CLI only supports simple store_true bools
     arg_parser.add_argument(
         "-y",
@@ -222,14 +223,20 @@ def __parse_args(input_tuple=None):
         arg_parser.add_argument(
             f"--{lico_path.lower()}_path",
             type=str,
-            help=f"Overrides LiCoRICE PATH environment variable LICORICE_{lico_path}_PATH"
+            help=(
+                "Overrides LiCoRICE PATH environment variable "
+                f"LICORICE_{lico_path}_PATH"
+            ),
         )
 
     for lico_dir in LICORICE_DIRS:
         arg_parser.add_argument(
             f"--{lico_dir.lower()}_dir",
             type=str,
-            help=f"Overrides LiCoRICE DIR environment variable LICORICE_{lico_dir}_DIR"
+            help=(
+                "Overrides LiCoRICE DIR environment variable "
+                f"LICORICE_{lico_dir}_DIR"
+            ),
         )
 
     if input_tuple:
@@ -272,13 +279,20 @@ def __export_model(**kwargs):
 @overload
 def export_model(model: str, **kwargs) -> None:
     ...
+
+
 @overload  # noqa: E302
 def export_model(model: dict, **kwargs) -> None:
     ...
+
+
 def export_model(model, **kwargs):  # noqa: E302
     """Export a LiCoRICE model.
 
-    This function wraps the core functionality of the LiCoRICE CLI `export` command, but allows users to pass in either a YAML model file string or a full dict detailing the model as well as any CLI flags as keyword arguments.
+    This function wraps the core functionality of the LiCoRICE CLI `export`
+    command, but allows users to pass in either a YAML model file string or a
+    full dict detailing the model as well as any CLI flags as keyword
+    arguments.
 
     Args:
         model (str): Filename of LiCoRICE model accessible through default or
@@ -305,13 +319,20 @@ def __generate_model(**kwargs):
 @overload
 def generate_model(model: str, **kwargs) -> None:
     ...
+
+
 @overload  # noqa: E302
 def generate_model(model: dict, **kwargs) -> None:
     ...
+
+
 def generate_model(model, **kwargs):  # noqa: E302
     """Generate user code scaffolds from model.
 
-    This function wraps the core functionality of the LiCoRICE CLI `generate` command, but allows users to pass in either a YAML model file string or a full dict detailing the model as well as any CLI flags as keyword arguments.
+    This function wraps the core functionality of the LiCoRICE CLI `generate`
+    command, but allows users to pass in either a YAML model file string or a
+    full dict detailing the model as well as any CLI flags as keyword
+    arguments.
 
     Args:
         model (str): Filename of LiCoRICE model accessible through default or
@@ -338,9 +359,13 @@ def __parse_model(**kwargs):
 @overload
 def parse_model(model: str, **kwargs) -> None:
     ...
+
+
 @overload  # noqa: E302
 def parse_model(model: dict, **kwargs) -> None:
     ...
+
+
 def parse_model(model, **kwargs):  # noqa: E302
     """Parse a given LiCoRICE model.
 
@@ -391,9 +416,13 @@ def __compile_model(**kwargs):
 @overload
 def compile_model(model: str, **kwargs) -> None:
     ...
+
+
 @overload  # noqa: E302
 def compile_model(model: dict, **kwargs) -> None:
     ...
+
+
 def compile_model(model, **kwargs):  # noqa: E302
     """Compile a given LiCoRICE model.
 
@@ -440,9 +469,13 @@ def __run_model(**kwargs):
 @overload
 def run_model(model: str, **kwargs) -> None:
     ...
+
+
 @overload  # noqa: E302
 def run_model(model: dict, **kwargs) -> None:
     ...
+
+
 def run_model(model, **kwargs):
     """Run the given compiled LiCoRICE model.
 
@@ -478,9 +511,13 @@ def __go(**kwargs):
 @overload
 def go(model: str, **kwargs) -> None:
     ...
+
+
 @overload  # noqa: E302
 def go(model: dict, **kwargs) -> None:
     ...
+
+
 def go(model, **kwargs):  # noqa: E302
     """Peform LiCoRICE parse, compile, and run in succession.
 

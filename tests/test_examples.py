@@ -1,6 +1,7 @@
 import os
-import pytest
 import subprocess
+
+import pytest
 
 
 def test_matrix_multiply(capfd):
@@ -13,12 +14,13 @@ def test_matrix_multiply(capfd):
 
 def is_joystick_connected():
     import pygame
+
     pygame.joystick.init()
     return pygame.joystick.get_count() >= 1
 
+
 @pytest.mark.skipif(
-    not is_joystick_connected(),
-    reason="No joystick connected."
+    not is_joystick_connected(), reason="No joystick connected."
 )
 def test_joystick(capfd):
     os.environ["SDL_VIDEODRIVER"] = "dummy"

@@ -1,6 +1,6 @@
 # LiCoRICE examples
 
-This directory contains examples on how to use LiCoRICE.
+This directory contains examples on how to use LiCoRICE. Please follow instructions for [installing LiCoRICE](http://docs.licorice.su.domains/installation.rst) first.
 
 ## Example models
 

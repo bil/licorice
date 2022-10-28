@@ -37,7 +37,7 @@
             
   <section id="licorice-examples">
 <h1>LiCoRICE examples<a class="headerlink" href="#licorice-examples" title="Permalink to this heading">¶</a></h1>
-<p>This directory contains examples on how to use LiCoRICE.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory contains examples on how to use LiCoRICE. Please follow <a class="reference internal" href="installation.html#installation"><span class="std std-ref">instructions for installing LiCoRICE</span></a> first.</p>
 <section id="directory-structure">
 <h2>Directory structure<a class="headerlink" href="#directory-structure" title="Permalink to this heading">¶</a></h2>
 <p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory is laid out similarly to how it might be used in a deployed system.</p>
@@ -77,7 +77,7 @@ If a specific demo does not work, it is advised to try a less complex one to ass
 <h3>jitter<a class="headerlink" href="#jitter" title="Permalink to this heading">¶</a></h3>
 <p>This is the simplest demo with no sources, modules, or sinks.
 It is helpful to measure core timing performance of the operating system (e.g., validating the realtime kernel).</p>
-<p>This example requires the use of a parallel port. Make sure your parallel port drivers are working and that the port is listed under <code class="docutils literal notranslate"><span class="pre">/dev/parport&lt;index&gt;</span></code>. Then, make sure the user running LiCoRICE can access the port by adding them to the <code class="docutils literal notranslate"><span class="pre">lp</span></code> group as follows:</p>
+<p>This example requires the use of a parallel port. We recommend a PCIe parallel port adapter compatible with Linux. Make sure your parallel port drivers are working and that the port is listed under <code class="docutils literal notranslate"><span class="pre">/dev/parport&lt;index&gt;</span></code>. Then, make sure the user running LiCoRICE can access the port by adding them to the <code class="docutils literal notranslate"><span class="pre">lp</span></code> group as follows:</p>
 <blockquote>
 <div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo usermod -aG lp &lt;user&gt;
 </pre></div>

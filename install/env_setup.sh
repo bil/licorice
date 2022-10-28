@@ -43,7 +43,7 @@ source "$(dirname "$0")/pyenv_config.sh"
 # install python using pyenv, create a virtualenv, and install python deps
 PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -f
 pyenv uninstall -f licorice
-pyenv virtualenv 3.8.12 licorice
+pyenv virtualenv -f 3.8.12 licorice
 "$(dirname "$0")/update-deps.sh"
 
 # install pre-commit hooks

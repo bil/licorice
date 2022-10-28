@@ -43,6 +43,7 @@ class Circle(pygame.sprite.Sprite):
             self.image, self.color, (self.radius, self.radius), self.radius
         )
 
+
 black = (0, 0, 0)
 screen_width = 1280
 screen_height = 1024

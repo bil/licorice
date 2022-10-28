@@ -1,4 +1,0 @@
-TODO
-
-- make sure `sudo usermod -aG lp <user>` command present in parallel examples docs
-- link to examples better or include them in sphinx docs
