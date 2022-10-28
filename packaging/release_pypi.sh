@@ -11,7 +11,7 @@ GIT_CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD`
 GIT_DEFAULT_BRANCH=`basename "$(git rev-parse --abbrev-ref origin/HEAD)"`
 VERSION_REGEX="^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$"
 
-GIT_VERSION_TAG="$(python -q -c 'import importlib.metadata; print(importlib.metadata.version("licorice"))')"
+GIT_VERSION_TAG="$(python -c 'import importlib.metadata; print(importlib.metadata.version("licorice"))')"
 if [ ! $GIT_VERSION_TAG ]; then
     echo "No action taken. Install licorice package."
     exit 1
