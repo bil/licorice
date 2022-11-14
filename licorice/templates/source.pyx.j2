@@ -1,4 +1,6 @@
 # cimport C libraries
+cimport cython
+cimport numpy as np
 from libc.stdio cimport fprintf, printf, stderr, stdout, fflush
 from libc.stdlib cimport exit, malloc, free, calloc, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
@@ -14,8 +16,7 @@ from posix.ioctl cimport ioctl
 from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 
 # import Python libraries
-import sys
-import os
+import numpy as np
 {% if is_reader -%}
 import SharedArray as sa
 {%- endif %}
@@ -23,11 +24,7 @@ import SharedArray as sa
 # import LiCoRICE utils
 from module_utils import create_shared_array
 
-# cimport key Python libraries
-import numpy as np
-cimport numpy as np
-cimport cython
-
+# headers for all sources
 cdef extern from "<sys/resource.h>":
   enum: PRIO_PROCESS
   int setpriority(int which, int who, int prio)
@@ -35,7 +32,6 @@ cdef extern from "<sys/resource.h>":
 cdef extern from "<sys/socket.h>":
   ctypedef uint32_t socklen_t
 
-# headers for all sources
 cdef extern from "semaphore.h" nogil:
   cdef union sem_union:
     pass
@@ -99,8 +95,6 @@ cdef int64_t *pNumTicks
 {% if is_main_process -%}
 cdef sem_t *pSourceUpSem
 cdef sem_t *pSourceDownSem
-{%- else %}
-shouldExit = False
 {%- endif %}
 {%- if async %}
 cdef pthread_mutex_t *pAsyncMutex
@@ -139,9 +133,12 @@ out_sigs = {}
 {%- if not has_parser %} # output packing is handled by parser code
 out_sig = None
 {%- endif %}
+{%- if not is_main_process %}
+shouldExit = False
+{%- endif %}
 
+{% if is_reader -%}
 # driver variables
-{%- if is_reader %}
 {{ driver_code["variables"] }}
 {%- endif %}
 
@@ -149,9 +146,10 @@ out_sig = None
 cdef void handle_exit(int exitStatus):
   global pmem, shm_size, udpReadThread, exitMutex, exitRoutine, pSourceUpSem, pSourceDownSem
 
-  {{destruct_code}}
-
 {%- if is_reader %}
+
+  {{ destruct_code }}
+
   # delete the signal's shared memory array
   {%- if platform_system == "Linux" %}
   sa_names = [sig.name for sig in sa.list()]
@@ -302,7 +300,7 @@ bufEndPtr = bufStrtPtr + {{out_signal_name}}BufVars[7]
 
 {%- if is_reader %}
 
-  {{construct_code}}
+  {{ construct_code }}
 {%- endif %}
 
 {%- if platform_system != "Darwin" %}
@@ -335,7 +333,7 @@ while(True):
     {%- endfor %}
 
   # use user parser
-  {{parser_code}}
+  {{ parser_code }}
   {%- endif %}
 
   # update bufVars

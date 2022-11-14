@@ -1,0 +1,224 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>LiCoRICE Examples &#8212; LiCoRICE  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="LiCoRICE API Reference" href="../api/index.html" />
+    <link rel="prev" title="LiCoRICE Tutorial" href="tutorial.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="licorice-examples">
+<h1>LiCoRICE Examples<a class="headerlink" href="#licorice-examples" title="Permalink to this heading">¶</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory contains examples on how to use LiCoRICE. Please follow <a class="reference internal" href="../installation.html#installation"><span class="std std-ref">instructions for installing LiCoRICE</span></a> first.</p>
+<section id="directory-structure">
+<h2>Directory structure<a class="headerlink" href="#directory-structure" title="Permalink to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory is laid out similarly to how it might be used in a deployed system.</p>
+<p>We recommend creating a directory structure in the following manner:</p>
+<ul class="simple">
+<li><p>model_1</p>
+<ul>
+<li><p>model_1.yaml (YAML file specifying the given LiCoRICE model)</p></li>
+<li><p>model_1_module.py (user code for a <cite>model_1</cite> module)</p></li>
+<li><p>model_1_module_constructor.py (user code for a <cite>model_1</cite> module constructor)</p></li>
+</ul>
+</li>
+<li><p>model_2</p>
+<ul>
+<li><p>model_2.yaml</p></li>
+<li><p>model_2_source.c</p></li>
+<li><p>model_2_source_constructor.c</p></li>
+<li><p>model_2_source_destructor.c</p></li>
+<li><p>model_2_module.py</p></li>
+</ul>
+</li>
+<li><p>shared_modules</p>
+<ul>
+<li><p>shared_module.py</p></li>
+<li><p>shared_module_constructor.py</p></li>
+</ul>
+</li>
+</ul>
+<p>This is LiCoRICE’s default behavior, but may be overrided by setting the <code class="docutils literal notranslate"><span class="pre">LICORICE_*_PATH</span></code> and <code class="docutils literal notranslate"><span class="pre">LICORICE_*_DIR</span></code> <a class="reference internal" href="../api/env_vars.html#environment-variables"><span class="std std-ref">environment variables</span></a>.</p>
+</section>
+<section id="example-models">
+<h2>Example models<a class="headerlink" href="#example-models" title="Permalink to this heading">¶</a></h2>
+<p>To use these examples, simply run <code class="docutils literal notranslate"><span class="pre">./examples/&lt;example_name&gt;/run.sh</span></code> from the licorice repository root directory. Setting of the correct LICORICE_* environment variables is handled by the run scripts, so please take a look at how those work if you’re curious.</p>
+<p>These demos are listed in order of increasing model feature complexity.
+If a specific demo does not work, it is advised to try a less complex one to assist with debugging.</p>
+<section id="jitter">
+<h3>jitter<a class="headerlink" href="#jitter" title="Permalink to this heading">¶</a></h3>
+<p>This is the simplest demo with no sources, modules, or sinks.
+It is helpful to measure core timing performance of the operating system (e.g., validating the realtime kernel).</p>
+<p>This example requires the use of a parallel port. We recommend a PCIe parallel port adapter compatible with Linux. Make sure your parallel port drivers are working and that the port is listed under <code class="docutils literal notranslate"><span class="pre">/dev/parport&lt;index&gt;</span></code>. Then, make sure the user running LiCoRICE can access the port by adding them to the <code class="docutils literal notranslate"><span class="pre">lp</span></code> group as follows:</p>
+<blockquote>
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo usermod -aG lp &lt;user&gt;
+</pre></div>
+</div>
+</div></blockquote>
+<p>Then log out and back in for the changes to take effect.</p>
+<p>After installing LiCoRICE, the model can be executed with the following command:</p>
+<blockquote>
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>examples/jitter/run.sh
+</pre></div>
+</div>
+</div></blockquote>
+<p>An oscilloscope tapping pin 9 of the parallel port should show a square wave with a 2ms period on 3.3V or 5V rails.</p>
+</section>
+<section id="parallel-toggle">
+<h3>parallel_toggle<a class="headerlink" href="#parallel-toggle" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">parallel_toggle</span></code> model is like the <code class="docutils literal notranslate"><span class="pre">jitter_demo</span></code>, but leverages the platform infrastructure.
+It implements a simple model that again toggles an output pin of the parallel port every tick (default ticks are 1ms).
+Make sure the above jitter example works before running this example.</p>
+</section>
+<section id="matrix-multiply">
+<h3>matrix_multiply<a class="headerlink" href="#matrix-multiply" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">matrix_multiply</span></code> model demonstrates <code class="docutils literal notranslate"><span class="pre">numba.pycc</span></code> BLAS optimized numerical operations.</p>
+<p>The <cite>matmul</cite> module performs matrix multiplication on two 4x4 matrices.</p>
+</section>
+<section id="logger">
+<h3>logger<a class="headerlink" href="#logger" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">logger</span></code> model demonstrates the SQLite signal (data) logging features of the platform.</p>
+</section>
+<section id="joystick">
+<h3>joystick<a class="headerlink" href="#joystick" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">joystick</span></code> model demonstrates how to bring two axes from a USB joystick in as inputs to the system.
+This model requires the compilation of a realtime USB kernel (see the <cite>kernel_setup_usb.sh</cite> script in the install directory) and requires pygame for joystick control.
+Install pygame into the venv via <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">pygame</span></code>.</p>
+<p>Any USB joystick device will work so long as pygame detects a joystick with at least two analog axes.
+An example verified working joystick is the Logitech F310 Gamepad.</p>
+</section>
+<section id="pygame">
+<h3>pygame<a class="headerlink" href="#pygame" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">pygame</span></code> model demonstrates a simple SDL-driven sprite output to the screen.</p>
+<p>This model requires the X window system and appropriate SDL drivers.
+The <code class="docutils literal notranslate"><span class="pre">vis_pygame_setup.sh</span></code> script in the install directory will install the necessary packages.</p>
+<p>This model must be launched from a running X session.
+An example <code class="docutils literal notranslate"><span class="pre">.xinitrc</span></code> file to use with <code class="docutils literal notranslate"><span class="pre">startx</span></code> is provided in the install directory.
+Move this sample <code class="docutils literal notranslate"><span class="pre">.xinitrc</span></code> to the home directory and then call <code class="docutils literal notranslate"><span class="pre">startx</span></code>.
+Then repeat the steps from the main README to source the venv and source <code class="docutils literal notranslate"><span class="pre">licorice_activate.sh</span></code>.</p>
+</section>
+<section id="cursor-track">
+<h3>cursor_track<a class="headerlink" href="#cursor-track" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">cursor_track</span></code> model demonstrates a simple closed loop model where the input of two axes of a USB joystick are read and used to control a cursor on the screen using pygame.
+It is recommended that this model be run only after <code class="docutils literal notranslate"><span class="pre">joystick</span></code> and <code class="docutils literal notranslate"><span class="pre">pygame</span></code> have been confirmed working.</p>
+</section>
+<section id="pinball">
+<h3>pinball<a class="headerlink" href="#pinball" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">pinball</span></code> model combines several of the features of the prior demos into a simple random target acquisition task, often referred to as a “pinball task” in the literature.
+A USB joystick is again used an input to control a cursor that is displayed on the screen through pygame.
+A green target is randomly placed on the screen and must be acquired and held with the cursor within an allotted time.
+Relevant model signals are saved into the SQLite database by the datalogger.</p>
+</section>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">LiCoRICE</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">User Guide</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html">LiCoRICE Quickstart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tutorial.html">LiCoRICE Tutorial</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">LiCoRICE Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">User Guide</a><ul>
+      <li>Previous: <a href="tutorial.html" title="previous chapter">LiCoRICE Tutorial</a></li>
+      <li>Next: <a href="../api/index.html" title="next chapter">LiCoRICE API Reference</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, The Board of Trustees of the Leland Stanford Junior University.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.2.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/guide/examples.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

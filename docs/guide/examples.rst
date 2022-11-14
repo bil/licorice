@@ -1,5 +1,5 @@
 ******************************************************************************
-LiCoRICE examples
+LiCoRICE Examples
 ******************************************************************************
 
 The ``examples/`` directory contains examples on how to use LiCoRICE. Please follow :ref:`instructions for installing LiCoRICE <installation:Installation>` first.
@@ -54,6 +54,9 @@ This example requires the use of a parallel port. We recommend a PCIe parallel p
   .. code-block:: bash
 
     sudo usermod -aG lp <user>
+
+Then log out and back in for the changes to take effect.
+
 
 After installing LiCoRICE, the model can be executed with the following command:
 

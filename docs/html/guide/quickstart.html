@@ -1,0 +1,564 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>LiCoRICE Quickstart &#8212; LiCoRICE  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="LiCoRICE Tutorial" href="tutorial.html" />
+    <link rel="prev" title="User Guide" href="index.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="licorice-quickstart">
+<h1>LiCoRICE Quickstart<a class="headerlink" href="#licorice-quickstart" title="Permalink to this heading">¶</a></h1>
+<p>Welcome to LiCoRICE! We’re excited to help you bring the principles of realtime computing to your conventional hardware. This guide provides instructions on how to build a simple model from scratch.</p>
+<section id="prerequisites">
+<h2>0. Prerequisites<a class="headerlink" href="#prerequisites" title="Permalink to this heading">¶</a></h2>
+<p>This guide assumes that you’re working in a BASH shell on a POSIX-compliant system and have followed the <a class="reference internal" href="../installation.html#installation"><span class="std std-ref">LiCoRICE installation instructions</span></a>.</p>
+</section>
+<section id="simple-hello-world">
+<h2>1. Simple Hello World<a class="headerlink" href="#simple-hello-world" title="Permalink to this heading">¶</a></h2>
+<p>This first hello world example will create a LiCoRICE model that outputs a message once a second 10 times. We’ll write everything from scratch.</p>
+<section id="create-a-workspace">
+<h3>Create a workspace<a class="headerlink" href="#create-a-workspace" title="Permalink to this heading">¶</a></h3>
+<p>In this example, we’ll assume you’re using <code class="docutils literal notranslate"><span class="pre">~/licorice</span></code> as your workspace.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span> <span class="nv">LICORICE_WORKING_PATH</span><span class="o">=</span>~/licorice
+mkdir <span class="nv">$LICORICE_WORKING_PATH</span>
+</pre></div>
+</div>
+<p>The above sets the <code class="docutils literal notranslate"><span class="pre">LICORICE_WORKING_PATH</span></code> <a class="reference internal" href="../api/env_vars.html#environment-variables"><span class="std std-ref">environment variable</span></a> and creates the directory. This tells LiCoRICE where to look for model and module files. Feel free to change the path to anything that’s convenient on your system.</p>
+</section>
+<section id="specify-the-model">
+<h3>Specify the model<a class="headerlink" href="#specify-the-model" title="Permalink to this heading">¶</a></h3>
+<p>Create the model file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>touch <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-1.yaml
+</pre></div>
+</div>
+<p>Open the created file add the following:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">config</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">tick_len</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000000</span><span class="w">  </span><span class="c1"># tick length in microseconds (1s)</span><span class="w"></span>
+<span class="w">  </span><span class="nt">num_ticks</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span><span class="w">  </span><span class="c1"># number of ticks to run for</span><span class="w"></span>
+<span class="w">  </span><span class="nt">init_buffer_ticks</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">  </span><span class="c1"># number of ticks that run before time t=0</span><span class="w"></span>
+
+<span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">counter_simple</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">    </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+</pre></div>
+</div>
+<p>This specifies a LiCoRICE model that has a single module, <code class="docutils literal notranslate"><span class="pre">counter_simple</span></code> which will run 10 times over 10 seconds and must complete its execution once every 1 second.</p>
+</section>
+<section id="generate-modules">
+<h3>Generate modules<a class="headerlink" href="#generate-modules" title="Permalink to this heading">¶</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate quickstart-1 -y
+</pre></div>
+</div>
+<p>This should generate two files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/counter_simple.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/counter_simple_constructor.py</span></code>.</p>
+</section>
+<section id="write-modules">
+<h3>Write modules<a class="headerlink" href="#write-modules" title="Permalink to this heading">¶</a></h3>
+<p>Open the constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/counter_simple_constructor.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">counter</span> <span class="o">=</span> <span class="mi">0</span>
+</pre></div>
+</div>
+<p>Then open the parser (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/counter_simple.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Hello World! Tick: </span><span class="si">{</span><span class="n">counter</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>The constructor will çreate a variable <code class="docutils literal notranslate"><span class="pre">counter</span></code> and set it to <code class="docutils literal notranslate"><span class="pre">0</span></code> before realtime execution starts. Then, each tick, the value of <code class="docutils literal notranslate"><span class="pre">counter</span></code> will be output and incremented. We interpolate a <a class="reference external" href="https://docs.python.org/3/tutorial/inputoutput.html#formatted-string-literals">Python f-string</a> with the counter value and flush stdout so that the output appears in our terminal immediately.</p>
+</section>
+<section id="run-licorice">
+<h3>Run LiCoRICE<a class="headerlink" href="#run-licorice" title="Permalink to this heading">¶</a></h3>
+<p>In general, only one command (<code class="docutils literal notranslate"><span class="pre">go</span></code>) needs to be issued to <a class="reference internal" href="../api/cli.html#parse"><span class="std std-ref">parse</span></a>, <a class="reference internal" href="../api/cli.html#compile"><span class="std std-ref">compile</span></a>, and <a class="reference internal" href="../api/cli.html#run"><span class="std std-ref">run</span></a> a model, but these commands can also be issued individually if need be:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go quickstart-1 -y
+</pre></div>
+</div>
+<p>If everything worked, you should see the following among the output in your terminal:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>Hello World! Tick: <span class="m">0</span>
+Hello World! Tick: <span class="m">1</span>
+Hello World! Tick: <span class="m">2</span>
+Hello World! Tick: <span class="m">3</span>
+Hello World! Tick: <span class="m">4</span>
+Hello World! Tick: <span class="m">5</span>
+Hello World! Tick: <span class="m">6</span>
+Hello World! Tick: <span class="m">7</span>
+Hello World! Tick: <span class="m">8</span>
+Hello World! Tick: <span class="m">9</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="pass-a-signal">
+<h2>2. Pass a signal<a class="headerlink" href="#pass-a-signal" title="Permalink to this heading">¶</a></h2>
+<p>The first example showed you how to set up a simple LiCoRICE model with one module. Here, we’ll split that module in two and use a <cite>signal</cite> to pass data from the first module to the second.</p>
+<section id="update-model-config">
+<h3>Update model config<a class="headerlink" href="#update-model-config" title="Permalink to this heading">¶</a></h3>
+<p>Copy over the model config to a different file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-1.yaml <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-2.yaml
+</pre></div>
+</div>
+<p>First, add another top-level block called signals with our signal definition as follows:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">signals</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">tick_count</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">int32</span><span class="w"></span>
+</pre></div>
+</div>
+<p>This defines a NumPy array that can be shared between our models.</p>
+<p>Now, add another module nested under <code class="docutils literal notranslate"><span class="pre">modules:</span></code> with the following info:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">tick_counter</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">    </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">    </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tick_count</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">tick_counter</span></code> module will have a constructor and is responsible for outputting the <code class="docutils literal notranslate"><span class="pre">tick_count</span></code> signal.</p>
+<p>Next, change the name of the <code class="docutils literal notranslate"><span class="pre">counter_simple</span></code> module to <code class="docutils literal notranslate"><span class="pre">counter</span></code> so we can generate a new set of module files and remove its constructor. It also must take <code class="docutils literal notranslate"><span class="pre">tick_count</span></code> as an input:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">counter</span><span class="p p-Indicator">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">    </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tick_count</span><span class="w"></span>
+</pre></div>
+</div>
+<p>This model now defines two modules with a signal passed between them.</p>
+</section>
+<section id="id1">
+<h3>Generate modules<a class="headerlink" href="#id1" title="Permalink to this heading">¶</a></h3>
+<p>Go ahead and generate a new set of module files to use for this model.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate quickstart-2 -y
+</pre></div>
+</div>
+<p>This should generate three files: two module files and one constructor.</p>
+</section>
+<section id="id2">
+<h3>Write modules<a class="headerlink" href="#id2" title="Permalink to this heading">¶</a></h3>
+<p>Open the <code class="docutils literal notranslate"><span class="pre">tick_counter</span></code> constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/tick_counter_constructor.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">counter</span> <span class="o">=</span> <span class="mi">0</span>
+</pre></div>
+</div>
+<p>This is basically doing the job of the constructor from the previous example.</p>
+<p>Then open the <code class="docutils literal notranslate"><span class="pre">tick_counter</span></code> parser (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/tick_counter.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">tick_count</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">counter</span>
+<span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>Instead of printing the <code class="docutils literal notranslate"><span class="pre">counter</span></code> variable directly in the module as before, we pass it along as a LiCoRICE signal that can be read by the <code class="docutils literal notranslate"><span class="pre">counter</span></code> module.</p>
+<p>Finally, open the <code class="docutils literal notranslate"><span class="pre">counter</span></code> and add the following line:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Hello World! Tick: </span><span class="si">{</span><span class="n">tick_count</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The functionality of this model is the same as <code class="docutils literal notranslate"><span class="pre">quickstart-1</span></code>, but the logic of the <code class="docutils literal notranslate"><span class="pre">counter-simple</span></code> module is split between one module that keeps track of the tick number and one that outputs over stdout. A signal passes information between these two processes. This has the advantage of allowing us to create multiple modules that will read from the signal in parallel.</p>
+</section>
+<section id="id3">
+<h3>Run LiCoRICE<a class="headerlink" href="#id3" title="Permalink to this heading">¶</a></h3>
+<p>Run the new model:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go quickstart-2 -y
+</pre></div>
+</div>
+<p>Now you should see the same output as the <code class="docutils literal notranslate"><span class="pre">quickstart-1</span></code> model in your terminal.</p>
+</section>
+</section>
+<section id="add-logging">
+<h2>3. Add logging<a class="headerlink" href="#add-logging" title="Permalink to this heading">¶</a></h2>
+<p>LiCoRICE also allows you to log signals so that the entire history of a model’s run can be examined after the fact.</p>
+<section id="id4">
+<h3>Update model config<a class="headerlink" href="#id4" title="Permalink to this heading">¶</a></h3>
+<p>Copy over the model config to a different file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-2.yaml <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-3.yaml
+</pre></div>
+</div>
+<p>Open up the <code class="docutils literal notranslate"><span class="pre">quickstart-3.yaml</span></code> model file and set the <code class="docutils literal notranslate"><span class="pre">log</span></code> flag on the <code class="docutils literal notranslate"><span class="pre">tick_count</span></code> signal:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">signals</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">tick_count</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">int32</span><span class="w"></span>
+<span class="w">    </span><span class="nt">log</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+</pre></div>
+</div>
+<p>And then add a logger module (sink) which will be responsible for writing this signal to disk:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">logger</span><span class="p p-Indicator">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">  </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tick_count</span><span class="w"></span>
+<span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">log_sqlite</span><span class="w"></span>
+<span class="w">    </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;disk&#39;</span><span class="w"></span>
+<span class="w">      </span><span class="nt">save_file</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;./data&#39;</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="id5">
+<h3>Run LiCoRICE<a class="headerlink" href="#id5" title="Permalink to this heading">¶</a></h3>
+<p>Run the new model:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go quickstart-3 -y
+</pre></div>
+</div>
+<p>You should see the same output as the <code class="docutils literal notranslate"><span class="pre">quickstart-2</span></code> model in your terminal, but there should also be a SQLite database file that was created in the LiCoRICE output directory.</p>
+</section>
+<section id="examine-the-results">
+<h3>Examine the results<a class="headerlink" href="#examine-the-results" title="Permalink to this heading">¶</a></h3>
+<p>TODO: Make sure user has installed sqlite3 with <code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">sqlite3</span></code></p>
+<p>To examine the SQLite database file, run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sqlite3 <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-3.lico/out/data_0000.db <span class="s2">&quot;select * from signals;&quot;</span>
+</pre></div>
+</div>
+<p>And you should see the value of the <code class="docutils literal notranslate"><span class="pre">tick_count</span></code> variable over time:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">0</span>
+<span class="mi">1</span>
+<span class="mi">2</span>
+<span class="mi">3</span>
+<span class="mi">4</span>
+<span class="mi">5</span>
+<span class="mi">6</span>
+<span class="mi">7</span>
+<span class="mi">8</span>
+<span class="mi">9</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="output-an-external-signal">
+<h2>4. Output an external signal<a class="headerlink" href="#output-an-external-signal" title="Permalink to this heading">¶</a></h2>
+<p>So far, we’ve only dealt with internal modules and signals. These pass data and perform computation within LiCoRICE and aren’t meant to interact with external processes or devices. In this model, we’ll see how to output a digital signal from LiCoRICE over parallel port that can be read by an oscilloscope.</p>
+<section id="prerequisite-hardware">
+<h3>Prerequisite Hardware<a class="headerlink" href="#prerequisite-hardware" title="Permalink to this heading">¶</a></h3>
+<p>To output and view our parallel port external signal, we’ll need some specific hardware:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>PC with two empty PCIe slots</p></li>
+<li><p>2x PCIe parallel port adapter. We recommend cards that work automatically with the Linux kernel and don’t require a separate driver such as <a class="reference external" href="https://www.amazon.com/dp/B07PXB77W6">this one</a>.</p></li>
+<li><p>2x <a class="reference external" href="https://www.amazon.com/Your-Cable-Store-Serial-Female/dp/B0026K9MAG">DB25 male-to-female parallel cable</a></p></li>
+<li><p>2x <a class="reference external" href="https://www.amazon.com/Connector-D-sub-25-pin-Terminal-Breakout/dp/B073RG3GG6">parallel breakout board</a></p></li>
+<li><p>4x <a class="reference external" href="https://www.amazon.com/EDGELEC-Breadboard-Multicolored-1pin-1pin-Connector/dp/B07GD1ZCHQ/">male-to-male jumper wires</a></p></li>
+<li><p>oscilloscope. You’re welcome to use any oscilloscope that you have on hand, but for our examples, we use the <a class="reference external" href="https://www.amazon.com/Hantek-DSO2C10-Benchtop-Oscilloscope-100MHz/dp/B08YNZTFJS">Hantek DSO2D10</a>  (<a class="reference external" href="http://hantek.com/products/detail/17182">docs</a>) since it’s fairly inexpensive and has a signal generator and persist function which lets us monitor our <code class="docutils literal notranslate"><span class="pre">tick_count</span></code> signal over time.</p></li>
+</ul>
+</div></blockquote>
+</section>
+<section id="hardware-setup">
+<h3>Hardware Setup<a class="headerlink" href="#hardware-setup" title="Permalink to this heading">¶</a></h3>
+<p>If the two parallel port cards are not already installed in your computer, open up your PC’s case and plug them in. If you’re using the recommended card above with a low-profile expansion slot, you’ll have to remove the bracket and serial port and install the included low-profile bracket. After installing the two parallel ports in your PC, you should see that <code class="docutils literal notranslate"><span class="pre">ls</span> <span class="pre">/dev/parport*</span></code> returns <code class="docutils literal notranslate"><span class="pre">/dev/parport0</span> <span class="pre">/dev/parport1</span></code>. If this isn’t the case, the easiest solution is unfortunately to use different parallel port adapters. If you’re unfamiliar with installing PCI-e cards, feel free to watch <a class="reference external" href="https://www.youtube.com/watch?v=p9pTv1S5gsw">this video</a>.</p>
+<p>Once your PC is set up correctly, you’ll need to connect the male side of each parallel cable to your PC and the female sides to breakout boards. Then, you can loosen the screws on the breakout board to insert jumper wires to the breakout board. For each breakout board, connect one jumper wire to one of the GND pins (pin 25) and one jumper wire to one of the data pins (pin 9). Tighten breakout board screws. <a class="reference external" href="https://en.wikipedia.org/wiki/Parallel_port#/media/File:Parallel_port_pinouts.svg">Parallel port pinout for reference</a>.</p>
+<p>Finally, connect your BNC oscilloscope probes with the probe connected to pin 9 on each breakout board and the black alligator clip connected to pin 25 on each breakout board. We’ll connect channel 1 to the breakout board connected to our first parallel port (<code class="docutils literal notranslate"><span class="pre">/dev/parport0</span></code>) and channel 2 to <code class="docutils literal notranslate"><span class="pre">/dev/parport1</span></code>. If you’re not sure which is which, connect it either way and change it after viewing the program output.</p>
+</section>
+<section id="permissions">
+<h3>Permissions<a class="headerlink" href="#permissions" title="Permalink to this heading">¶</a></h3>
+<p>Make sure the user running LiCoRICE can access the port by adding them to the <code class="docutils literal notranslate"><span class="pre">lp</span></code> group as follows:</p>
+<blockquote>
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo usermod -aG lp &lt;user&gt;
+</pre></div>
+</div>
+</div></blockquote>
+<p>Then log out and back in for the changes to take effect. Note that you’ll have to reset environment variables such as <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH</span></code> after restarting your session.</p>
+</section>
+<section id="id6">
+<h3>Update model config<a class="headerlink" href="#id6" title="Permalink to this heading">¶</a></h3>
+<p>Copy over the model config to a different file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-3.yaml <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-4.yaml
+</pre></div>
+</div>
+<p>Add a parallel port sink that will take in <code class="docutils literal notranslate"><span class="pre">tick_count</span></code> and output the result over our connected parallel port:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">parallel_writer</span><span class="p p-Indicator">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">    </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parallel_out</span><span class="w"></span>
+<span class="w">    </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parport_out</span><span class="w"></span>
+<span class="w">      </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parport</span><span class="w"></span>
+<span class="w">        </span><span class="nt">addr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+</pre></div>
+</div>
+<p>This creates a sink process which uses the in-built <code class="docutils literal notranslate"><span class="pre">parport</span></code> driver outputting over <code class="docutils literal notranslate"><span class="pre">/dev/parport1</span></code>.</p>
+<p>We’ll also add a <code class="docutils literal notranslate"><span class="pre">parallel_toggle</span></code> module under <code class="docutils literal notranslate"><span class="pre">modules</span></code> that will create the signal which controls the parallel port:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">parallel_toggle</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">    </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">    </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parallel_out</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+</pre></div>
+</div>
+<p>We then need to define the <code class="docutils literal notranslate"><span class="pre">parallel_out</span></code> signal as follows:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">signals</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">parallel_out</span><span class="p p-Indicator">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+<span class="w">    </span><span class="nt">log</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+</pre></div>
+</div>
+<p>And add it as an input to the logger:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">logger</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">in</span><span class="p p-Indicator">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tick_count</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parallel_out</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="add-parallel-toggle-module-files">
+<h3>Add <code class="docutils literal notranslate"><span class="pre">parallel_toggle</span></code> module files<a class="headerlink" href="#add-parallel-toggle-module-files" title="Permalink to this heading">¶</a></h3>
+<p>The default behavior of the <code class="docutils literal notranslate"><span class="pre">parport</span></code> driver is to take the value of the input signal and write it to the specified parallel port. For that to work, we’ll need to set the <code class="docutils literal notranslate"><span class="pre">parallel_out</span></code> signal in our <code class="docutils literal notranslate"><span class="pre">parallel_toggle</span></code> parser each tick.</p>
+<p>Let’s generate parser and constructor files for our new module:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>touch <span class="nv">$LICORICE_WORKING_PATH</span>/parallel_toggle.py <span class="nv">$LICORICE_WORKING_PATH</span>/parallel_toggle_constructor.py
+</pre></div>
+</div>
+<p>In the constructor, add the following line:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">toggle_switch</span> <span class="o">=</span> <span class="mb">0b00000000</span>
+</pre></div>
+</div>
+<p>In the parser add the following lines:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">parallel_out</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">toggle_switch</span>
+<span class="k">if</span> <span class="n">toggle_switch</span> <span class="o">==</span> <span class="mb">0b00000000</span><span class="p">:</span>
+    <span class="n">toggle_switch</span> <span class="o">=</span> <span class="mb">0b10000000</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">toggle_switch</span> <span class="o">=</span> <span class="mb">0b00000000</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">0b</span></code> syntax allows us to set each bit individually in the unsigned 8 bit integer signal <code class="docutils literal notranslate"><span class="pre">parallel_out</span></code>. Here we set only the first bit high (data pin 9), but we could just as easily set all the bits high with <code class="docutils literal notranslate"><span class="pre">0b11111111</span></code></p>
+</section>
+<section id="id7">
+<h3>Run LiCoRICE<a class="headerlink" href="#id7" title="Permalink to this heading">¶</a></h3>
+<p>Turn on your oscilloscope and run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go quickstart-4 -y
+</pre></div>
+</div>
+<p>You should see the same output in the terminal as the <code class="docutils literal notranslate"><span class="pre">quickstart-3</span></code> model and a SQLite database in the model output directory, but now you should also see that the green trace (channel 2) on the oscilloscope screen jumps up and down each second. If the output is over channel 1, feel free to switch the BNC probes so that the output signal is on channel 2.</p>
+</section>
+<section id="view-the-oscilloscope-output-as-a-square-wave">
+<h3>View the oscilloscope output as a square wave<a class="headerlink" href="#view-the-oscilloscope-output-as-a-square-wave" title="Permalink to this heading">¶</a></h3>
+<p>Since the LiCoRICE model only runs for 10 ticks over 10 seconds, we don’t have a lot of time to modify the settings on the oscilloscope to see what’s going on. Start by commenting out the <code class="docutils literal notranslate"><span class="pre">num_ticks</span></code> argument in <code class="docutils literal notranslate"><span class="pre">quickstart-4.yaml</span></code> so that the model runs indefinitely and decrease the tick length so we have a 10Hz square wave:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">config</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">tick_len</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50000</span><span class="w"> </span><span class="c1"># tick length in microseconds (50ms)</span><span class="w"></span>
+<span class="w">  </span><span class="c1">#num_ticks: 10  # number of ticks to run for</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Run the model again and while it’s running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the <code class="docutils literal notranslate"><span class="pre">CH1</span> <span class="pre">MENU</span></code> button and adjust the horizontal scaling using the <code class="docutils literal notranslate"><span class="pre">SEC/DIV</span></code> knob until the division legnth shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient.</p>
+<section id="setting-a-trigger">
+<h4>Setting a trigger<a class="headerlink" href="#setting-a-trigger" title="Permalink to this heading">¶</a></h4>
+<p>Using the <code class="docutils literal notranslate"><span class="pre">TRIG</span> <span class="pre">MENU</span></code> button, make sure that an <cite>Edge</cite> Type trigger is set on the <cite>CH2</cite> Source and that Slope is set to <cite>Rising</cite>. Then, use the trigger <code class="docutils literal notranslate"><span class="pre">LEVEL</span></code> knob to set the trigger to the midpoint of the signal. You should now see something like this:</p>
+<img alt="10Hz square wave" src="../_images/quickstart_4_1.jpg" />
+</section>
+</section>
+</section>
+<section id="drive-our-output-from-an-external-input">
+<h2>5. Drive our output from an external input<a class="headerlink" href="#drive-our-output-from-an-external-input" title="Permalink to this heading">¶</a></h2>
+<p>In the last example, we generated a 10Hz square wave in LiCoRICE and output it over an external channel. Here, we will use an external parallel port input to drive our <code class="docutils literal notranslate"><span class="pre">parallel_out</span></code> variable which will be output over a second parallel port cable.</p>
+<section id="id8">
+<h3>Update model config<a class="headerlink" href="#id8" title="Permalink to this heading">¶</a></h3>
+<p>Copy over the model config to a different file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-4.yaml <span class="nv">$LICORICE_WORKING_PATH</span>/quickstart-5.yaml
+</pre></div>
+</div>
+<p>Add a source that will read our parallel port input:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">parallel_reader</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">    </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parport_in</span><span class="w"></span>
+<span class="w">      </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parport</span><span class="w"></span>
+<span class="w">        </span><span class="nt">addr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w"></span>
+<span class="w">      </span><span class="nt">schema</span><span class="p">:</span><span class="w"></span>
+<span class="w">        </span><span class="nt">data</span><span class="p">:</span><span class="w"></span>
+<span class="w">          </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+<span class="w">          </span><span class="nt">size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">        </span><span class="nt">max_packets_per_tick</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">    </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parallel_in</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Similarly to the <code class="docutils literal notranslate"><span class="pre">parport</span></code> sink driver, the default <code class="docutils literal notranslate"><span class="pre">parport</span></code> source driver behavior is to populate the <code class="docutils literal notranslate"><span class="pre">parallel_in</span></code> variable with the data read over parallel port in each tick.</p>
+<p>We’ll also change the <code class="docutils literal notranslate"><span class="pre">parallel_toggle</span></code> module definition to take <code class="docutils literal notranslate"><span class="pre">parallel_in</span></code> as an input signal and not use the constructor. Rename the module to <code class="docutils literal notranslate"><span class="pre">parallel_through</span></code> so we can use a different module file:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">parallel_through</span><span class="w"></span>
+<span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+<span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">constructor</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w"></span>
+<span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">in</span><span class="p p-Indicator">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parallel_in</span><span class="w"></span>
+<span class="w">  </span><span class="w w-Error">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Lastly, add the <code class="docutils literal notranslate"><span class="pre">parallel_in</span></code> signal which will have a similar definition as the <code class="docutils literal notranslate"><span class="pre">parallel_out</span></code>, just without logging.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">parallel_in</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="update-toggler-module">
+<h3>Update toggler module<a class="headerlink" href="#update-toggler-module" title="Permalink to this heading">¶</a></h3>
+<p>Open a new file named <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_DIR/parallel_through.py</span></code> and update it with the following:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">parallel_out</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">parallel_in</span>
+</pre></div>
+</div>
+</section>
+<section id="set-up-the-oscilloscope-function-generator">
+<h3>Set up the oscilloscope function generator<a class="headerlink" href="#set-up-the-oscilloscope-function-generator" title="Permalink to this heading">¶</a></h3>
+<p>First, we’ll need to ouput a signal over our oscilloscope that will drive LiCoRICE. Use a 10Hz square wave:</p>
+<p>Connect a BNC to Jaw clip line cable to the <code class="docutils literal notranslate"><span class="pre">EXT</span> <span class="pre">TRIG/GEN</span> <span class="pre">OUT</span></code> port on the oscilloscopel. Connect the black alligator clip to ground on the <code class="docutils literal notranslate"><span class="pre">/dev/parport0</span></code> breakout board and the red alligator clip to pin 9. There should be enough room on the jumper cable terminals to connect the channel 1 probe as well. Press the <code class="docutils literal notranslate"><span class="pre">WAVE</span> <span class="pre">GEN</span></code> button on the scope to turn on the waveform generator and set Wave: <cite>Square</cite>, Frequency: <cite>10.000Hz</cite>, Amplitude: <cite>3.300V</cite>, and Offset: <cite>0.000V</cite>. You should see the oscilloscope-generated signal on channel 1.</p>
+</section>
+<section id="id9">
+<h3>Run LiCoRICE<a class="headerlink" href="#id9" title="Permalink to this heading">¶</a></h3>
+<p>Run the model:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go quickstart-5 -y
+</pre></div>
+</div>
+<p>You should see all the same outputs as in the previous examples, but now there should be two similar traces on the oscilloscope. Since the oscilloscope and LiCoRICE are both operating on the same clock, the two signals will not necessarily be in phase with each other. To see better phase alignment, try setting the LiCoRICE <code class="docutils literal notranslate"><span class="pre">tick_len</span></code> to a lower number, say 10000 (10ms ticks) or 1000 (1ms ticks). Note that operating at such a fast clock rate without a realtime kernel patch (1ms) may cause a timing violation.</p>
+</section>
+<section id="oscilloscope-view">
+<h3>Oscilloscope view<a class="headerlink" href="#oscilloscope-view" title="Permalink to this heading">¶</a></h3>
+<p>To visually see the latency introduced by LiCoRICE on the oscilloscope, change the trigger Source to <cite>CH1</cite> and make sure the <code class="docutils literal notranslate"><span class="pre">LEVEL</span></code> knob is set correctly. You should see something like this:</p>
+<img alt="10Hz square wave being tracked by LiCoRICE output" src="../_images/quickstart_5_1.jpg" />
+</section>
+<section id="manipulate-the-signal">
+<h3>Manipulate the signal<a class="headerlink" href="#manipulate-the-signal" title="Permalink to this heading">¶</a></h3>
+<p>We’ve taken the input signal and replicated it at the output, but what if we want to modify it? We can change the <code class="docutils literal notranslate"><span class="pre">parallel_through</span></code> module to the following:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">parallel_out</span><span class="p">[:]</span> <span class="o">=</span> <span class="o">~</span><span class="n">parallel_in</span>
+</pre></div>
+</div>
+<p>This uses the bitwise NOT operator <code class="docutils literal notranslate"><span class="pre">~</span></code> to flip the bits in the <code class="docutils literal notranslate"><span class="pre">parallel_in</span></code> signal. After doing this, you should see the <code class="docutils literal notranslate"><span class="pre">paralell_out</span></code> signal inverted on the oscilloscope:</p>
+<img alt="10Hz square wave and inverted LiCoRICE output" src="../_images/quickstart_5_2.jpg" />
+</section>
+<section id="conclusion">
+<h3>Conclusion<a class="headerlink" href="#conclusion" title="Permalink to this heading">¶</a></h3>
+<p>If you’ve gotten this far, congrats! You’ve finished the LiCoRICE quickstart and have learned how to input a signal into a realtime system, manipulate it, log it, and output it back. To learn more about LiCoRICE and work through the rest of the examples, check out the <a class="reference internal" href="tutorial.html#licorice-tutorial"><span class="std std-ref">full tutorial</span></a>.</p>
+</section>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">LiCoRICE</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">User Guide</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">LiCoRICE Quickstart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tutorial.html">LiCoRICE Tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html">LiCoRICE Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">User Guide</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">User Guide</a></li>
+      <li>Next: <a href="tutorial.html" title="next chapter">LiCoRICE Tutorial</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, The Board of Trustees of the Leland Stanford Junior University.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.2.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/guide/quickstart.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

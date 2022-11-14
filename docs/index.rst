@@ -15,8 +15,7 @@ library support of Python while enabling realtime timing guarantees.
 
    realtime.rst
    installation.rst
-   quickstart.rst
-   examples.rst
+   guide/index.rst
    api/index.rst
    advanced/index.rst
    developers/index.rst

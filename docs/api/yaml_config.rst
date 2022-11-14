@@ -79,6 +79,11 @@ External Signals
 
 External signals are information that is passed in and out of our model. Having an external signal is what defines modules as either a sink or a source(any module should only ever have one). Given the inherent complexity of dealing with external devices or applications, additional information is needed to define these signals.
 
+TODO
+
+* in-built source drivers
+* in-built sink drivers
+
 Example Model
 ===============================================================================
 

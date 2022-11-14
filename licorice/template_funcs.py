@@ -446,11 +446,11 @@ def parse(paths, config, confirmed):
     source_names = []  # list of source names
     async_readers_dict = {}  # dict of source: async_readers
     sink_names = []  # list of sink names
+    async_writers_dict = {}  # dict of sink: async_writers
     source_outputs = {}
     dependency_graph = {}
     in_signals = {}
     out_signals = {}
-    num_threaded_sinks = 0
 
     all_names = list(modules)
     assert len(all_names) == len(set(all_names))
@@ -464,6 +464,7 @@ def parse(paths, config, confirmed):
             and isinstance(module_args["in"], dict)
             and module_args["in"]["name"] in external_signals
         ):
+            # source
             source_names.append(module_name)
             if module_args["in"].get("async") or False:
                 async_readers_dict[module_name] = f"{module_name}_async_reader"
@@ -496,11 +497,11 @@ def parse(paths, config, confirmed):
         ):
             # sink
             sink_names.append(module_name)
+            if module_args["out"].get("async") or False:
+                async_writers_dict[module_name] = f"{module_name}_async_writer"
             out_sig_name = module_args["out"]["name"]
             assert "type" in signals[out_sig_name]["args"]
             out_signals[out_sig_name] = signals[out_sig_name]["args"]["type"]
-            if out_signals[out_sig_name] in ["line", "disk"]:
-                num_threaded_sinks += 1
             if out_signals[out_sig_name] in ["disk"]:
                 logger_database_filename = signals[out_sig_name]["args"][
                     "save_file"
@@ -546,6 +547,7 @@ def parse(paths, config, confirmed):
     ################################################
 
     async_reader_names = list(async_readers_dict.values())
+    async_writer_names = list(async_writers_dict.values())
     non_source_names = sink_names + module_names
     topo_children = list(map(list, list(toposort(dependency_graph))))
     topo_widths = list(
@@ -559,8 +561,7 @@ def parse(paths, config, confirmed):
         + len(source_names)
         + topo_max_width
         + len(sink_names)
-        + num_threaded_sinks
-    )  # TODO put threaded sink threads on cores w modules
+    )
     num_cores_avail = psutil.cpu_count()
 
     if num_cores_used > num_cores_avail:
@@ -605,9 +606,9 @@ def parse(paths, config, confirmed):
                 x: internal_signals.index(x) for x in list(out_signals)
             }
             has_parser = "parser" in module_args and module_args["parser"]
-
             if not has_parser:
                 assert len(out_signals) == 1
+
             default_params = (
                 in_signal["schema"]["default"]
                 if (in_signal["args"]["type"] == "default")
@@ -947,6 +948,8 @@ def parse(paths, config, confirmed):
 
             driver_template_name = f'{out_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
+            async_sink = name in async_writers_dict.keys()
+            async_writer_name = async_writers_dict.get(name)
             sink_template_kwargs = {
                 "name": name,
                 "non_source_num": non_source_names.index(name),
@@ -955,7 +958,13 @@ def parse(paths, config, confirmed):
                 "parser_code": parser_code,
                 "construct_code": construct_code,
                 "destruct_code": destruct_code,
-                "async": module_args["out"].get("async") or False,
+                "async": async_sink,
+                "async_writer_name": async_writer_name,
+                "async_writer_num": (
+                    async_writer_names.index(async_writer_name)
+                    if async_sink
+                    else None
+                ),
                 "in_signal_name": None if has_parser else list(in_signals)[0],
                 "in_signals": in_signals,
                 "msgpack_sigs": msgpack_sigs,
@@ -997,10 +1006,26 @@ def parse(paths, config, confirmed):
                 )
             }
 
+            # parse sink async writer if async
+            if async_sink:
+                do_jinja(
+                    __find_in_path(paths["templates"], template),
+                    os.path.join(
+                        paths["output"], async_writer_name + out_extension
+                    ),
+                    driver_code=driver_code,
+                    is_main_process=False,
+                    is_writer=True
+                    **sink_template_kwargs,
+                )
+
+            # parse sink template
             do_jinja(
                 __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
-                driver_code=driver_code,
+                driver_code=(None if async_sink else driver_code),
+                is_main_process=True,
+                is_writer=(not async_sink),
                 **sink_template_kwargs,
             )
 
@@ -1237,6 +1262,7 @@ def parse(paths, config, confirmed):
         source_names=source_names,
         async_reader_names=async_reader_names,
         sink_names=sink_names,
+        async_writer_names=async_writer_names,
         source_types=list(map(lambda x: modules[x]["language"], source_names)),
         extra_incl=extra_incl,
         numpy_incl=np.get_include(),

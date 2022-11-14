@@ -6,7 +6,14 @@ Installation
 
     .. code-block:: bash
 
-        pip install git+https://code.stanford.edu/bil/licorice@main
+        pip install licorice
+
+
+#. To install the latest development version of LiCoRICE, you can instead use:
+
+    .. code-block:: bash
+
+        pip install git+https://github.com/bil/licorice@main
 
 #. Ensure Correct Permissions
 

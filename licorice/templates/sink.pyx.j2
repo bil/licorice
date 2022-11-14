@@ -1,3 +1,6 @@
+# cimport C libraries
+cimport cython
+cimport numpy as np
 from libc.stdio cimport printf, stdout, fflush, remove
 from libc.stdio cimport printf, snprintf, stdout, fflush, remove
 from libc.stdlib cimport exit, malloc, free, EXIT_SUCCESS, EXIT_FAILURE
@@ -14,12 +17,14 @@ from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
-import SharedArray as sa
+# import Python libraries
 import numpy as np
-cimport numpy as np
-cimport cython
+{% if is_writer -%}
+import SharedArray as sa
+{%- endif %}
 import time
 
+# headers for all sinks
 cdef extern from "utilityFunctions.h" nogil:
   enum: __GNU_SOURCE
   void die(char *errorStr)
@@ -57,7 +62,24 @@ cdef extern from "constants.h":
   enum: BUF_VARS_OFFSET
   enum: SEM_NAME_LEN
 
+{%- if async %}
+cdef extern from "<sys/types.h>":
+  ctypedef struct pthread_mutex_t:
+    pass
+  ctypedef struct pthread_mutexattr_t:
+    pass
+
+cdef extern from "<pthread.h>" nogil:
+  struct sched_param:
+    int sched_priority
+  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
+  int pthread_mutex_lock(pthread_mutex_t *)
+  int pthread_mutex_unlock(pthread_mutex_t *)
+{%- endif %}
+
+{%- if is_writer %}
 {{ driver_code["imports"] }}
+{%- endif %}
 
 cdef pid_t ppid
 cdef sigset_t exitMask
@@ -69,32 +91,44 @@ cdef int sigalrm_recv = 0
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
+{% if is_main_process -%}
 cdef sem_t *pTickUpSem
 cdef sem_t *pTickDownSem
 cdef sem_t *pSigSems[NUM_SEM_SIGS]
 cdef char semNameBuf[SEM_NAME_LEN]
-cdef uint32_t *pBufVars
-lastVal = 1
-
-in_sigs = {}
-{%- if in_signals|length == 1 %}
-in_sig = None
 {%- endif %}
+cdef uint32_t *pBufVars
 {%- for sig, dtype in sig_types.items() %}
-in_sigs['{{sig}}'] = None
 cdef uint32_t *{{sig}}BufVars
 cdef {{dtype}} *{{sig}}StrtPtr
 cdef {{dtype}} *{{sig}}EndPtr
 {%- endfor %}
 
+# python variables
+lastVal = 1
+in_sigs = {}
+{%- if in_signals|length == 1 %}
+in_sig = None
+{%- endif %}
+{%- if not is_main_process %}
+shouldExit = False
+{%- endif %}
+
+{%- if is_writer %}
+# driver variables
 {{ driver_code["variables"] }}
+{%- endif %}
 
 cdef void handle_exit(int exitStatus):
   global retVal, tid, radio, context, s, shm_size, pmem, pTickUpSem, pTickDownSem, pSigSems
 
+{%- if is_writer %}
+
   {{destruct_code}}
 
 {{ driver_code["exit_handler"] }}
+
+{%- endif %}
 
   munmap(pmem, shm_size)
   munlockall()
@@ -116,8 +150,13 @@ cdef void int_handler(int signum):
   pass
 
 cdef void exit_handler(int signum):
+  global shouldExit
   printf("EXIT HANDLER for {{name}}\n")
+{%- if is_main_process %}
   handle_exit(0)
+{%- else %}
+  shouldExit = True
+{%- endif %}
 
 cdef void bus_handler(int signum):
   printf("Bus Error\n")
