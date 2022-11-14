@@ -14,14 +14,4 @@ pip install wheel pip-tools
 
 pip-compile "./requirements.in"
 pip-compile "./requirements-dev.in"
-
-case $OSTYPE in
-    linux*)
-        pip-compile "./linux-requirements.in"
-        pip-sync "./requirements.txt" "./requirements-dev.txt" "./linux-requirements.txt"
-        ;;
-
-    *)
-        pip-sync "./requirements.txt" "./requirements-dev.txt"
-        ;;
-esac
+pip-sync "./requirements.txt" "./requirements-dev.txt"

@@ -15,7 +15,6 @@ cache:
   - key:
       files:
         - install/requirements.txt
-        - install/linux-requirements.txt
     paths:
       - .cache/pip
       - venv/
@@ -39,7 +38,6 @@ before_script:
   - pip install "setuptools<60"
   - pushd install
   - pip install -r requirements-dev.txt
-  - pip install -r linux-requirements.txt
   - popd
   - pip install .
 

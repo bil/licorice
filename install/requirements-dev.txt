@@ -146,8 +146,6 @@ platformdirs==2.5.2
     #   virtualenv
 pluggy==1.0.0
     # via pytest
-portio==0.5
-    # via licorice
 posix-ipc==1.0.5
     # via
     #   -r ./requirements.txt
