@@ -17,5 +17,6 @@ twine
 # docs
 sphinx
 sphinxcontrib-programoutput
+sphinx-rtd-theme
 
 -e file:..#egg=licorice

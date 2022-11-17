@@ -109,7 +109,7 @@ If everything worked, you should see the following among the output in your term
     Hello World! Tick: 9
 
 
-2. Pass a signal
+2. Pass a Signal
 ===============================================================================
 
 The first example showed you how to set up a simple LiCoRICE model with one module. Here, we'll split that module in two and use a `signal` to pass data from the first module to the second.
@@ -218,7 +218,7 @@ Run the new model:
 Now you should see the same output as the ``quickstart-1`` model in your terminal.
 
 
-3. Add logging
+3. Add Logging
 ===============================================================================
 
 LiCoRICE also allows you to log signals so that the entire history of a model's run can be examined after the fact.
@@ -301,7 +301,7 @@ And you should see the value of the ``tick_count`` variable over time:
 
 
 
-4. Output an external signal
+4. Output an External Signal
 ===============================================================================
 
 So far, we've only dealt with internal modules and signals. These pass data and perform computation within LiCoRICE and aren't meant to interact with external processes or devices. In this model, we'll see how to output a digital signal from LiCoRICE over parallel port that can be read by an oscilloscope.
@@ -470,10 +470,10 @@ Setting a trigger
 
 Using the ``TRIG MENU`` button, make sure that an `Edge` Type trigger is set on the `CH2` Source and that Slope is set to `Rising`. Then, use the trigger ``LEVEL`` knob to set the trigger to the midpoint of the signal. You should now see something like this:
 
-.. image:: quickstart_4_1.jpg
+.. image:: /_images/quickstart_4_1.jpg
   :alt: 10Hz square wave
 
-5. Drive our output from an external input
+5. Drive Output from an External Input
 ===============================================================================
 
 In the last example, we generated a 10Hz square wave in LiCoRICE and output it over an external channel. Here, we will use an external parallel port input to drive our ``parallel_out`` variable which will be output over a second parallel port cable.
@@ -573,7 +573,7 @@ Oscilloscope view
 
 To visually see the latency introduced by LiCoRICE on the oscilloscope, change the trigger Source to `CH1` and make sure the ``LEVEL`` knob is set correctly. You should see something like this:
 
-.. image:: quickstart_5_1.jpg
+.. image:: /_images/quickstart_5_1.jpg
   :alt: 10Hz square wave being tracked by LiCoRICE output
 
 
@@ -589,7 +589,7 @@ We've taken the input signal and replicated it at the output, but what if we wan
 
 This uses the bitwise NOT operator ``~`` to flip the bits in the ``parallel_in`` signal. After doing this, you should see the ``paralell_out`` signal inverted on the oscilloscope:
 
-.. image:: quickstart_5_2.jpg
+.. image:: /_images/quickstart_5_2.jpg
   :alt: 10Hz square wave and inverted LiCoRICE output
 
 ..

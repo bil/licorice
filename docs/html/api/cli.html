@@ -1,81 +1,138 @@
-
 <!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
-
-    <title>LiCoRICE CLI &#8212; LiCoRICE  documentation</title>
-    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
-    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
-    <script src="../_static/jquery.js"></script>
-    <script src="../_static/underscore.js"></script>
-    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
-    <script src="../_static/doctools.js"></script>
-    <script src="../_static/sphinx_highlight.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiCoRICE CLI &mdash; LiCoRICE  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="LiCoRICE Python API" href="python.html" />
-    <link rel="prev" title="Environment Variables" href="env_vars.html" />
-   
-  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
-  
-  
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+    <link rel="prev" title="Environment Variables" href="env_vars.html" /> 
+</head>
 
-  </head><body>
-  
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> LiCoRICE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../guide/index.html">User Guide</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">LiCoRICE API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="yaml_config.html">YAML Configuration Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="env_vars.html">Environment Variables</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">LiCoRICE CLI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#commands">Commands</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#generate">Generate</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#parse">Parse</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#compile">Compile</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#run">Run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#go">Go</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#export">Export</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#reference">Reference</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="python.html">LiCoRICE Python API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
+</ul>
 
-    <div class="document">
-      <div class="documentwrapper">
-        <div class="bodywrapper">
-          
+        </div>
+      </div>
+    </nav>
 
-          <div class="body" role="main">
-            
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">LiCoRICE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">LiCoRICE API Reference</a></li>
+      <li class="breadcrumb-item active">LiCoRICE CLI</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/cli.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
   <section id="licorice-cli">
-<h1>LiCoRICE CLI<a class="headerlink" href="#licorice-cli" title="Permalink to this heading">¶</a></h1>
+<h1>LiCoRICE CLI<a class="headerlink" href="#licorice-cli" title="Permalink to this heading"></a></h1>
 <section id="commands">
-<h2>Commands<a class="headerlink" href="#commands" title="Permalink to this heading">¶</a></h2>
+<h2>Commands<a class="headerlink" href="#commands" title="Permalink to this heading"></a></h2>
 <section id="generate">
-<h3>Generate<a class="headerlink" href="#generate" title="Permalink to this heading">¶</a></h3>
+<h3>Generate<a class="headerlink" href="#generate" title="Permalink to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate &lt;model_name&gt;
 </pre></div>
 </div>
 <p>Generate LiCoRICE user-level per-tick Python snippet files. This includes parsers, constructors, and destructors. Filenames are taken from module definintions in the YAML configuration and files are written to the default module directory (overridden by <code class="docutils literal notranslate"><span class="pre">LICORICE_MODULE_PATH</span></code>). The generated files are just a scaffold and must be filled out by the user with code that will run for that module function each tick.</p>
 </section>
 <section id="parse">
-<h3>Parse<a class="headerlink" href="#parse" title="Permalink to this heading">¶</a></h3>
+<h3>Parse<a class="headerlink" href="#parse" title="Permalink to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice parse &lt;model_name&gt;
 </pre></div>
 </div>
 <p>Parse a LiCoRICE YAML file. This command reads in and validates the LiCoRICE model, constructs any variables needed for templating, and writes rendered template files to the default output directory (overridden by <code class="docutils literal notranslate"><span class="pre">LICORICE_OUTPUT_DIR</span></code>)</p>
 </section>
 <section id="compile">
-<h3>Compile<a class="headerlink" href="#compile" title="Permalink to this heading">¶</a></h3>
+<h3>Compile<a class="headerlink" href="#compile" title="Permalink to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice compile &lt;model_name&gt;
 </pre></div>
 </div>
 <p>Compile a LiCoRICE model from the files written to the model output directory. This currently just runs <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">clean</span></code> and <code class="docutils literal notranslate"><span class="pre">make</span></code> from the output directory, which compiles all the Cython and C files to executables.</p>
 </section>
 <section id="run">
-<h3>Run<a class="headerlink" href="#run" title="Permalink to this heading">¶</a></h3>
+<h3>Run<a class="headerlink" href="#run" title="Permalink to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice run &lt;model_name&gt;
 </pre></div>
 </div>
 <p>Runs a LiCoRICE model from the compiled executables in the model output directory. This is as simple as running the timer executable with the right priority which kicks off the rest of the module processes.</p>
 </section>
 <section id="go">
-<h3>Go<a class="headerlink" href="#go" title="Permalink to this heading">¶</a></h3>
+<h3>Go<a class="headerlink" href="#go" title="Permalink to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go &lt;model_name&gt;
 </pre></div>
 </div>
 <p>Combine the behavior of <code class="docutils literal notranslate"><span class="pre">parse</span></code>, <code class="docutils literal notranslate"><span class="pre">compile</span></code>, and <code class="docutils literal notranslate"><span class="pre">run</span></code> into a single command for convenience.</p>
 </section>
 <section id="export">
-<h3>Export<a class="headerlink" href="#export" title="Permalink to this heading">¶</a></h3>
+<h3>Export<a class="headerlink" href="#export" title="Permalink to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice <span class="nb">export</span> &lt;model_name&gt;
 </pre></div>
 </div>
@@ -83,7 +140,7 @@
 </section>
 </section>
 <section id="reference">
-<h2>Reference<a class="headerlink" href="#reference" title="Permalink to this heading">¶</a></h2>
+<h2>Reference<a class="headerlink" href="#reference" title="Permalink to this heading"></a></h2>
 <p>The full CLI command reference can be viewed by running <code class="docutils literal notranslate"><span class="pre">licorice</span> <span class="pre">-h</span></code> and is printed below for convenience:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: licorice [-h] [-y] [--rt] [--working_path WORKING_PATH]
                 [--template_path TEMPLATE_PATH]
@@ -138,85 +195,34 @@ optional arguments:
 </section>
 
 
+           </div>
           </div>
-          
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="env_vars.html" class="btn btn-neutral float-left" title="Environment Variables" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="python.html" class="btn btn-neutral float-right" title="LiCoRICE Python API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, The Board of Trustees of the Leland Stanford Junior University.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
         </div>
       </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="../index.html">LiCoRICE</a></h1>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
 
-
-
-
-
-
-
-
-<h3>Navigation</h3>
-<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../guide/index.html">User Guide</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">LiCoRICE API Reference</a><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="yaml_config.html">YAML Configuration Reference</a></li>
-<li class="toctree-l2"><a class="reference internal" href="env_vars.html">Environment Variables</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">LiCoRICE CLI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="python.html">LiCoRICE Python API</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
-</ul>
-
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="../index.html">Documentation overview</a><ul>
-  <li><a href="index.html">LiCoRICE API Reference</a><ul>
-      <li>Previous: <a href="env_vars.html" title="previous chapter">Environment Variables</a></li>
-      <li>Next: <a href="python.html" title="next chapter">LiCoRICE Python API</a></li>
-  </ul></li>
-  </ul></li>
-</ul>
-</div>
-<div id="searchbox" style="display: none" role="search">
-  <h3 id="searchlabel">Quick search</h3>
-    <div class="searchformwrapper">
-    <form class="search" action="../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</div>
-<script>document.getElementById('searchbox').style.display = "block"</script>
-
-
-
-
-
-
-
-
-        </div>
-      </div>
-      <div class="clearer"></div>
-    </div>
-    <div class="footer">
-      &copy;2022, The Board of Trustees of the Leland Stanford Junior University.
-      
-      |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.2.3</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
-      
-      |
-      <a href="../_sources/api/cli.rst.txt"
-          rel="nofollow">Page source</a>
-    </div>
-
-    
-
-    
-  </body>
+</body>
 </html>
