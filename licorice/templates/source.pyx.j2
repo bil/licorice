@@ -300,7 +300,7 @@ bufEndPtr = bufStrtPtr + {{out_signal_name}}BufVars[7]
 
 {%- if is_reader %}
 
-  {{ construct_code }}
+{{ construct_code }}
 {%- endif %}
 
 {%- if platform_system != "Darwin" %}
