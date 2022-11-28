@@ -20,7 +20,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Installation" href="installation.html" />
+    <link rel="next" title="Installation" href="install/licorice.html" />
     <link rel="prev" title="LiCoRICE Documentation" href="index.html" /> 
 </head>
 
@@ -42,7 +42,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Why Realtime?</a></li>
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install/licorice.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="guide/index.html">User Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/index.html">LiCoRICE API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced/index.html">Advanced Usage</a></li>
@@ -76,7 +76,7 @@
   <section id="why-realtime">
 <h1>Why Realtime?<a class="headerlink" href="#why-realtime" title="Permalink to this heading"></a></h1>
 <p><em>Realtime computing</em> refers to systems that include <em>guarantees</em> around the timing of operations. In such a system, the critical (longest) path of a block of code must complete in a given timeframe, defined by a realtime clock. In <em>hard</em> realtime systems, violations of this timing guarantee constitute a critical error that will crash the program, whereas in <em>soft</em> realtime systems, some timing violations may be tolerated and dealt with by error handling. LiCoRICE supports both of these paradigms.</p>
-<p>Various applications across fields require timing guarantees when performing computation. Common examples of realtime systems include cruise control, thermostats, and pacemakers. LiCoRICE was born out of the need to prototype realtime systems for systems neuroscience experiments that log and process neural data on the order of Gb/s. Since <a class="reference external" href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5067378/">neurons generally fire at a maximum of several hundred Hertz</a>, LiCoRICE has been rigorously tested down to the level of single millisecond (1kHz timer).</p>
+<p>Various applications across fields require timing guarantees when performing computation. Common examples of realtime systems include cruise control, thermostats, and pacemakers. LiCoRICE was born out of the need to prototype realtime systems for systems neuroscience experiments that log and process neural data on the order of Gb/s. Since <a class="reference external" href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5067378/">neurons generally fire at a maximum of several hundred Hertz</a>, LiCoRICE has been rigorously tested down to the level of a single millisecond (1kHz timer).</p>
 <p>Conventional hardware and operating systems are not suitable for hard realtime programming out-of-the-box and require a kernel patch to achieve consistent timing across indefinite periods of time. The standard Linux kernel performs a number of tasks behind the scenes that are by default not preemptible by the user, such as turning on fans. The PREEMPT_RT kernel patch makes the entire Linux kernel preemptible, save for a few critical sections, meaning that user-space applications can take precedence and complete their realtime processing within the given time bounds.</p>
 </section>
 
@@ -85,7 +85,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="index.html" class="btn btn-neutral float-left" title="LiCoRICE Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="installation.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="install/licorice.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

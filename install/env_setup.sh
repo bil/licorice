@@ -2,16 +2,19 @@
 
 # This script installs LiCoRICE system and Python dependencies.
 
+# pyenv-recommended python dependencies:
+# https://github.com/pyenv/pyenv/wiki#suggested-build-environment
+
 # install platform-specific packages
 case $OSTYPE in
     linux*)
         if [ -f "/etc/debian_version" ]; then
             sudo apt-get update
-            sudo apt-get install -y make build-essential libssl-dev zlib1g-dev \
-                libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
-                libncurses5-dev libncursesw5-dev xz-utils tk-dev \
-                libopenblas-base libopenblas-dev sqlite libmsgpack-dev \
-                libevent-dev libasound2-dev gfortran
+            sudo apt-get install -y make build-essential libssl-dev \
+                zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget \
+                curl llvm libncursesw5-dev xz-utils tk-dev libxml2-dev \
+                libxmlsec1-dev libffi-dev liblzma-dev # python deps
+            sudo apt-get install libopenblas-base libopenblas-dev sqlite3 \ libmsgpack-dev libevent-dev libasound2-dev gfortran
         else
             echo "Automatic dependency installation not supported for your " \
                  "flavor of Linux. Please install dependencies manually."
@@ -27,7 +30,8 @@ case $OSTYPE in
             /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/" \
                                         "Homebrew/install/HEAD/install.sh)"
         fi
-        brew install openssl readline sqlite3 xz zlib openblas msgpack libevent
+        brew install openssl readline sqlite3 xz zlib tcl-tk # python deps
+        brew install openblas msgpack libevent
         ;;
     *)
         echo "Automatic dependency installation not supported for your OS." \

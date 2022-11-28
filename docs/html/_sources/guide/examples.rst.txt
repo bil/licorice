@@ -2,7 +2,7 @@
 LiCoRICE Examples
 ******************************************************************************
 
-The ``examples/`` directory contains examples on how to use LiCoRICE. Please follow :ref:`instructions for installing LiCoRICE <installation:Installation>` first.
+The ``examples/`` directory contains examples on how to use LiCoRICE. Please follow :ref:`instructions for installing LiCoRICE <install/licorice:Installation>` first.
 
 
 Directory structure

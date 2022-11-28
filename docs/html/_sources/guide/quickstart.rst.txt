@@ -8,7 +8,7 @@ Welcome to LiCoRICE! We're excited to help you bring the principles of realtime 
 0. Prerequisites
 ===============================================================================
 
-This guide assumes that you're working in a BASH shell on a POSIX-compliant system and have followed the :ref:`LiCoRICE installation instructions <installation:installation>`.
+This guide assumes that you're working in a BASH shell on a POSIX-compliant system and have followed the :ref:`LiCoRICE installation instructions <install/licorice:Installation>`.
 
 1. Simple Hello World
 ===============================================================================
@@ -463,7 +463,7 @@ Since the LiCoRICE model only runs for 10 ticks over 10 seconds, we don't have a
 
 
 
-Run the model again and while it's running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the ``CH1 MENU`` button and adjust the horizontal scaling using the ``SEC/DIV`` knob until the division legnth shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient.
+Run the model again and while it's running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the ``CH1 MENU`` button and adjust the horizontal scaling using the ``SEC/DIV`` knob until the division legnth shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient. If you'd like to stop running the model, you can do so by typing Control-C in the terminal.
 
 Setting a trigger
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

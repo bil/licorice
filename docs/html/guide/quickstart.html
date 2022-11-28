@@ -42,7 +42,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../install/licorice.html">Installation</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="index.html">User Guide</a><ul class="current">
 <li class="toctree-l2 current"><a class="current reference internal" href="#">LiCoRICE Quickstart</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#prerequisites">0. Prerequisites</a></li>
@@ -128,7 +128,7 @@
 <p>Welcome to LiCoRICE! We’re excited to help you bring the principles of realtime computing to your conventional hardware. This guide provides instructions on how to build a simple model from scratch.</p>
 <section id="prerequisites">
 <h2>0. Prerequisites<a class="headerlink" href="#prerequisites" title="Permalink to this heading"></a></h2>
-<p>This guide assumes that you’re working in a BASH shell on a POSIX-compliant system and have followed the <a class="reference internal" href="../installation.html#installation"><span class="std std-ref">LiCoRICE installation instructions</span></a>.</p>
+<p>This guide assumes that you’re working in a BASH shell on a POSIX-compliant system and have followed the <a class="reference internal" href="../install/licorice.html#installation"><span class="std std-ref">LiCoRICE installation instructions</span></a>.</p>
 </section>
 <section id="simple-hello-world">
 <h2>1. Simple Hello World<a class="headerlink" href="#simple-hello-world" title="Permalink to this heading"></a></h2>
@@ -468,7 +468,7 @@ Hello World! Tick: <span class="m">9</span>
 <span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
 </pre></div>
 </div>
-<p>Run the model again and while it’s running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the <code class="docutils literal notranslate"><span class="pre">CH1</span> <span class="pre">MENU</span></code> button and adjust the horizontal scaling using the <code class="docutils literal notranslate"><span class="pre">SEC/DIV</span></code> knob until the division legnth shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient.</p>
+<p>Run the model again and while it’s running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the <code class="docutils literal notranslate"><span class="pre">CH1</span> <span class="pre">MENU</span></code> button and adjust the horizontal scaling using the <code class="docutils literal notranslate"><span class="pre">SEC/DIV</span></code> knob until the division legnth shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient. If you’d like to stop running the model, you can do so by typing Control-C in the terminal.</p>
 <section id="setting-a-trigger">
 <h4>Setting a trigger<a class="headerlink" href="#setting-a-trigger" title="Permalink to this heading"></a></h4>
 <p>Using the <code class="docutils literal notranslate"><span class="pre">TRIG</span> <span class="pre">MENU</span></code> button, make sure that an <cite>Edge</cite> Type trigger is set on the <cite>CH2</cite> Source and that Slope is set to <cite>Rising</cite>. Then, use the trigger <code class="docutils literal notranslate"><span class="pre">LEVEL</span></code> knob to set the trigger to the midpoint of the signal. You should now see something like this:</p>
