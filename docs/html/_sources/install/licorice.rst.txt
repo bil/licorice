@@ -2,10 +2,8 @@
 Installation
 ******************************************************************************
 
-.. toctree::
-       :hidden:
-
-       python.rst
+Basic Install
+===============================================================================
 
 #. :ref:`Install Python and use a virtualenv <install/python:Installing Python and virtualenv>`.
 
@@ -43,7 +41,7 @@ Installation
 
 That's all for a basic install (soft realtime) of LiCoRICE!
 
-Improve realtime timings
+Improve Realtime Timings
 ===============================================================================
 
 If you have stricter timing needs, the following optional steps can be taken on Debian:
