@@ -130,14 +130,6 @@ def generate(paths, config, confirmed):
     modules = {}
     if "modules" in config and config["modules"]:
         modules = config["modules"]
-    external_signals = []
-    signals = {}
-    if "signals" in config and config["signals"]:
-        signals = config["signals"]
-    external_signals = []
-    for signal_name, signal_args in iter(signals.items()):
-        if "args" in signal_args:
-            external_signals.append(signal_name)
 
     if "logger" in modules:
         print("Logger detected in model. Adding a bufferer module...")
@@ -147,9 +139,7 @@ def generate(paths, config, confirmed):
         modules["bufferer"] = bufferer
 
     for module_name, module_args in iter(modules.items()):
-        if module_args.get("in") and all(
-            map(lambda x: x in external_signals, module_args["in"])
-        ):
+        if module_args.get("in"):
             # source
             print(" - " + module_name + " (source)")
 
@@ -168,42 +158,52 @@ def generate(paths, config, confirmed):
             if "parser" in module_args and module_args["parser"]:
                 if module_args["parser"] is True:
                     module_args["parser"] = module_name + "_parser"
-                print("   - " + module_args["parser"] + " (parser)")
-                do_jinja(
-                    __find_in_path(paths["generators"], parse_template),
-                    os.path.join(
-                        modules_path, module_args["parser"] + extension
-                    ),
+                output_path = os.path.join(
+                    modules_path, module_args["parser"] + extension
                 )
+                if not os.path.exists(output_path):
+                    print("   - " + module_args["parser"] + " (parser)")
+                    do_jinja(
+                        __find_in_path(paths["generators"], parse_template),
+                        output_path,
+                    )
 
             # generate source constructor template
             if "constructor" in module_args and module_args["constructor"]:
                 if module_args["constructor"] is True:
                     module_args["constructor"] = module_name + "_constructor"
-                print("   - " + module_args["constructor"] + " (constructor)")
-                do_jinja(
-                    __find_in_path(paths["generators"], construct_template),
-                    os.path.join(
-                        modules_path,
-                        module_args["constructor"] + extension,
-                    ),
+                output_path = os.path.join(
+                    modules_path,
+                    module_args["constructor"] + extension,
                 )
+                if not os.path.exists(output_path):
+                    print(
+                        "   - " + module_args["constructor"] + " (constructor)"
+                    )
+                    do_jinja(
+                        __find_in_path(
+                            paths["generators"], construct_template
+                        ),
+                        output_path,
+                    )
 
             # generate source destructor template
             if "destructor" in module_args and module_args["destructor"]:
                 if module_args["destructor"] is True:
                     module_args["destructor"] = module_name + "_destructor"
-                print("   - " + module_args["destructor"] + " (destructor)")
-                do_jinja(
-                    __find_in_path(paths["generators"], destruct_template),
-                    os.path.join(
-                        modules_path, module_args["destructor"] + extension
-                    ),
+                output_path = os.path.join(
+                    modules_path, module_args["destructor"] + extension
                 )
+                if not os.path.exists(output_path):
+                    print(
+                        "   - " + module_args["destructor"] + " (destructor)"
+                    )
+                    do_jinja(
+                        __find_in_path(paths["generators"], destruct_template),
+                        output_path,
+                    )
 
-        elif module_args.get("out") and all(
-            map(lambda x: x in external_signals, module_args["out"])
-        ):
+        elif module_args.get("out"):
             # sink
             print(" - " + module_name + " (sink)")
 
@@ -221,36 +221,48 @@ def generate(paths, config, confirmed):
             if "parser" in module_args and module_args["parser"]:
                 if module_args["parser"] is True:
                     module_args["parser"] = module_name + "_parser"
-                print("   - " + module_args["parser"] + " (parser)")
-                do_jinja(
-                    __find_in_path(paths["generators"], parse_template),
-                    os.path.join(
-                        modules_path, module_args["parser"] + extension
-                    ),
+                output_path = os.path.join(
+                    modules_path, module_args["parser"] + extension
                 )
+                if not os.path.exists(output_path):
+                    print("   - " + module_args["parser"] + " (parser)")
+                    do_jinja(
+                        __find_in_path(paths["generators"], parse_template),
+                        output_path,
+                    )
 
             if "constructor" in module_args and module_args["constructor"]:
                 if module_args["constructor"] is True:
                     module_args["constructor"] = module_name + "_constructor"
-                print("   - " + module_args["constructor"] + " (constructor)")
-                do_jinja(
-                    __find_in_path(paths["generators"], construct_template),
-                    os.path.join(
-                        modules_path,
-                        module_args["constructor"] + extension,
-                    ),
+                output_path = os.path.join(
+                    modules_path,
+                    module_args["constructor"] + extension,
                 )
+                if not os.path.exists(output_path):
+                    print(
+                        "   - " + module_args["constructor"] + " (constructor)"
+                    )
+                    do_jinja(
+                        __find_in_path(
+                            paths["generators"], construct_template
+                        ),
+                        output_path,
+                    )
 
             if "destructor" in module_args and module_args["destructor"]:
                 if module_args["destructor"] is True:
                     module_args["destructor"] = module_name + "_destructor"
-                print("   - " + module_args["destructor"] + " (destructor)")
-                do_jinja(
-                    __find_in_path(paths["generators"], destruct_template),
-                    os.path.join(
-                        modules_path, module_args["destructor"] + extension
-                    ),
+                output_path = os.path.join(
+                    modules_path, module_args["destructor"] + extension
                 )
+                if not os.path.exists(output_path):
+                    print(
+                        "   - " + module_args["destructor"] + " (destructor)"
+                    )
+                    do_jinja(
+                        __find_in_path(paths["generators"], destruct_template),
+                        output_path,
+                    )
 
         else:
             # module
@@ -267,36 +279,48 @@ def generate(paths, config, confirmed):
                 destruct_template = G_TEMPLATE_DESTRUCTOR_C
                 extension = ".c"
 
-            do_jinja(
-                __find_in_path(paths["generators"], code_template),
-                os.path.join(modules_path, module_name + ".py"),
-                name=module_name,
-                in_sig=module_args.get("in"),
-                out_sig=module_args.get("out"),
-            )
+            output_path = os.path.join(modules_path, module_name + ".py")
+            if not os.path.exists(output_path):
+                do_jinja(
+                    __find_in_path(paths["generators"], code_template),
+                    output_path,
+                    name=module_name,
+                    in_sig=module_args.get("in"),
+                    out_sig=module_args.get("out"),
+                )
 
             if "constructor" in module_args and module_args["constructor"]:
                 if module_args["constructor"] is True:
                     module_args["constructor"] = module_name + "_constructor"
-                print("   - " + module_args["constructor"] + " (constructor)")
-                do_jinja(
-                    __find_in_path(paths["generators"], construct_template),
-                    os.path.join(
-                        modules_path,
-                        module_args["constructor"] + extension,
-                    ),
+                output_path = os.path.join(
+                    modules_path,
+                    module_args["constructor"] + extension,
                 )
+                if not os.path.exists(output_path):
+                    print(
+                        "   - " + module_args["constructor"] + " (constructor)"
+                    )
+                    do_jinja(
+                        __find_in_path(
+                            paths["generators"], construct_template
+                        ),
+                        output_path,
+                    )
 
             if "destructor" in module_args and module_args["destructor"]:
                 if module_args["destructor"] is True:
                     module_args["destructor"] = module_name + "_destructor"
-                print("   - " + module_args["destructor"] + " (destructor)")
-                do_jinja(
-                    __find_in_path(paths["generators"], destruct_template),
-                    os.path.join(
-                        modules_path, module_args["destructor"] + extension
-                    ),
+                output_path = os.path.join(
+                    modules_path, module_args["destructor"] + extension
                 )
+                if not os.path.exists(output_path):
+                    print(
+                        "   - " + module_args["destructor"] + " (destructor)"
+                    )
+                    do_jinja(
+                        __find_in_path(paths["generators"], destruct_template),
+                        output_path,
+                    )
 
 
 def parse(paths, config, confirmed):
@@ -324,11 +348,10 @@ def parse(paths, config, confirmed):
     modules = {}
     if "modules" in config and config["modules"]:
         modules = config["modules"]
-    external_signals = []
+
     signals = {}
     if "signals" in config and config["signals"]:
         signals = config["signals"]
-    external_signals = []
 
     if "logger" in modules:
         print("Logger detected in model. Adding a bufferer module...")
@@ -556,12 +579,7 @@ def parse(paths, config, confirmed):
     # MAX_NUM_ROUNDS assertion
     topo_height = len(topo_children)
     topo_max_width = 0 if len(topo_widths) == 0 else max(topo_widths)
-    num_cores_used = (
-        1
-        + len(source_names)
-        + topo_max_width
-        + len(sink_names)
-    )
+    num_cores_used = 1 + len(source_names) + topo_max_width + len(sink_names)
     num_cores_avail = psutil.cpu_count()
 
     if num_cores_used > num_cores_avail:
@@ -1015,8 +1033,7 @@ def parse(paths, config, confirmed):
                     ),
                     driver_code=driver_code,
                     is_main_process=False,
-                    is_writer=True
-                    **sink_template_kwargs,
+                    is_writer=True**sink_template_kwargs,
                 )
 
             # parse sink template

@@ -47,7 +47,18 @@
 <li class="toctree-l2"><a class="reference internal" href="quickstart.html">LiCoRICE Quickstart</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">LiCoRICE Tutorial</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#prerequisites">0-5: Prerequisites</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#user-input-via-joystick">6: User input via joystick</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#user-input-via-joystick">6: User Input via Joystick</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#setup">Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#specify-the-model">Specify the model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#generate-joystick-modules">Generate joystick modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#write-joystick-modules">Write joystick modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#run-licorice">Run LiCoRICE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#specify-pygame-module-in-the-model">Specify pygame module in the model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#generate-pygame-modules">Generate pygame modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#write-pygame-modules">Write pygame modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id1">Run LiCoRICE</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#jitter-demo">7: Jitter demo</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#audio-line-in-out">8: Audio line in/out</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#serial-port">9: Serial port</a></li>
@@ -97,8 +108,266 @@
 <p>If you’re here, we assume that you’ve completed the <a class="reference internal" href="quickstart.html#licorice-quickstart"><span class="std std-ref">quickstart guide</span></a>.</p>
 </section>
 <section id="user-input-via-joystick">
-<h2>6: User input via joystick<a class="headerlink" href="#user-input-via-joystick" title="Permalink to this heading"></a></h2>
-<p>Coming soon.</p>
+<h2>6: User Input via Joystick<a class="headerlink" href="#user-input-via-joystick" title="Permalink to this heading"></a></h2>
+<p>Now we will create a simple game, known as the pinball task, that utilizes a joystick input.</p>
+<p>First we will begin reading in the joystick input, then we will graphically display that input using Pygame and finally we will implement the game.</p>
+<section id="setup">
+<h3>Setup<a class="headerlink" href="#setup" title="Permalink to this heading"></a></h3>
+<p>As in the quickstart, we assume you are using the <code class="docutils literal notranslate"><span class="pre">~/licorice</span></code> directory as your workspace by setting the <code class="docutils literal notranslate"><span class="pre">LICORICE_WORKING_PATH</span></code> environment variable.</p>
+<p>Ensure you have a controller or joystick:</p>
+<blockquote>
+<div><p>Any USB controller should work, but the one we used when making this tutorial is the <a class="reference external" href="https://www.amazon.com/dp/B003VAHYQY">Logitech F310 Wired Gamepad Controller</a> with the toggle set to XInput mode (X) on the back.</p>
+</div></blockquote>
+<p>Install Pygame in your virtualenv where LiCoRICE is installed:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip install pygame
+</pre></div>
+</div>
+</section>
+<section id="specify-the-model">
+<h3>Specify the model<a class="headerlink" href="#specify-the-model" title="Permalink to this heading"></a></h3>
+<p>Create the model file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>touch <span class="nv">$LICORICE_WORKING_PATH</span>/tutorial-6.yaml
+</pre></div>
+</div>
+<p>Open the created file add the following:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">config</span><span class="p">:</span><span class="w"></span>
+<span class="w">   </span><span class="nt">num_ticks</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span><span class="w"></span>
+<span class="w">   </span><span class="nt">tick_len</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10000</span><span class="w"></span>
+
+<span class="w w-Error"> </span><span class="nt">signals</span><span class="p">:</span><span class="w"></span>
+<span class="w">   </span><span class="nt">joystick_axis</span><span class="p">:</span><span class="w"></span>
+<span class="w">     </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w"></span>
+<span class="w">     </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">double</span><span class="w"></span>
+
+<span class="w">   </span><span class="nt">joystick_buttons</span><span class="p">:</span><span class="w"></span>
+<span class="w">     </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">11</span><span class="w"> </span><span class="c1"># set this to the number of buttons to extract from the joystick</span><span class="w"></span>
+<span class="w">     </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+
+<span class="w"> </span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
+<span class="w">   </span><span class="nt">joystick_out</span><span class="p">:</span><span class="w"></span>
+<span class="w">     </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">     </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
+<span class="w">     </span><span class="nt">parser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
+<span class="w">     </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">       </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jdev</span><span class="w"></span>
+<span class="w">       </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">         </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">usb_input</span><span class="w"></span>
+<span class="w">       </span><span class="nt">schema</span><span class="p">:</span><span class="w"></span>
+<span class="w">         </span><span class="nt">data</span><span class="p">:</span><span class="w"></span>
+<span class="w">           </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+<span class="w">           </span><span class="nt">size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">22</span><span class="w"></span>
+<span class="w">     </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_axis</span><span class="w"></span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_buttons</span><span class="w"></span>
+
+<span class="w">   </span><span class="nt">joystick_print</span><span class="p">:</span><span class="w"></span>
+<span class="w">     </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">     </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_axis</span><span class="w"></span>
+<span class="w">       </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_buttons</span><span class="w"></span>
+</pre></div>
+</div>
+<p>This specifies two LiCoRICE models, first <code class="docutils literal notranslate"><span class="pre">joystick_out</span></code> which reads in the incoming data from the joystick and then <code class="docutils literal notranslate"><span class="pre">joystick_print</span></code> which outputs joystick positional data and button clicks.
+It also specifies two signals, which track the joystick’s current axis and the activity of any buttons on the joystick.</p>
+<p>Be sure to specify <code class="docutils literal notranslate"><span class="pre">joystick_buttons</span></code> to match your joystick’s specific inputs if you are using a non-Logitech F310 controller.</p>
+</section>
+<section id="generate-joystick-modules">
+<h3>Generate joystick modules<a class="headerlink" href="#generate-joystick-modules" title="Permalink to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate tutorial-6 -y
+</pre></div>
+</div>
+<p>This should generate a few files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_print.py</span></code>, <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_out_parser.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_out_constructor.py</span></code>.</p>
+</section>
+<section id="write-joystick-modules">
+<h3>Write joystick modules<a class="headerlink" href="#write-joystick-modules" title="Permalink to this heading"></a></h3>
+<p>Open the constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_out_constructor.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pygame</span>
+
+<span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+<span class="n">pygame</span><span class="o">.</span><span class="n">joystick</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="n">pygame</span><span class="o">.</span><span class="n">joystick</span><span class="o">.</span><span class="n">get_count</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+    <span class="n">die</span><span class="p">(</span><span class="s1">&#39;No joystick found!</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+
+<span class="n">usb_joystick</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">joystick</span><span class="o">.</span><span class="n">Joystick</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">usb_joystick</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The constructor will initialize pygame’s built-in <a class="reference external" href="https://www.pygame.org/docs/ref/joystick.html">joystick</a> and <a class="reference external" href="https://www.pygame.org/docs/ref/display.html">display</a> tooling and creates a <code class="docutils literal notranslate"><span class="pre">Joystick</span></code> object for connecting to and reading from our joystick.</p>
+<p>Then open the parser (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_out_parser.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">pygame</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">pump</span><span class="p">()</span>
+
+<span class="n">ax0</span> <span class="o">=</span> <span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_axis</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">ax1</span> <span class="o">=</span> <span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_axis</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="n">buttons</span> <span class="o">=</span> <span class="p">[</span> <span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_button</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_numbuttons</span><span class="p">())</span> <span class="p">]</span>
+
+<span class="n">joystick_axis</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">ax0</span>
+<span class="n">joystick_axis</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">ax1</span>
+
+<span class="n">joystick_buttons</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">buttons</span><span class="p">[:]</span>
+</pre></div>
+</div>
+<p>The parser will continuously read in axis and button data from the joystick object and update the values in our signals accordingly.</p>
+<p>Now open the print module (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_print.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="ow">not</span> <span class="n">pNumTicks</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">%</span> <span class="mi">10</span><span class="p">:</span>  <span class="c1"># pNumTicks[0] is the tick counter</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;X: &quot;</span><span class="p">,</span> <span class="n">joystick_axis</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Y: &quot;</span><span class="p">,</span> <span class="n">joystick_axis</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Buttons: &quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">joystick_buttons</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Similar to the quickstart walkthrough, we print both our joystick position and any button presses.</p>
+</section>
+<section id="run-licorice">
+<h3>Run LiCoRICE<a class="headerlink" href="#run-licorice" title="Permalink to this heading"></a></h3>
+<p>In general, only one command (<code class="docutils literal notranslate"><span class="pre">go</span></code>) needs to be issued to <a class="reference internal" href="../api/cli.html#parse"><span class="std std-ref">parse</span></a>, <a class="reference internal" href="../api/cli.html#compile"><span class="std std-ref">compile</span></a>, and <a class="reference internal" href="../api/cli.html#run"><span class="std std-ref">run</span></a> a model, but these commands can also be issued individually if need be:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go tutorial-6 -y
+</pre></div>
+</div>
+<p>If everything worked, you should see the controller analog stick and button states among the output in your terminal in the following format:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>X: ...
+Y: ...
+Buttons: ...
+
+X: ...
+Y: ...
+Buttons: ...
+
+...
+</pre></div>
+</div>
+<p>Now we will be utilizing pygame to display the joystick data in a graphical window outside of the terminal.</p>
+</section>
+<section id="specify-pygame-module-in-the-model">
+<h3>Specify pygame module in the model<a class="headerlink" href="#specify-pygame-module-in-the-model" title="Permalink to this heading"></a></h3>
+<p>Open <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/tutorial-6.yaml</span></code> and add this under modules:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">pygame_display</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">  </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">parser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">            </span><span class="c1"># most &quot;user code&quot; will live here for a sink</span><span class="w"></span>
+<span class="w">  </span><span class="nt">destructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_axis</span><span class="w"></span>
+<span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">viz</span><span class="w"></span>
+<span class="w">    </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vis_pygame</span><span class="w">    </span><span class="c1"># sink type for pygame</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Here we are specifying a module that will generate a visual pygame output.</p>
+</section>
+<section id="generate-pygame-modules">
+<h3>Generate pygame modules<a class="headerlink" href="#generate-pygame-modules" title="Permalink to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate tutorial-6 -y
+</pre></div>
+</div>
+<p>This should generate a few new files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_parser.py</span></code>, <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_destructor.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_constructor.py</span></code>.</p>
+</section>
+<section id="write-pygame-modules">
+<h3>Write pygame modules<a class="headerlink" href="#write-pygame-modules" title="Permalink to this heading"></a></h3>
+<p>Open the constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_constructor.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">pygame</span>
+
+<span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+
+
+<span class="k">class</span> <span class="nc">Circle</span><span class="p">(</span><span class="n">pygame</span><span class="o">.</span><span class="n">sprite</span><span class="o">.</span><span class="n">Sprite</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">color</span><span class="p">,</span> <span class="n">radius</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+        <span class="n">pygame</span><span class="o">.</span><span class="n">sprite</span><span class="o">.</span><span class="n">Sprite</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">=</span> <span class="n">radius</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">color</span> <span class="o">=</span> <span class="n">color</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">Surface</span><span class="p">([</span><span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">])</span><span class="o">.</span><span class="n">convert_alpha</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_rect</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">pos</span>
+
+    <span class="k">def</span> <span class="nf">set_color</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">color</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">color</span> <span class="o">=</span> <span class="n">color</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">get_pos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">set_pos</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">pos</span>
+
+    <span class="k">def</span> <span class="nf">set_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">radius</span><span class="p">):</span>
+        <span class="n">cur_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">=</span> <span class="n">radius</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">Surface</span><span class="p">(</span>
+            <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">]</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">convert_alpha</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_rect</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">cur_pos</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">draw</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">fill</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+        <span class="n">pygame</span><span class="o">.</span><span class="n">draw</span><span class="o">.</span><span class="n">circle</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">color</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">radius</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span>
+        <span class="p">)</span>
+
+
+<span class="n">black</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="n">screen_width</span> <span class="o">=</span> <span class="mi">1280</span>
+<span class="n">screen_height</span> <span class="o">=</span> <span class="mi">1024</span>
+<span class="n">screen</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">set_mode</span><span class="p">((</span><span class="n">screen_width</span><span class="p">,</span> <span class="n">screen_height</span><span class="p">))</span>
+<span class="n">screen</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">black</span><span class="p">)</span>
+
+<span class="c1"># used in both pygame_demo and cursor_track</span>
+<span class="n">color</span> <span class="o">=</span> <span class="p">[</span><span class="mi">200</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">pos</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">circle_size</span> <span class="o">=</span> <span class="mi">30</span>
+
+<span class="c1"># these variables only used for pygame demo</span>
+<span class="n">r</span> <span class="o">=</span> <span class="mi">200</span>
+<span class="n">theta</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">offset</span> <span class="o">=</span> <span class="p">[</span><span class="mi">500</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+
+<span class="n">vel_scale</span> <span class="o">=</span> <span class="mi">10</span>
+
+<span class="n">cir1</span> <span class="o">=</span> <span class="n">Circle</span><span class="p">(</span><span class="n">color</span><span class="p">,</span> <span class="n">circle_size</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+
+<span class="n">sprites</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">sprite</span><span class="o">.</span><span class="n">Group</span><span class="p">(</span><span class="n">cir1</span><span class="p">)</span>
+
+<span class="n">refresh_rate</span> <span class="o">=</span> <span class="mi">2</span>  <span class="c1"># ticks (10 ms)</span>
+</pre></div>
+</div>
+<p>The constructor defines the circle we will be using as the cursor and initializes it in the pygame display.</p>
+<p>Then open the parser (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_parser.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">pygame</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">peek</span><span class="p">(</span><span class="n">eventtype</span><span class="o">=</span><span class="n">pygame</span><span class="o">.</span><span class="n">QUIT</span><span class="p">):</span>
+    <span class="n">pygame</span><span class="o">.</span><span class="n">quit</span><span class="p">()</span>
+    <span class="n">handle_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="c1"># update cursor position every tick</span>
+<span class="n">vel</span> <span class="o">=</span> <span class="p">(</span><span class="n">joystick_axis</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">vel_scale</span><span class="p">,</span> <span class="n">joystick_axis</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">vel_scale</span><span class="p">)</span>
+<span class="n">pos</span> <span class="o">=</span> <span class="p">[</span><span class="n">pos</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">vel</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">pos</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">vel</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+
+<span class="c1"># push cursor position to screen every refresh_rate</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">pNumTicks</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">%</span> <span class="n">refresh_rate</span><span class="p">:</span>
+    <span class="n">pos</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">pos</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="n">screen_width</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">circle_size</span><span class="p">)</span>
+    <span class="n">pos</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">pos</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="n">screen_height</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">circle_size</span><span class="p">)</span>
+    <span class="n">cir1</span><span class="o">.</span><span class="n">set_pos</span><span class="p">(</span><span class="n">pos</span><span class="p">)</span>
+
+<span class="n">screen</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">black</span><span class="p">)</span>
+<span class="n">sprites</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">screen</span><span class="p">)</span>
+<span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">flip</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Finally, open the destructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_destructor.py</span></code>) and add the single line:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">pygame</span><span class="o">.</span><span class="n">quit</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+<section id="id1">
+<h3>Run LiCoRICE<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h3>
+<p>Now, run LiCoRICE again:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go tutorial-6 -y
+</pre></div>
+</div>
+<p>And you should see the same output in the terminal as before, but now you should also see a window in which a circle cursor moves with your movement of the joystick</p>
+</section>
 </section>
 <section id="jitter-demo">
 <h2>7: Jitter demo<a class="headerlink" href="#jitter-demo" title="Permalink to this heading"></a></h2>
