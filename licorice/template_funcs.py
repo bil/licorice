@@ -139,7 +139,7 @@ def generate(paths, config, confirmed):
         modules["bufferer"] = bufferer
 
     for module_name, module_args in iter(modules.items()):
-        if module_args.get("in"):
+        if isinstance(module_args.get("in"), dict):
             # source
             print(" - " + module_name + " (source)")
 
@@ -203,7 +203,7 @@ def generate(paths, config, confirmed):
                         output_path,
                     )
 
-        elif module_args.get("out"):
+        elif isinstance(module_args.get("out"), dict):
             # sink
             print(" - " + module_name + " (sink)")
 
