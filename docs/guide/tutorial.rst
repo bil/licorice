@@ -28,15 +28,30 @@ Ensure you have a controller or joystick:
 
     Any USB controller should work, but the one we used when making this tutorial is the `Logitech F310 Wired Gamepad Controller <https://www.amazon.com/dp/B003VAHYQY>`_ with the toggle set to XInput mode (X) on the back.
 
-Install Pygame in your virtualenv where LiCoRICE is installed:
+Install dependencies for running a GUI and install Pygame in your virtualenv where LiCoRICE is installed:
 
 .. code-block:: bash
 
+    sudo apt-get install -y xinit openbox lxterminal
     pip install pygame
 
+Then, create a file ``~/.xinitrc`` with the following contents:
+
+.. code-block::
+
+    openbox &
+    lxterminal --geometry=1000x1000
+
+This will allow us to use a GUI from Ubuntu server by running the ``startx`` command.
+
+
+Read and print joystick input
+-------------------------------------------------------------------------------
+
+We'll start out by simply reading in the input from our controller analog stick and printing it to the console.
 
 Specify the model
--------------------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Create the model file:
 
@@ -91,7 +106,7 @@ Be sure to specify ``joystick_buttons`` to match your joystick's specific inputs
 
 
 Generate joystick modules
--------------------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -101,7 +116,7 @@ This should generate a few files: ``$LICORICE_WORKING_PATH/joystick_print.py``, 
 
 
 Write joystick modules
--------------------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Open the constructor (``$LICORICE_WORKING_PATH/joystick_out_constructor.py``) and add the following:
 
@@ -152,7 +167,7 @@ Similar to the quickstart walkthrough, we print both our joystick position and a
 
 
 Run LiCoRICE
--------------------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In general, only one command (``go``) needs to be issued to :ref:`parse <api/cli:Parse>`, :ref:`compile <api/cli:Compile>`, and :ref:`run <api/cli:Run>` a model, but these commands can also be issued individually if need be:
 
@@ -174,11 +189,14 @@ If everything worked, you should see the controller analog stick and button stat
 
     ...
 
+Visualize the input
+-------------------------------------------------------------------------------
+
 Now we will be utilizing pygame to display the joystick data in a graphical window outside of the terminal.
 
 
 Specify pygame module in the model
--------------------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Open ``$LICORICE_WORKING_PATH/tutorial-6.yaml`` and add this under modules:
 
@@ -197,11 +215,11 @@ Open ``$LICORICE_WORKING_PATH/tutorial-6.yaml`` and add this under modules:
         type: vis_pygame    # sink type for pygame
 
 
-Here we are specifying a module that will generate a visual pygame output.
+Here we are specifying a module that will generate a visual pygame output. You may also go ahead and remove the ``num_ticks`` line so that the model runs indefinitely.
 
 
 Generate pygame modules
--------------------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -211,7 +229,8 @@ This should generate a few new files: ``$LICORICE_WORKING_PATH/pygame_display_pa
 
 
 Write pygame modules
--------------------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Open the constructor (``$LICORICE_WORKING_PATH/pygame_display_constructor.py``) and add the following:
 
 .. code-block:: python
@@ -316,15 +335,444 @@ Finally, open the destructor (``$LICORICE_WORKING_PATH/pygame_display_destructor
     pygame.quit()
 
 Run LiCoRICE
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Now, run LiCoRICE again, but this time from within an X server:
+
+.. code-block:: bash
+
+    startx
+    # make sure to activate your virtualenv again and set any necessary environment variables
+    licorice go tutorial-6 -y
+
+And you should see the same output in the terminal as before, but now you should also see a window in which a circle cursor moves with your movement of the joystick
+
+
+Add pinball logic
 -------------------------------------------------------------------------------
 
-Now, run LiCoRICE again:
+Now we will begin using our cursor functionality to build a game commonly used in computational neuroscience experiements also known as the pinball task.
+
+
+Modify module specifications in the model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Open ``$LICORICE_WORKING_PATH/tutorial-6.yaml`` and change our pygame_display module definition to:
+
+.. code-block:: yaml
+
+    pygame_display:
+      language: python
+      constructor: true
+      parser: true
+      destructor: true
+      in:
+        - pos_cursor
+        - pos_target
+        - size_cursor
+        - size_target
+        - color_cursor
+        - color_target
+      out:
+        name: viz
+        args:
+          type: vis_pygame    # sink type for pygame
+
+Also change our joystick_out module specification to:
+
+.. code-block:: yaml
+
+    language: python
+    constructor: True # the constructor and parser perform all the USB manipulation through pygame
+    parser: True
+    in:
+      name: jdev
+      async: True
+      args:
+        type: usb_input
+      schema:
+        max_packets_per_tick: 2
+        data:
+          dtype: float
+          size: 8
+    out:
+      - joystick_axis
+      - joystick_buttons
+
+Now add a pinball_task module specification as such:
+
+.. code-block:: yaml
+
+    pinball_task:
+      language: python
+      constructor: true
+      in:
+        - joystick_axis
+        - joystick_buttons
+      out:
+        - pos_cursor
+        - pos_target
+        - size_target
+        - size_cursor
+        - color_cursor
+        - color_target
+        - state_task
+
+Finally make sure to add all our new signals:
+
+.. code-block:: yaml
+
+  pos_cursor:
+    shape: 2
+    dtype: double
+    log: true
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+
+  pos_target:
+    shape: 2
+    dtype: double
+    log: true
+    log_storage:
+      type: vector
+      suffixes:
+        - x
+        - y
+
+  size_cursor:
+    shape: 1
+    dtype: uint16
+
+  size_target:
+    shape: 1
+    dtype: uint16
+
+  color_cursor:
+    shape: 3
+    dtype: uint8
+
+  color_target:
+    shape: 3
+    dtype: uint8
+
+  state_task:
+    shape: 1
+    dtype: int8
+    log: true
+
+
+Regenerate our modified modules
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+    licorice generate tutorial-6 -y
+
+This should generate two new files: ``$LICORICE_WORKING_PATH/pinball_task.py`` and ``$LICORICE_WORKING_PATH/pinball_task_constructor.py``.
+However, we will have to modify some of our old files as well.
+
+
+Write pygame modules
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Open the pygame display constructor (``$LICORICE_WORKING_PATH/pygame_display_constructor.py``) and change it to the following:
+
+.. code-block:: python
+
+    import math
+    import pygame
+
+    pygame.display.init()
+
+
+    class Circle(pygame.sprite.Sprite):
+        def __init__(self, color, radius, pos):
+            pygame.sprite.Sprite.__init__(self)
+            self.radius = radius
+            self.color = color
+
+            self.image = pygame.Surface((radius * 2, radius * 2)).convert_alpha()
+            self.draw()
+
+            self.rect = self.image.get_rect()
+            self.rect.x, self.rect.y = pos
+
+        def set_color(self, color):
+            self.color = color
+            self.draw()
+
+        def get_pos(self):
+            return (self.rect.x, self.rect.y)
+
+        def set_pos(self, pos):
+            self.rect.x, self.rect.y = pos
+
+        def set_size(self, radius):
+            cur_pos = self.rect.x, self.rect.y
+            self.radius = radius
+            self.image = pygame.Surface(
+                (self.radius * 2, self.radius * 2)
+            ).convert_alpha()
+            self.rect = self.image.get_rect()
+            self.rect.x, self.rect.y = cur_pos
+            self.draw()
+
+        def draw(self):
+            self.image.fill((0, 0, 0, 0))
+            pygame.draw.circle(
+                self.image, self.color, (self.radius, self.radius), self.radius
+            )
+
+
+    black = (0, 0, 0)
+    screen_width = 1280
+    screen_height = 1024
+    screen = pygame.display.set_mode((screen_width, screen_height))
+    screen.fill(black)
+
+    refresh_rate = 2  # ticks (10 ms)
+
+    sprite_cursor = Circle(color_cursor, size_cursor or 1, pos_cursor)
+    sprite_target = Circle(color_target, size_target or 1, pos_target)
+
+    sprites = pygame.sprite.Group([sprite_cursor, sprite_target])
+
+Then open the pygame parser (``$LICORICE_WORKING_PATH/pygame_display_parser.py``) and change it to the following:
+
+.. code-block:: python
+
+    if pygame.event.peek(eventtype=pygame.QUIT):
+        pygame.quit()
+        handle_exit(0)
+
+    if pNumTicks[0] == 0:
+        # need to set size & color again on first tick because they were empty when the constructor ran
+
+        sprite_cursor.set_size(size_cursor[0])
+        sprite_target.set_size(size_target[0])
+
+        sprite_cursor.set_color(color_cursor)
+        sprite_target.set_color(color_target)
+
+    if not pNumTicks[0] % refresh_rate:
+
+        sprite_cursor.set_pos(pos_cursor)
+        sprite_target.set_pos(pos_target)
+
+        sprite_cursor.set_color(color_cursor)
+        sprite_target.set_color(color_target)
+
+        screen.fill(black)
+        sprites.draw(screen)
+        pygame.display.flip()
+
+
+Now open the pygame display destructor (``$LICORICE_WORKING_PATH/pygame_display_destructor.py``) and make sure it has:
+
+.. code-block:: python
+
+    pygame.quit()
+
+Next, open the pinball task constructor (``$LICORICE_WORKING_PATH/pinball_task_constructor.py``) and add the following:
+
+.. code-block:: python
+
+    # constants
+
+    task_states = {
+        "begin": 1,
+        "active": 2,
+        "hold": 3,
+        "success": 4,
+        "fail": 5,
+        "end": 6,
+    }
+
+    black = [0, 0, 0]
+    green = [0, 255, 0]
+    red = [255, 0, 0]
+    blue = [0, 0, 255]
+    white = [255, 255, 255]
+    light_blue = [150, 200, 255]
+
+    # internals
+
+    task_state = 1
+    counter_hold = 0
+    counter_begin = 0
+    counter_success = 0
+    counter_fail = 0
+    counter_end = 0
+    counter_duration = 0
+
+    pos_cursor_i = [100, 100]
+    pos_target_i = [50, 50]
+    size_cursor_i = int(20)
+    size_target_i = int(50)
+    color_cursor_i = white
+    color_target_i = green
+
+    screen_width = 1280
+    screen_height = 1024
+
+
+    def is_cursor_on_target(cursor, target, window):
+        return ((cursor[0] - target[0]) ** 2 + (cursor[1] - target[1]) ** 2) ** (
+            0.5
+        ) <= window
+
+
+    def gen_new_target():
+
+        width_max = screen_width - 2 * size_target_i
+        height_max = screen_height - 2 * size_target_i
+
+        return [
+            int(np.random.rand() * width_max),
+            int(np.random.rand() * height_max),
+        ]
+
+
+    # params
+
+    time_hold = 50
+    time_duration = 400
+
+    time_success = 50
+    time_fail = 100
+    time_begin = 5
+    time_end = 10
+
+    acceptance_window = 100
+
+    cursor_vel_scale = 10
+
+This should initalize all the variables for our pinball tasks.
+
+Finally, open the pinball task parser(``$LICORICE_WORKING_PATH/pinball_task.py``) and add the following:
+
+.. code-block:: python
+
+    # update cursor
+    vel = (
+        joystick_axis[0] * cursor_vel_scale,
+        joystick_axis[1] * cursor_vel_scale,
+    )
+    pos_cursor_i = [pos_cursor_i[0] + vel[0], pos_cursor_i[1] + vel[1]]
+    pos_cursor_i[0] = np.clip(pos_cursor_i[0], 0, screen_width - 2 * size_cursor_i)
+    pos_cursor_i[1] = np.clip(
+        pos_cursor_i[1], 0, screen_height - 2 * size_cursor_i
+    )
+    cursor_on_target = False
+
+    # update task state
+    if task_state == task_states["begin"]:
+
+        counter_begin += 1
+
+        if counter_begin >= time_begin:
+            task_state = task_states["active"]
+            counter_begin = 0
+            pos_target_i = gen_new_target()
+            color_target_i = green
+
+
+    elif task_state == task_states["active"]:
+        cursor_on_target = is_cursor_on_target(
+            pos_cursor_i, pos_target_i, acceptance_window
+        )
+
+        if cursor_on_target:
+
+            task_state = task_states["hold"]
+            counter_hold += 1
+            color_target_i = light_blue
+
+        else:
+
+            counter_duration += 1
+
+            if counter_duration >= time_duration:
+                task_state = task_states["fail"]
+                counter_duration = 0
+                color_target_i = red
+
+    elif task_state == task_states["hold"]:
+
+        cursor_on_target = is_cursor_on_target(
+            pos_cursor_i, pos_target_i, acceptance_window
+        )
+
+        if not cursor_on_target:
+            task_state = task_states["active"]
+            counter_hold = 0
+            color_target_i = green
+
+        else:
+
+            counter_hold += 1
+
+            if counter_hold >= time_hold:
+                task_state = task_states["success"]
+                counter_hold = 0
+
+    elif task_state == task_states["success"]:
+
+        counter_success += 1
+
+        if counter_success >= time_success:
+
+            task_state = task_states["end"]
+            counter_end += 1
+
+    elif task_state == task_states["fail"]:
+
+        counter_fail += 1
+
+        if counter_fail >= time_fail:
+            task_state = task_states["end"]
+            counter_fail = 0
+
+    elif task_state == task_states["end"]:
+
+        counter_hold = 0
+        counter_begin = 0
+        counter_success = 0
+        counter_fail = 0
+        counter_duration = 0
+
+        counter_end += 1
+
+        if counter_end >= time_end:
+            task_state = task_states["begin"]
+            counter_end = 0
+
+
+    # write output signals
+    pos_cursor[:] = pos_cursor_i
+    pos_target[:] = pos_target_i
+    size_cursor[:] = size_cursor_i
+    size_target[:] = size_target_i
+    color_cursor[:] = color_cursor_i
+    color_target[:] = color_target_i
+    state_task[:] = task_state
+
+This entails all the logic required for controlling the states of the game.
+
+
+Run LiCoRICE
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Now, run LiCoRICE again from within your X server:
 
 .. code-block:: bash
 
     licorice go tutorial-6 -y
 
-And you should see the same output in the terminal as before, but now you should also see a window in which a circle cursor moves with your movement of the joystick
+And you should see the same output in the terminal as before, but now our pygame window should now be running the pinball game.
 
 7: Jitter demo
 ===============================================================================

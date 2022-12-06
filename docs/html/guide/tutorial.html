@@ -49,14 +49,9 @@
 <li class="toctree-l3"><a class="reference internal" href="#prerequisites">0-5: Prerequisites</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#user-input-via-joystick">6: User Input via Joystick</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#setup">Setup</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#specify-the-model">Specify the model</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#generate-joystick-modules">Generate joystick modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#write-joystick-modules">Write joystick modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#run-licorice">Run LiCoRICE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#specify-pygame-module-in-the-model">Specify pygame module in the model</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#generate-pygame-modules">Generate pygame modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#write-pygame-modules">Write pygame modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#id1">Run LiCoRICE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#read-and-print-joystick-input">Read and print joystick input</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#visualize-the-input">Visualize the input</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#add-pinball-logic">Add pinball logic</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#jitter-demo">7: Jitter demo</a></li>
@@ -118,13 +113,23 @@
 <blockquote>
 <div><p>Any USB controller should work, but the one we used when making this tutorial is the <a class="reference external" href="https://www.amazon.com/dp/B003VAHYQY">Logitech F310 Wired Gamepad Controller</a> with the toggle set to XInput mode (X) on the back.</p>
 </div></blockquote>
-<p>Install Pygame in your virtualenv where LiCoRICE is installed:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip install pygame
+<p>Install dependencies for running a GUI and install Pygame in your virtualenv where LiCoRICE is installed:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo apt-get install -y xinit openbox lxterminal
+pip install pygame
 </pre></div>
 </div>
+<p>Then, create a file <code class="docutils literal notranslate"><span class="pre">~/.xinitrc</span></code> with the following contents:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">openbox</span> <span class="o">&amp;</span>
+<span class="n">lxterminal</span> <span class="o">--</span><span class="n">geometry</span><span class="o">=</span><span class="mi">1000</span><span class="n">x1000</span>
+</pre></div>
+</div>
+<p>This will allow us to use a GUI from Ubuntu server by running the <code class="docutils literal notranslate"><span class="pre">startx</span></code> command.</p>
 </section>
+<section id="read-and-print-joystick-input">
+<h3>Read and print joystick input<a class="headerlink" href="#read-and-print-joystick-input" title="Permalink to this heading"></a></h3>
+<p>We’ll start out by simply reading in the input from our controller analog stick and printing it to the console.</p>
 <section id="specify-the-model">
-<h3>Specify the model<a class="headerlink" href="#specify-the-model" title="Permalink to this heading"></a></h3>
+<h4>Specify the model<a class="headerlink" href="#specify-the-model" title="Permalink to this heading"></a></h4>
 <p>Create the model file:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>touch <span class="nv">$LICORICE_WORKING_PATH</span>/tutorial-6.yaml
 </pre></div>
@@ -172,14 +177,14 @@ It also specifies two signals, which track the joystick’s current axis and the
 <p>Be sure to specify <code class="docutils literal notranslate"><span class="pre">joystick_buttons</span></code> to match your joystick’s specific inputs if you are using a non-Logitech F310 controller.</p>
 </section>
 <section id="generate-joystick-modules">
-<h3>Generate joystick modules<a class="headerlink" href="#generate-joystick-modules" title="Permalink to this heading"></a></h3>
+<h4>Generate joystick modules<a class="headerlink" href="#generate-joystick-modules" title="Permalink to this heading"></a></h4>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate tutorial-6 -y
 </pre></div>
 </div>
 <p>This should generate a few files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_print.py</span></code>, <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_out_parser.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_out_constructor.py</span></code>.</p>
 </section>
 <section id="write-joystick-modules">
-<h3>Write joystick modules<a class="headerlink" href="#write-joystick-modules" title="Permalink to this heading"></a></h3>
+<h4>Write joystick modules<a class="headerlink" href="#write-joystick-modules" title="Permalink to this heading"></a></h4>
 <p>Open the constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_out_constructor.py</span></code>) and add the following:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pygame</span>
 
@@ -217,7 +222,7 @@ It also specifies two signals, which track the joystick’s current axis and the
 <p>Similar to the quickstart walkthrough, we print both our joystick position and any button presses.</p>
 </section>
 <section id="run-licorice">
-<h3>Run LiCoRICE<a class="headerlink" href="#run-licorice" title="Permalink to this heading"></a></h3>
+<h4>Run LiCoRICE<a class="headerlink" href="#run-licorice" title="Permalink to this heading"></a></h4>
 <p>In general, only one command (<code class="docutils literal notranslate"><span class="pre">go</span></code>) needs to be issued to <a class="reference internal" href="../api/cli.html#parse"><span class="std std-ref">parse</span></a>, <a class="reference internal" href="../api/cli.html#compile"><span class="std std-ref">compile</span></a>, and <a class="reference internal" href="../api/cli.html#run"><span class="std std-ref">run</span></a> a model, but these commands can also be issued individually if need be:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go tutorial-6 -y
 </pre></div>
@@ -234,10 +239,13 @@ Buttons: ...
 ...
 </pre></div>
 </div>
-<p>Now we will be utilizing pygame to display the joystick data in a graphical window outside of the terminal.</p>
 </section>
+</section>
+<section id="visualize-the-input">
+<h3>Visualize the input<a class="headerlink" href="#visualize-the-input" title="Permalink to this heading"></a></h3>
+<p>Now we will be utilizing pygame to display the joystick data in a graphical window outside of the terminal.</p>
 <section id="specify-pygame-module-in-the-model">
-<h3>Specify pygame module in the model<a class="headerlink" href="#specify-pygame-module-in-the-model" title="Permalink to this heading"></a></h3>
+<h4>Specify pygame module in the model<a class="headerlink" href="#specify-pygame-module-in-the-model" title="Permalink to this heading"></a></h4>
 <p>Open <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/tutorial-6.yaml</span></code> and add this under modules:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">pygame_display</span><span class="p">:</span><span class="w"></span>
 <span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
@@ -252,17 +260,17 @@ Buttons: ...
 <span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vis_pygame</span><span class="w">    </span><span class="c1"># sink type for pygame</span><span class="w"></span>
 </pre></div>
 </div>
-<p>Here we are specifying a module that will generate a visual pygame output.</p>
+<p>Here we are specifying a module that will generate a visual pygame output. You may also go ahead and remove the <code class="docutils literal notranslate"><span class="pre">num_ticks</span></code> line so that the model runs indefinitely.</p>
 </section>
 <section id="generate-pygame-modules">
-<h3>Generate pygame modules<a class="headerlink" href="#generate-pygame-modules" title="Permalink to this heading"></a></h3>
+<h4>Generate pygame modules<a class="headerlink" href="#generate-pygame-modules" title="Permalink to this heading"></a></h4>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate tutorial-6 -y
 </pre></div>
 </div>
 <p>This should generate a few new files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_parser.py</span></code>, <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_destructor.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_constructor.py</span></code>.</p>
 </section>
 <section id="write-pygame-modules">
-<h3>Write pygame modules<a class="headerlink" href="#write-pygame-modules" title="Permalink to this heading"></a></h3>
+<h4>Write pygame modules<a class="headerlink" href="#write-pygame-modules" title="Permalink to this heading"></a></h4>
 <p>Open the constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_constructor.py</span></code>) and add the following:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">math</span>
 <span class="kn">import</span> <span class="nn">pygame</span>
@@ -361,12 +369,410 @@ Buttons: ...
 </div>
 </section>
 <section id="id1">
-<h3>Run LiCoRICE<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h3>
-<p>Now, run LiCoRICE again:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go tutorial-6 -y
+<h4>Run LiCoRICE<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h4>
+<p>Now, run LiCoRICE again, but this time from within an X server:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>startx
+<span class="c1"># make sure to activate your virtualenv again and set any necessary environment variables</span>
+licorice go tutorial-6 -y
 </pre></div>
 </div>
 <p>And you should see the same output in the terminal as before, but now you should also see a window in which a circle cursor moves with your movement of the joystick</p>
+</section>
+</section>
+<section id="add-pinball-logic">
+<h3>Add pinball logic<a class="headerlink" href="#add-pinball-logic" title="Permalink to this heading"></a></h3>
+<p>Now we will begin using our cursor functionality to build a game commonly used in computational neuroscience experiements also known as the pinball task.</p>
+<section id="modify-module-specifications-in-the-model">
+<h4>Modify module specifications in the model<a class="headerlink" href="#modify-module-specifications-in-the-model" title="Permalink to this heading"></a></h4>
+<p>Open <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/tutorial-6.yaml</span></code> and change our pygame_display module definition to:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">pygame_display</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">  </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">parser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">destructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pos_cursor</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pos_target</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">size_cursor</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">size_target</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">color_cursor</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">color_target</span><span class="w"></span>
+<span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">viz</span><span class="w"></span>
+<span class="w">    </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vis_pygame</span><span class="w">    </span><span class="c1"># sink type for pygame</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Also change our joystick_out module specification to:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"> </span><span class="c1"># the constructor and parser perform all the USB manipulation through pygame</span><span class="w"></span>
+<span class="nt">parser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
+<span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jdev</span><span class="w"></span>
+<span class="w">  </span><span class="nt">async</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
+<span class="w">  </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">usb_input</span><span class="w"></span>
+<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">max_packets_per_tick</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w"></span>
+<span class="w">    </span><span class="nt">data</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">float</span><span class="w"></span>
+<span class="w">      </span><span class="nt">size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8</span><span class="w"></span>
+<span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_axis</span><span class="w"></span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_buttons</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Now add a pinball_task module specification as such:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">pinball_task</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">  </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_axis</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_buttons</span><span class="w"></span>
+<span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pos_cursor</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pos_target</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">size_target</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">size_cursor</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">color_cursor</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">color_target</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">state_task</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Finally make sure to add all our new signals:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">pos_cursor</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">double</span><span class="w"></span>
+<span class="w">  </span><span class="nt">log</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">log_storage</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vector</span><span class="w"></span>
+<span class="w">    </span><span class="nt">suffixes</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">x</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">y</span><span class="w"></span>
+
+<span class="nt">pos_target</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">double</span><span class="w"></span>
+<span class="w">  </span><span class="nt">log</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+<span class="w">  </span><span class="nt">log_storage</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vector</span><span class="w"></span>
+<span class="w">    </span><span class="nt">suffixes</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">x</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">y</span><span class="w"></span>
+
+<span class="nt">size_cursor</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint16</span><span class="w"></span>
+
+<span class="nt">size_target</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint16</span><span class="w"></span>
+
+<span class="nt">color_cursor</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+
+<span class="nt">color_target</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+
+<span class="nt">state_task</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"></span>
+<span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">int8</span><span class="w"></span>
+<span class="w">  </span><span class="nt">log</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="regenerate-our-modified-modules">
+<h4>Regenerate our modified modules<a class="headerlink" href="#regenerate-our-modified-modules" title="Permalink to this heading"></a></h4>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate tutorial-6 -y
+</pre></div>
+</div>
+<p>This should generate two new files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pinball_task.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pinball_task_constructor.py</span></code>.
+However, we will have to modify some of our old files as well.</p>
+</section>
+<section id="id2">
+<h4>Write pygame modules<a class="headerlink" href="#id2" title="Permalink to this heading"></a></h4>
+<p>Open the pygame display constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_constructor.py</span></code>) and change it to the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">pygame</span>
+
+<span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+
+
+<span class="k">class</span> <span class="nc">Circle</span><span class="p">(</span><span class="n">pygame</span><span class="o">.</span><span class="n">sprite</span><span class="o">.</span><span class="n">Sprite</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">color</span><span class="p">,</span> <span class="n">radius</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+        <span class="n">pygame</span><span class="o">.</span><span class="n">sprite</span><span class="o">.</span><span class="n">Sprite</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">=</span> <span class="n">radius</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">color</span> <span class="o">=</span> <span class="n">color</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">Surface</span><span class="p">((</span><span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">convert_alpha</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_rect</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">pos</span>
+
+    <span class="k">def</span> <span class="nf">set_color</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">color</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">color</span> <span class="o">=</span> <span class="n">color</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">get_pos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">set_pos</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">pos</span>
+
+    <span class="k">def</span> <span class="nf">set_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">radius</span><span class="p">):</span>
+        <span class="n">cur_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">=</span> <span class="n">radius</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">Surface</span><span class="p">(</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">convert_alpha</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_rect</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rect</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">cur_pos</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">draw</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">fill</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+        <span class="n">pygame</span><span class="o">.</span><span class="n">draw</span><span class="o">.</span><span class="n">circle</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">image</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">color</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">radius</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span>
+        <span class="p">)</span>
+
+
+<span class="n">black</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="n">screen_width</span> <span class="o">=</span> <span class="mi">1280</span>
+<span class="n">screen_height</span> <span class="o">=</span> <span class="mi">1024</span>
+<span class="n">screen</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">set_mode</span><span class="p">((</span><span class="n">screen_width</span><span class="p">,</span> <span class="n">screen_height</span><span class="p">))</span>
+<span class="n">screen</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">black</span><span class="p">)</span>
+
+<span class="n">refresh_rate</span> <span class="o">=</span> <span class="mi">2</span>  <span class="c1"># ticks (10 ms)</span>
+
+<span class="n">sprite_cursor</span> <span class="o">=</span> <span class="n">Circle</span><span class="p">(</span><span class="n">color_cursor</span><span class="p">,</span> <span class="n">size_cursor</span> <span class="ow">or</span> <span class="mi">1</span><span class="p">,</span> <span class="n">pos_cursor</span><span class="p">)</span>
+<span class="n">sprite_target</span> <span class="o">=</span> <span class="n">Circle</span><span class="p">(</span><span class="n">color_target</span><span class="p">,</span> <span class="n">size_target</span> <span class="ow">or</span> <span class="mi">1</span><span class="p">,</span> <span class="n">pos_target</span><span class="p">)</span>
+
+<span class="n">sprites</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">sprite</span><span class="o">.</span><span class="n">Group</span><span class="p">([</span><span class="n">sprite_cursor</span><span class="p">,</span> <span class="n">sprite_target</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>Then open the pygame parser (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_parser.py</span></code>) and change it to the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">pygame</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">peek</span><span class="p">(</span><span class="n">eventtype</span><span class="o">=</span><span class="n">pygame</span><span class="o">.</span><span class="n">QUIT</span><span class="p">):</span>
+    <span class="n">pygame</span><span class="o">.</span><span class="n">quit</span><span class="p">()</span>
+    <span class="n">handle_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">pNumTicks</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="c1"># need to set size &amp; color again on first tick because they were empty when the constructor ran</span>
+
+    <span class="n">sprite_cursor</span><span class="o">.</span><span class="n">set_size</span><span class="p">(</span><span class="n">size_cursor</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">sprite_target</span><span class="o">.</span><span class="n">set_size</span><span class="p">(</span><span class="n">size_target</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="n">sprite_cursor</span><span class="o">.</span><span class="n">set_color</span><span class="p">(</span><span class="n">color_cursor</span><span class="p">)</span>
+    <span class="n">sprite_target</span><span class="o">.</span><span class="n">set_color</span><span class="p">(</span><span class="n">color_target</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="ow">not</span> <span class="n">pNumTicks</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">%</span> <span class="n">refresh_rate</span><span class="p">:</span>
+
+    <span class="n">sprite_cursor</span><span class="o">.</span><span class="n">set_pos</span><span class="p">(</span><span class="n">pos_cursor</span><span class="p">)</span>
+    <span class="n">sprite_target</span><span class="o">.</span><span class="n">set_pos</span><span class="p">(</span><span class="n">pos_target</span><span class="p">)</span>
+
+    <span class="n">sprite_cursor</span><span class="o">.</span><span class="n">set_color</span><span class="p">(</span><span class="n">color_cursor</span><span class="p">)</span>
+    <span class="n">sprite_target</span><span class="o">.</span><span class="n">set_color</span><span class="p">(</span><span class="n">color_target</span><span class="p">)</span>
+
+    <span class="n">screen</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">black</span><span class="p">)</span>
+    <span class="n">sprites</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">screen</span><span class="p">)</span>
+    <span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">flip</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Now open the pygame display destructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pygame_display_destructor.py</span></code>) and make sure it has:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">pygame</span><span class="o">.</span><span class="n">quit</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Next, open the pinball task constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pinball_task_constructor.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># constants</span>
+
+<span class="n">task_states</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;begin&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s2">&quot;active&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="s2">&quot;hold&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+    <span class="s2">&quot;fail&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="s2">&quot;end&quot;</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="n">black</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">green</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">red</span> <span class="o">=</span> <span class="p">[</span><span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">blue</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">]</span>
+<span class="n">white</span> <span class="o">=</span> <span class="p">[</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">]</span>
+<span class="n">light_blue</span> <span class="o">=</span> <span class="p">[</span><span class="mi">150</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">255</span><span class="p">]</span>
+
+<span class="c1"># internals</span>
+
+<span class="n">task_state</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">counter_hold</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">counter_begin</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">counter_success</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">counter_fail</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">counter_end</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">counter_duration</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="n">pos_cursor_i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>
+<span class="n">pos_target_i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">50</span><span class="p">]</span>
+<span class="n">size_cursor_i</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">size_target_i</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">50</span><span class="p">)</span>
+<span class="n">color_cursor_i</span> <span class="o">=</span> <span class="n">white</span>
+<span class="n">color_target_i</span> <span class="o">=</span> <span class="n">green</span>
+
+<span class="n">screen_width</span> <span class="o">=</span> <span class="mi">1280</span>
+<span class="n">screen_height</span> <span class="o">=</span> <span class="mi">1024</span>
+
+
+<span class="k">def</span> <span class="nf">is_cursor_on_target</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">window</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">((</span><span class="n">cursor</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">target</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="n">cursor</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">target</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span>
+        <span class="mf">0.5</span>
+    <span class="p">)</span> <span class="o">&lt;=</span> <span class="n">window</span>
+
+
+<span class="k">def</span> <span class="nf">gen_new_target</span><span class="p">():</span>
+
+    <span class="n">width_max</span> <span class="o">=</span> <span class="n">screen_width</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">size_target_i</span>
+    <span class="n">height_max</span> <span class="o">=</span> <span class="n">screen_height</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">size_target_i</span>
+
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="n">width_max</span><span class="p">),</span>
+        <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="n">height_max</span><span class="p">),</span>
+    <span class="p">]</span>
+
+
+<span class="c1"># params</span>
+
+<span class="n">time_hold</span> <span class="o">=</span> <span class="mi">50</span>
+<span class="n">time_duration</span> <span class="o">=</span> <span class="mi">400</span>
+
+<span class="n">time_success</span> <span class="o">=</span> <span class="mi">50</span>
+<span class="n">time_fail</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="n">time_begin</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">time_end</span> <span class="o">=</span> <span class="mi">10</span>
+
+<span class="n">acceptance_window</span> <span class="o">=</span> <span class="mi">100</span>
+
+<span class="n">cursor_vel_scale</span> <span class="o">=</span> <span class="mi">10</span>
+</pre></div>
+</div>
+<p>This should initalize all the variables for our pinball tasks.</p>
+<p>Finally, open the pinball task parser(<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/pinball_task.py</span></code>) and add the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># update cursor</span>
+<span class="n">vel</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">joystick_axis</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">cursor_vel_scale</span><span class="p">,</span>
+    <span class="n">joystick_axis</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">cursor_vel_scale</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">pos_cursor_i</span> <span class="o">=</span> <span class="p">[</span><span class="n">pos_cursor_i</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">vel</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">pos_cursor_i</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">vel</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+<span class="n">pos_cursor_i</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">pos_cursor_i</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="n">screen_width</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">size_cursor_i</span><span class="p">)</span>
+<span class="n">pos_cursor_i</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span>
+    <span class="n">pos_cursor_i</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="n">screen_height</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">size_cursor_i</span>
+<span class="p">)</span>
+<span class="n">cursor_on_target</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="c1"># update task state</span>
+<span class="k">if</span> <span class="n">task_state</span> <span class="o">==</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;begin&quot;</span><span class="p">]:</span>
+
+    <span class="n">counter_begin</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">counter_begin</span> <span class="o">&gt;=</span> <span class="n">time_begin</span><span class="p">:</span>
+        <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;active&quot;</span><span class="p">]</span>
+        <span class="n">counter_begin</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">pos_target_i</span> <span class="o">=</span> <span class="n">gen_new_target</span><span class="p">()</span>
+        <span class="n">color_target_i</span> <span class="o">=</span> <span class="n">green</span>
+
+
+<span class="k">elif</span> <span class="n">task_state</span> <span class="o">==</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;active&quot;</span><span class="p">]:</span>
+    <span class="n">cursor_on_target</span> <span class="o">=</span> <span class="n">is_cursor_on_target</span><span class="p">(</span>
+        <span class="n">pos_cursor_i</span><span class="p">,</span> <span class="n">pos_target_i</span><span class="p">,</span> <span class="n">acceptance_window</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">cursor_on_target</span><span class="p">:</span>
+
+        <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;hold&quot;</span><span class="p">]</span>
+        <span class="n">counter_hold</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">color_target_i</span> <span class="o">=</span> <span class="n">light_blue</span>
+
+    <span class="k">else</span><span class="p">:</span>
+
+        <span class="n">counter_duration</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="n">counter_duration</span> <span class="o">&gt;=</span> <span class="n">time_duration</span><span class="p">:</span>
+            <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;fail&quot;</span><span class="p">]</span>
+            <span class="n">counter_duration</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">color_target_i</span> <span class="o">=</span> <span class="n">red</span>
+
+<span class="k">elif</span> <span class="n">task_state</span> <span class="o">==</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;hold&quot;</span><span class="p">]:</span>
+
+    <span class="n">cursor_on_target</span> <span class="o">=</span> <span class="n">is_cursor_on_target</span><span class="p">(</span>
+        <span class="n">pos_cursor_i</span><span class="p">,</span> <span class="n">pos_target_i</span><span class="p">,</span> <span class="n">acceptance_window</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cursor_on_target</span><span class="p">:</span>
+        <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;active&quot;</span><span class="p">]</span>
+        <span class="n">counter_hold</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">color_target_i</span> <span class="o">=</span> <span class="n">green</span>
+
+    <span class="k">else</span><span class="p">:</span>
+
+        <span class="n">counter_hold</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="n">counter_hold</span> <span class="o">&gt;=</span> <span class="n">time_hold</span><span class="p">:</span>
+            <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span>
+            <span class="n">counter_hold</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="k">elif</span> <span class="n">task_state</span> <span class="o">==</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]:</span>
+
+    <span class="n">counter_success</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">counter_success</span> <span class="o">&gt;=</span> <span class="n">time_success</span><span class="p">:</span>
+
+        <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;end&quot;</span><span class="p">]</span>
+        <span class="n">counter_end</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="k">elif</span> <span class="n">task_state</span> <span class="o">==</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;fail&quot;</span><span class="p">]:</span>
+
+    <span class="n">counter_fail</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">counter_fail</span> <span class="o">&gt;=</span> <span class="n">time_fail</span><span class="p">:</span>
+        <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;end&quot;</span><span class="p">]</span>
+        <span class="n">counter_fail</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="k">elif</span> <span class="n">task_state</span> <span class="o">==</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;end&quot;</span><span class="p">]:</span>
+
+    <span class="n">counter_hold</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">counter_begin</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">counter_success</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">counter_fail</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">counter_duration</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="n">counter_end</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">counter_end</span> <span class="o">&gt;=</span> <span class="n">time_end</span><span class="p">:</span>
+        <span class="n">task_state</span> <span class="o">=</span> <span class="n">task_states</span><span class="p">[</span><span class="s2">&quot;begin&quot;</span><span class="p">]</span>
+        <span class="n">counter_end</span> <span class="o">=</span> <span class="mi">0</span>
+
+
+<span class="c1"># write output signals</span>
+<span class="n">pos_cursor</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">pos_cursor_i</span>
+<span class="n">pos_target</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">pos_target_i</span>
+<span class="n">size_cursor</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">size_cursor_i</span>
+<span class="n">size_target</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">size_target_i</span>
+<span class="n">color_cursor</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">color_cursor_i</span>
+<span class="n">color_target</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">color_target_i</span>
+<span class="n">state_task</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">task_state</span>
+</pre></div>
+</div>
+<p>This entails all the logic required for controlling the states of the game.</p>
+</section>
+<section id="id3">
+<h4>Run LiCoRICE<a class="headerlink" href="#id3" title="Permalink to this heading"></a></h4>
+<p>Now, run LiCoRICE again from within your X server:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go tutorial-6 -y
+</pre></div>
+</div>
+<p>And you should see the same output in the terminal as before, but now our pygame window should now be running the pinball game.</p>
+</section>
 </section>
 </section>
 <section id="jitter-demo">
