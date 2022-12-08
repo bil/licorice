@@ -8,8 +8,6 @@ stages:
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   LICORICE_WORKING_PATH: "$CI_PROJECT_DIR/examples/matrix_multiply"
-  TWINE_USERNAME: "$TEST_PYPI_USERNAME"
-  TWINE_PASSWORD: "$TEST_PYPI_PASSWORD"
 
 cache:
   - key:
