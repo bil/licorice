@@ -101,6 +101,8 @@ def generate(paths, config, confirmed):
     modules_path = paths["modules"][0]
 
     # TODO update generate
+    # TODO keeping this directory around causes an error where old generated
+    # files can be copied over even after they're removed from the model
     # if os.path.exists(modules_path):
     #     if not confirmed:
     #         while True:

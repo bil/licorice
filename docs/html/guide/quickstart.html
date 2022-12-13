@@ -125,14 +125,14 @@
              
   <section id="licorice-quickstart">
 <h1>LiCoRICE Quickstart<a class="headerlink" href="#licorice-quickstart" title="Permalink to this heading"></a></h1>
-<p>Welcome to LiCoRICE! We’re excited to help you bring the principles of realtime computing to your conventional hardware. This guide provides instructions on how to build a simple model from scratch.</p>
+<p>Welcome to LiCoRICE! We’re excited to help you bring the principles of realtime computing to your conventional hardware. This guide provides instructions on how to build a simple model from scratch. We’ll start out with a model that just prints output to our terminal each tick and progressively add more complexity until we’re reading in external outputs, piping them through the realtime system, and writing them back out.</p>
 <section id="prerequisites">
 <h2>0. Prerequisites<a class="headerlink" href="#prerequisites" title="Permalink to this heading"></a></h2>
 <p>This guide assumes that you’re working in a BASH shell on a POSIX-compliant system and have followed the <a class="reference internal" href="../install/licorice.html#installation"><span class="std std-ref">LiCoRICE installation instructions</span></a>.</p>
 </section>
 <section id="simple-hello-world">
 <h2>1. Simple Hello World<a class="headerlink" href="#simple-hello-world" title="Permalink to this heading"></a></h2>
-<p>This first hello world example will create a LiCoRICE model that outputs a message once a second 10 times. We’ll write everything from scratch.</p>
+<p>This first hello world example will create a LiCoRICE model that outputs a message once a second 10 times. This is one of the simplest models we can construct with just one module. We’ll write everything from scratch.</p>
 <section id="create-a-workspace">
 <h3>Create a workspace<a class="headerlink" href="#create-a-workspace" title="Permalink to this heading"></a></h3>
 <p>In this example, we’ll assume you’re using <code class="docutils literal notranslate"><span class="pre">~/licorice</span></code> as your workspace.</p>
@@ -180,7 +180,7 @@ mkdir <span class="nv">$LICORICE_WORKING_PATH</span>
 <span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
 </pre></div>
 </div>
-<p>The constructor will çreate a variable <code class="docutils literal notranslate"><span class="pre">counter</span></code> and set it to <code class="docutils literal notranslate"><span class="pre">0</span></code> before realtime execution starts. Then, each tick, the value of <code class="docutils literal notranslate"><span class="pre">counter</span></code> will be output and incremented. We interpolate a <a class="reference external" href="https://docs.python.org/3/tutorial/inputoutput.html#formatted-string-literals">Python f-string</a> with the counter value and flush stdout so that the output appears in our terminal immediately.</p>
+<p>The constructor will create a variable <code class="docutils literal notranslate"><span class="pre">counter</span></code> and set it to <code class="docutils literal notranslate"><span class="pre">0</span></code> before realtime execution starts. Then, each tick, the value of <code class="docutils literal notranslate"><span class="pre">counter</span></code> will be output and incremented. We interpolate a <a class="reference external" href="https://docs.python.org/3/tutorial/inputoutput.html#formatted-string-literals">Python f-string</a> with the counter value and flush stdout so that the output appears in our terminal immediately.</p>
 </section>
 <section id="run-licorice">
 <h3>Run LiCoRICE<a class="headerlink" href="#run-licorice" title="Permalink to this heading"></a></h3>
@@ -205,7 +205,7 @@ Hello World! Tick: <span class="m">9</span>
 </section>
 <section id="pass-a-signal">
 <h2>2. Pass a Signal<a class="headerlink" href="#pass-a-signal" title="Permalink to this heading"></a></h2>
-<p>The first example showed you how to set up a simple LiCoRICE model with one module. Here, we’ll split that module in two and use a <cite>signal</cite> to pass data from the first module to the second.</p>
+<p>The first example showed you how to set up a simple LiCoRICE model with one module. Here, we’ll split that module in two and use a <cite>signal</cite> to pass data from the first module to the second. The behavior of this model will be exactly the same, but we’re able to see how LiCoRICE can pass data from a generator process to a printer process each tick.</p>
 <section id="update-model-config">
 <h3>Update model config<a class="headerlink" href="#update-model-config" title="Permalink to this heading"></a></h3>
 <p>Copy over the model config to a different file:</p>
@@ -303,14 +303,14 @@ Hello World! Tick: <span class="m">9</span>
 <span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
 
 <span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">logger</span><span class="p p-Indicator">:</span><span class="w"></span>
-<span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
-<span class="w">  </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tick_count</span><span class="w"></span>
-<span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
-<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">log_sqlite</span><span class="w"></span>
-<span class="w">    </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
-<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;disk&#39;</span><span class="w"></span>
-<span class="w">      </span><span class="nt">save_file</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;./data&#39;</span><span class="w"></span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">    </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tick_count</span><span class="w"></span>
+<span class="w">    </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">log_sqlite</span><span class="w"></span>
+<span class="w">      </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;disk&#39;</span><span class="w"></span>
+<span class="w">        </span><span class="nt">save_file</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;./data&#39;</span><span class="w"> </span><span class="c1"># TODO allow user to write local path here</span><span class="w"></span>
 </pre></div>
 </div>
 </section>
@@ -449,7 +449,7 @@ Hello World! Tick: <span class="m">9</span>
     <span class="n">toggle_switch</span> <span class="o">=</span> <span class="mb">0b00000000</span>
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">0b</span></code> syntax allows us to set each bit individually in the unsigned 8 bit integer signal <code class="docutils literal notranslate"><span class="pre">parallel_out</span></code>. Here we set only the first bit high (data pin 9), but we could just as easily set all the bits high with <code class="docutils literal notranslate"><span class="pre">0b11111111</span></code></p>
+<p>The <code class="docutils literal notranslate"><span class="pre">0b</span></code> syntax allows us to set each bit individually in the unsigned 8 bit integer signal <code class="docutils literal notranslate"><span class="pre">parallel_out</span></code>. Here we set only the first bit high (pin 9, data bit 7), but we could just as easily set all the bits high with <code class="docutils literal notranslate"><span class="pre">0b11111111</span></code></p>
 </section>
 <section id="id7">
 <h3>Run LiCoRICE<a class="headerlink" href="#id7" title="Permalink to this heading"></a></h3>
@@ -468,7 +468,7 @@ Hello World! Tick: <span class="m">9</span>
 <span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
 </pre></div>
 </div>
-<p>Run the model again and while it’s running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the <code class="docutils literal notranslate"><span class="pre">CH1</span> <span class="pre">MENU</span></code> button and adjust the horizontal scaling using the <code class="docutils literal notranslate"><span class="pre">SEC/DIV</span></code> knob until the division legnth shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient. If you’d like to stop running the model, you can do so by typing Control-C in the terminal.</p>
+<p>Run the model again and while it’s running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the <code class="docutils literal notranslate"><span class="pre">CH1</span> <span class="pre">MENU</span></code> button and adjust the horizontal scaling using the <code class="docutils literal notranslate"><span class="pre">SEC/DIV</span></code> knob until the division length shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient. If you’d like to stop running the model, you can do so by typing Control-C in the terminal.</p>
 <section id="setting-a-trigger">
 <h4>Setting a trigger<a class="headerlink" href="#setting-a-trigger" title="Permalink to this heading"></a></h4>
 <p>Using the <code class="docutils literal notranslate"><span class="pre">TRIG</span> <span class="pre">MENU</span></code> button, make sure that an <cite>Edge</cite> Type trigger is set on the <cite>CH2</cite> Source and that Slope is set to <cite>Rising</cite>. Then, use the trigger <code class="docutils literal notranslate"><span class="pre">LEVEL</span></code> knob to set the trigger to the midpoint of the signal. You should now see something like this:</p>
@@ -536,8 +536,8 @@ Hello World! Tick: <span class="m">9</span>
 </section>
 <section id="set-up-the-oscilloscope-function-generator">
 <h3>Set up the oscilloscope function generator<a class="headerlink" href="#set-up-the-oscilloscope-function-generator" title="Permalink to this heading"></a></h3>
-<p>First, we’ll need to ouput a signal over our oscilloscope that will drive LiCoRICE. Use a 10Hz square wave:</p>
-<p>Connect a BNC to Jaw clip line cable to the <code class="docutils literal notranslate"><span class="pre">EXT</span> <span class="pre">TRIG/GEN</span> <span class="pre">OUT</span></code> port on the oscilloscopel. Connect the black alligator clip to ground on the <code class="docutils literal notranslate"><span class="pre">/dev/parport0</span></code> breakout board and the red alligator clip to pin 9. There should be enough room on the jumper cable terminals to connect the channel 1 probe as well. Press the <code class="docutils literal notranslate"><span class="pre">WAVE</span> <span class="pre">GEN</span></code> button on the scope to turn on the waveform generator and set Wave: <cite>Square</cite>, Frequency: <cite>10.000Hz</cite>, Amplitude: <cite>3.300V</cite>, and Offset: <cite>0.000V</cite>. You should see the oscilloscope-generated signal on channel 1.</p>
+<p>First, we’ll need to output a signal over our oscilloscope that will drive LiCoRICE. Use a 10Hz square wave:</p>
+<p>Connect a BNC to Jaw clip line cable to the <code class="docutils literal notranslate"><span class="pre">EXT</span> <span class="pre">TRIG/GEN</span> <span class="pre">OUT</span></code> port on the oscilloscope. Connect the black alligator clip to ground on the <code class="docutils literal notranslate"><span class="pre">/dev/parport0</span></code> breakout board and the red alligator clip to pin 9. There should be enough room on the jumper cable terminals to connect the channel 1 probe as well. Press the <code class="docutils literal notranslate"><span class="pre">WAVE</span> <span class="pre">GEN</span></code> button on the scope to turn on the waveform generator and set Wave: <cite>Square</cite>, Frequency: <cite>10.000Hz</cite>, Amplitude: <cite>3.300V</cite>, and Offset: <cite>0.000V</cite>. You should see the oscilloscope-generated signal on channel 1.</p>
 </section>
 <section id="id9">
 <h3>Run LiCoRICE<a class="headerlink" href="#id9" title="Permalink to this heading"></a></h3>

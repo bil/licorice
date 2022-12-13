@@ -2,7 +2,7 @@
 LiCoRICE Quickstart
 *******************************************************************************
 
-Welcome to LiCoRICE! We're excited to help you bring the principles of realtime computing to your conventional hardware. This guide provides instructions on how to build a simple model from scratch.
+Welcome to LiCoRICE! We're excited to help you bring the principles of realtime computing to your conventional hardware. This guide provides instructions on how to build a simple model from scratch. We'll start out with a model that just prints output to our terminal each tick and progressively add more complexity until we're reading in external outputs, piping them through the realtime system, and writing them back out.
 
 
 0. Prerequisites
@@ -13,7 +13,7 @@ This guide assumes that you're working in a BASH shell on a POSIX-compliant syst
 1. Simple Hello World
 ===============================================================================
 
-This first hello world example will create a LiCoRICE model that outputs a message once a second 10 times. We'll write everything from scratch.
+This first hello world example will create a LiCoRICE model that outputs a message once a second 10 times. This is one of the simplest models we can construct with just one module. We'll write everything from scratch.
 
 Create a workspace
 -------------------------------------------------------------------------------
@@ -81,7 +81,7 @@ Then open the parser (``$LICORICE_WORKING_PATH/counter_simple.py``) and add the 
     print(f"Hello World! Tick: {counter}", flush=True)
     counter += 1
 
-The constructor will çreate a variable ``counter`` and set it to ``0`` before realtime execution starts. Then, each tick, the value of ``counter`` will be output and incremented. We interpolate a `Python f-string <https://docs.python.org/3/tutorial/inputoutput.html#formatted-string-literals>`_ with the counter value and flush stdout so that the output appears in our terminal immediately.
+The constructor will create a variable ``counter`` and set it to ``0`` before realtime execution starts. Then, each tick, the value of ``counter`` will be output and incremented. We interpolate a `Python f-string <https://docs.python.org/3/tutorial/inputoutput.html#formatted-string-literals>`_ with the counter value and flush stdout so that the output appears in our terminal immediately.
 
 
 Run LiCoRICE
@@ -112,7 +112,8 @@ If everything worked, you should see the following among the output in your term
 2. Pass a Signal
 ===============================================================================
 
-The first example showed you how to set up a simple LiCoRICE model with one module. Here, we'll split that module in two and use a `signal` to pass data from the first module to the second.
+The first example showed you how to set up a simple LiCoRICE model with one module. Here, we'll split that module in two and use a `signal` to pass data from the first module to the second. The behavior of this model will be exactly the same, but we're able to see how LiCoRICE can pass data from a generator process to a printer process each tick.
+
 
 Update model config
 -------------------------------------------------------------------------------
@@ -251,14 +252,14 @@ And then add a logger module (sink) which will be responsible for writing this s
       ...
 
       logger:
-      language: python
-      in:
-        - tick_count
-      out:
-        name: log_sqlite
-        args:
-          type: 'disk'
-          save_file: './data'
+        language: python
+        in:
+          - tick_count
+        out:
+          name: log_sqlite
+          args:
+            type: 'disk'
+            save_file: './data' # TODO allow user to write local path here
 
 Run LiCoRICE
 -------------------------------------------------------------------------------
@@ -434,7 +435,7 @@ In the parser add the following lines:
     else:
         toggle_switch = 0b00000000
 
-The ``0b`` syntax allows us to set each bit individually in the unsigned 8 bit integer signal ``parallel_out``. Here we set only the first bit high (data pin 9), but we could just as easily set all the bits high with ``0b11111111``
+The ``0b`` syntax allows us to set each bit individually in the unsigned 8 bit integer signal ``parallel_out``. Here we set only the first bit high (pin 9, data bit 7), but we could just as easily set all the bits high with ``0b11111111``
 
 
 Run LiCoRICE
@@ -461,9 +462,8 @@ Since the LiCoRICE model only runs for 10 ticks over 10 seconds, we don't have a
       #num_ticks: 10  # number of ticks to run for
       ...
 
+Run the model again and while it's running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the ``CH1 MENU`` button and adjust the horizontal scaling using the ``SEC/DIV`` knob until the division length shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient. If you'd like to stop running the model, you can do so by typing Control-C in the terminal.
 
-
-Run the model again and while it's running, adjust the oscilloscope to view the square wave output. Start by turning off channel 1 using the ``CH1 MENU`` button and adjust the horizontal scaling using the ``SEC/DIV`` knob until the division legnth shows as 50ms in the topbar. Adjust the vertical position and scale for channel 2 until you see the full signal. A 1V division should be sufficient. If you'd like to stop running the model, you can do so by typing Control-C in the terminal.
 
 Setting a trigger
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -549,9 +549,9 @@ Open a new file named ``$LICORICE_WORKING_DIR/parallel_through.py`` and update i
 Set up the oscilloscope function generator
 -------------------------------------------------------------------------------
 
-First, we'll need to ouput a signal over our oscilloscope that will drive LiCoRICE. Use a 10Hz square wave:
+First, we'll need to output a signal over our oscilloscope that will drive LiCoRICE. Use a 10Hz square wave:
 
-Connect a BNC to Jaw clip line cable to the ``EXT TRIG/GEN OUT`` port on the oscilloscopel. Connect the black alligator clip to ground on the ``/dev/parport0`` breakout board and the red alligator clip to pin 9. There should be enough room on the jumper cable terminals to connect the channel 1 probe as well. Press the ``WAVE GEN`` button on the scope to turn on the waveform generator and set Wave: `Square`, Frequency: `10.000Hz`, Amplitude: `3.300V`, and Offset: `0.000V`. You should see the oscilloscope-generated signal on channel 1.
+Connect a BNC to Jaw clip line cable to the ``EXT TRIG/GEN OUT`` port on the oscilloscope. Connect the black alligator clip to ground on the ``/dev/parport0`` breakout board and the red alligator clip to pin 9. There should be enough room on the jumper cable terminals to connect the channel 1 probe as well. Press the ``WAVE GEN`` button on the scope to turn on the waveform generator and set Wave: `Square`, Frequency: `10.000Hz`, Amplitude: `3.300V`, and Offset: `0.000V`. You should see the oscilloscope-generated signal on channel 1.
 
 
 Run LiCoRICE

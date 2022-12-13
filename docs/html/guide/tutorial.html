@@ -111,7 +111,7 @@
 <p>As in the quickstart, we assume you are using the <code class="docutils literal notranslate"><span class="pre">~/licorice</span></code> directory as your workspace by setting the <code class="docutils literal notranslate"><span class="pre">LICORICE_WORKING_PATH</span></code> environment variable.</p>
 <p>Ensure you have a controller or joystick:</p>
 <blockquote>
-<div><p>Any USB controller should work, but the one we used when making this tutorial is the <a class="reference external" href="https://www.amazon.com/dp/B003VAHYQY">Logitech F310 Wired Gamepad Controller</a> with the toggle set to XInput mode (X) on the back.</p>
+<div><p>Any USB controller should work, but the one we used when making this tutorial is the <a class="reference external" href="https://www.amazon.com/dp/B003VAHYQY">Logitech F310 Wired Gamepad Controller</a>. Make sure that the toggle is set to XInput mode (X) on the back or you will need to alter your model file to read 12 buttons instead of 11.</p>
 </div></blockquote>
 <p>Install dependencies for running a GUI and install Pygame in your virtualenv where LiCoRICE is installed:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo apt-get install -y xinit openbox lxterminal
@@ -145,7 +145,8 @@ pip install pygame
 <span class="w">     </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">double</span><span class="w"></span>
 
 <span class="w">   </span><span class="nt">joystick_buttons</span><span class="p">:</span><span class="w"></span>
-<span class="w">     </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">11</span><span class="w"> </span><span class="c1"># set this to the number of buttons to extract from the joystick</span><span class="w"></span>
+<span class="w">     </span><span class="c1"># set this to the number of buttons to read from the joystick</span><span class="w"></span>
+<span class="w">     </span><span class="nt">shape</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">11</span><span class="w">  </span><span class="c1"># 12 for DirectInput on the Logitech F310</span><span class="w"></span>
 <span class="w">     </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
 
 <span class="w"> </span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
@@ -223,8 +224,8 @@ It also specifies two signals, which track the joystick’s current axis and the
 </section>
 <section id="run-licorice">
 <h4>Run LiCoRICE<a class="headerlink" href="#run-licorice" title="Permalink to this heading"></a></h4>
-<p>In general, only one command (<code class="docutils literal notranslate"><span class="pre">go</span></code>) needs to be issued to <a class="reference internal" href="../api/cli.html#parse"><span class="std std-ref">parse</span></a>, <a class="reference internal" href="../api/cli.html#compile"><span class="std std-ref">compile</span></a>, and <a class="reference internal" href="../api/cli.html#run"><span class="std std-ref">run</span></a> a model, but these commands can also be issued individually if need be:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice go tutorial-6 -y
+<p>Now run the <code class="docutils literal notranslate"><span class="pre">go</span></code> command to <a class="reference internal" href="../api/cli.html#parse"><span class="std std-ref">parse</span></a>, <a class="reference internal" href="../api/cli.html#compile"><span class="std std-ref">compile</span></a>, and <a class="reference internal" href="../api/cli.html#run"><span class="std std-ref">run</span></a> your model. We specify the <code class="docutils literal notranslate"><span class="pre">SDL_VIDEODRIVER</span></code> variables so that we don’t need to initialize a GUI for pygame, but we’ll use a GUI in the subsequent section.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">SDLVIDEO_DRIVER</span><span class="o">=</span>dummy licorice go tutorial-6 -y
 </pre></div>
 </div>
 <p>If everything worked, you should see the controller analog stick and button states among the output in your terminal in the following format:</p>

@@ -26,7 +26,7 @@ As in the quickstart, we assume you are using the ``~/licorice`` directory as yo
 
 Ensure you have a controller or joystick:
 
-    Any USB controller should work, but the one we used when making this tutorial is the `Logitech F310 Wired Gamepad Controller <https://www.amazon.com/dp/B003VAHYQY>`_ with the toggle set to XInput mode (X) on the back.
+    Any USB controller should work, but the one we used when making this tutorial is the `Logitech F310 Wired Gamepad Controller <https://www.amazon.com/dp/B003VAHYQY>`_. Make sure that the toggle is set to XInput mode (X) on the back or you will need to alter your model file to read 12 buttons instead of 11.
 
 Install dependencies for running a GUI and install Pygame in your virtualenv where LiCoRICE is installed:
 
@@ -73,7 +73,8 @@ Open the created file add the following:
         dtype: double
 
       joystick_buttons:
-        shape: 11 # set this to the number of buttons to extract from the joystick
+        # set this to the number of buttons to read from the joystick
+        shape: 11  # 12 for DirectInput on the Logitech F310
         dtype: uint8
 
     modules:
@@ -169,11 +170,11 @@ Similar to the quickstart walkthrough, we print both our joystick position and a
 Run LiCoRICE
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In general, only one command (``go``) needs to be issued to :ref:`parse <api/cli:Parse>`, :ref:`compile <api/cli:Compile>`, and :ref:`run <api/cli:Run>` a model, but these commands can also be issued individually if need be:
+Now run the ``go`` command to :ref:`parse <api/cli:Parse>`, :ref:`compile <api/cli:Compile>`, and :ref:`run <api/cli:Run>` your model. We specify the ``SDL_VIDEODRIVER`` variables so that we don't need to initialize a GUI for pygame, but we'll use a GUI in the subsequent section.
 
 .. code-block:: bash
 
-    licorice go tutorial-6 -y
+    SDLVIDEO_DRIVER=dummy licorice go tutorial-6 -y
 
 If everything worked, you should see the controller analog stick and button states among the output in your terminal in the following format:
 

@@ -5,6 +5,7 @@ import pytest
 import licorice
 
 NUM_TICKS = 1000
+PARPORT_ADDR = 0
 
 sink_parser_model = {
     "config": {
@@ -42,7 +43,7 @@ sink_parser_model = {
                 },
                 "args": {
                     "type": "parport",
-                    "addr": "1",
+                    "addr": PARPORT_ADDR,
                 },
             },
         },
@@ -50,20 +51,22 @@ sink_parser_model = {
 }
 
 
-def has_parallel_port():
+def has_parallel_port(parport_addrs):
     import parallel
 
-    try:
-        parallel.Parallel()
-    except FileNotFoundError:
-        return False
-    except OSError:
-        warnings.warn("Default parallel port is busy.")
+    for addr in parport_addrs:
+        try:
+            parallel.Parallel(port=addr)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            warnings.warn("Parallel port {addr} is busy.")
+
     return True
 
 
 @pytest.mark.skipif(
-    not has_parallel_port(), reason="No parallel port detected."
+    not has_parallel_port([PARPORT_ADDR]), reason="No parallel port detected."
 )
 def test_sink_parser(capfd):
     # run LiCoRICE with sink parser

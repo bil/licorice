@@ -152,8 +152,8 @@ def __load_and_validate_model(**kwargs):
         with open(filepath, "r") as f:
             try:
                 model_dict = yaml.safe_load(f)
-            except yaml.YAMLError as exc:
-                print(exc)
+            except yaml.YAMLError as e:
+                raise ValueError(f"Invalid YAML file with exception: {e}")
     else:
         model_dict = copy.deepcopy(kwargs["model"])
 
@@ -162,6 +162,7 @@ def __load_and_validate_model(**kwargs):
     # Relevant note: this entire parser is dangerous and does not have any
     # safety checks. It will break badly for malformed yaml data.
     top_level = ["config", "modules", "signals"]
+    # TODO validate that model_dict is not None
     if not set(model_dict.keys()).issubset(set(top_level)):
         raise RuntimeError("Invalid model definition.")
 
