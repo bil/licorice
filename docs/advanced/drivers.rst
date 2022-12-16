@@ -43,7 +43,7 @@ The following is an implementation of a parallel port source driver which uses p
   # __DRIVER_CODE__ read
 
     inVal = <unsigned char>pport.getData()
-    bufCurPtr[0] = inVal
+    inBuf[0] = inVal
 
   {%- if async %}
 

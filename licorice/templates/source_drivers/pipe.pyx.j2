@@ -44,7 +44,7 @@ pipeTimer.tv_nsec = tNSec
 {{sig}}BufVars[0] = 0
 #print "Source post: {0}".format({{sig}}BufVars[0])
 
-zeroPtr = bufStrtPtr
+zeroPtr = inBufStrt
 
 
 # __DRIVER_CODE__ read
@@ -54,26 +54,26 @@ zeroPtr = bufStrtPtr
     # try to read from pipe
     read_size = read(named_pipe, pipe_buf, pipe_size)
 
-    zeroPtr = bufStrtPtr + read_size
+    zeroPtr = inBufStrt + read_size
     if(read_size > 0):
       if(packetSize > read_size):
         zero_len = packetSize - read_size
-        memcpy(<char *>bufCurPtr, pipe_buf, read_size)
+        memcpy(<char *>inBuf, pipe_buf, read_size)
         memcpy(<char *>zeroPtr, zero_buf, zero_len)
       else:
-        memcpy(<char *>bufCurPtr, pipe_buf, packetSize)
+        memcpy(<char *>inBuf, pipe_buf, packetSize)
     else:
       # no bytes read
       read_size = 0
-      zeroPtr = bufStrtPtr + read_size
-      memcpy(<char *>bufCurPtr, pipe_zero_buf, packetSize)
+      zeroPtr = inBufStrt + read_size
+      memcpy(<char *>inBuf, pipe_zero_buf, packetSize)
     # print read_size
   except OSError as err:
   # catch error when trying to read from an empty pipe in non_blocking mode
     if(err.errno == 11):
       read_size = 0
-      zeroPtr = bufStrtPtr + read_size
-      memcpy(<char *>bufCurPtr, pipe_zero_buf, packetSize)
+      zeroPtr = inBufStrt + read_size
+      memcpy(<char *>inBuf, pipe_zero_buf, packetSize)
     else:
       die("Source Pipe Read Failed.\n")
   # nanosleep(&pipeTimer, &remTimer)
@@ -81,7 +81,7 @@ zeroPtr = bufStrtPtr
 
   # print "Source 2: {0}".format(fifo_inBufVars[2])
   #print pipe_buf[0]
-  #print bufCurPtr[0]
+  #print inBuf[0]
 
 
 # __DRIVER_CODE__ update
@@ -102,9 +102,9 @@ zeroPtr = bufStrtPtr
   if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[2] = 0
     {{sig}}BufVars[10] = 0
-  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
-  # if (bufCurPtr >= bufEndPtr):
-  #   bufCurPtr = bufStrtPtr
+  # inBuf = <{{in_dtype}}*>(<uint8_t*>inBuf + recvLen)
+  # if (inBuf >= inBufEnd):
+  #   inBuf = inBufStrt
 
 # __DRIVER_CODE__ exit_handler
 

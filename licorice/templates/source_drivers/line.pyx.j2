@@ -96,14 +96,14 @@ snd_pcm_prepare(cap_handle)
 
   # printf("write 1: %lu, %lu %lu\n", pLineOutBufWrite - pLineOutBuf, lineBufferSizeFrames, lineBufferSizeBytes)
   # fflush(stdout)
-  pcm_ret = pcm_read_buffer(cap_handle, <uint8_t *>bufCurPtr, lineBufferSizeFrames)
+  pcm_ret = pcm_read_buffer(cap_handle, <uint8_t *>inBuf, lineBufferSizeFrames)
 
   if (pcm_ret < 0):
     die("pcm_write_buffer failed.\n")
 
   # i = 0
   # while (i < lineBufferSizeFrames):
-  #   printf("%d ", (<int16_t *>bufCurPtr)[i])
+  #   printf("%d ", (<int16_t *>inBuf)[i])
   #   i += 1
   # printf("\n")
   # fflush(stdout)

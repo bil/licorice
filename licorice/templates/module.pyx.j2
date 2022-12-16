@@ -21,6 +21,7 @@ import random as random
 import math
 import numpy as np
 import posix_ipc
+import time
 
 # import LiCoRICE utils
 from module_utils import create_shared_array
@@ -35,6 +36,7 @@ cdef extern from "semaphore.h":
   int sem_wait(sem_t *)
   int sem_post(sem_t *)
   int sem_close(sem_t *sem)
+  int sem_getvalue(sem_t *sem, int *val)
 #not used yet, just seeing if it would work
 cdef extern from "unistd.h":
   int getpagesize()
@@ -81,17 +83,9 @@ cdef pid_t pid
 cdef pid_t ppid
 cdef char pathName[MAX_PATH_LEN]
 cdef public sigset_t exitMask
-{% if name=='bufferer' %}
-cdef timespec ts_pause
-ts_pause.tv_nsec = 500
-ts_pause.tv_sec = 0
-{% endif %}
 
 # shared memory vars
 cdef size_t shm_size
-{% if name=='bufferer' %}
-cdef size_t mb_shm_size
-{% endif %}
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
 cdef sem_t *pTickUpSem
@@ -127,9 +121,6 @@ cdef void handle_exit(int exitStatus):
   {%- endfor %}
 {%- endif %}
   munmap(pmem, shm_size)
-  {% if name=='bufferer'%}
-  shm_unlink("/mbmem0")
-  {% endif %}
   munlockall()
 
   if (sem_close(pTickUpSem) == -1):
@@ -138,7 +129,7 @@ cdef void handle_exit(int exitStatus):
     printf("Could not close source down semaphore. \n")
 {%- for sig_sem in sig_sems %}
   if (sem_close(pSigSems[{{sig_sem[1]}}]) == -1):
-    printf("Could not close source down semaphore. \n")
+    printf("Could not close signal semaphore. \n")
 {%- endfor %}
 
   exit(exitStatus)
@@ -182,23 +173,6 @@ snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", {{sig_sem[1]}})
 pSigSems[{{sig_sem[1]}}] = sem_open(semNameBuf, 0)
 
 {%- endfor %}
-
-{% if name == 'bufferer' %}
-cdef uint8_t *bmem
-mb_shm_size = {{in_signals.items()|length}} * sizeof(uint32_t) * {{history_pad_length+1}} + {{in_signals.items()|length}} * sizeof(uint8_t) * {{history_pad_length+1}} + sizeof(uint32_t) #[pointer hist(uint*[]), size hist(uint[]), the buffer position(uint[])]
-open_shared_mem(&bmem, "/mbmem0", mb_shm_size,  O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE)
-cdef int t=0
-{% for sig,args in in_signals.items() %}
-cdef uint32_t* p{{sig}}HistoryBuffer[{{history_pad_length+1}}]
-cdef uint8_t* p{{sig}}SizeHistoryBuffer[{{history_pad_length+1}}]
-for t from 0 <= t < {{history_pad_length+1}} by 1:
-  p{{sig}}HistoryBuffer[t] = <uint32_t *> (bmem +{{history_pad_length+1}}*sizeof(uint32_t)*{{loop.index0}} + t*sizeof(uint32_t))
-  p{{sig}}SizeHistoryBuffer[t] = <uint8_t *> (bmem + {{history_pad_length+1}}*sizeof(uint32_t)*{{in_signals.items()|length}} +{{history_pad_length+1}}*sizeof(uint8_t)*{{loop.index0}} + t*sizeof(uint8_t))
-{% endfor %}
-cdef uint32_t* pBufPos
-pBufPos = <uint32_t *> (bmem + {{in_signals.items()|length}} * sizeof(uint32_t) * {{history_pad_length+1}} + {{in_signals.items()|length}} * sizeof(uint8_t) * {{history_pad_length+1}})
-pBufPos[0] = 0
-{% endif %}
 
 {#This forces creation of processes in graph level order #}
 in_sigs = {}
@@ -300,23 +274,22 @@ make_realtime()
 
 kill(ppid,SIGUSR1)
 
-{% if name=='bufferer'%}
-cdef int prev_bv=-1
-{% endif %}
+cdef int semVal
 while(True):
   sem_wait(pTickUpSem)
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
   #printf("tick %lu, module {{name}} triggered at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
-{%for in_sig_sem in in_sig_sems %}
-  sem_wait(pSigSems[{{in_sig_sem[1]}}])
-{%endfor%}
+{% for name, sem_num in in_sig_sems %}
+  sem_wait(pSigSems[{{sem_num}}])
+{%- endfor %}
+  # time.sleep(0.001)
 #  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
 #  printf("\ttick %lu, module {{name}} deps ready at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {% for sig,args in in_signals.items() %}
   {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
   {%- else %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]:{{sig}}BufVars[1]]
   {%- endif %}
   {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
 {% endfor %}
@@ -327,26 +300,9 @@ while(True):
   {{numba_mod_name}}.{{numba_func_name}}({{numba_func_inputs}})
 {% else %}
   {{user_code}}
-  {%- if name == "bufferer" %}
-#  sleeps = 0
-  while (True):
-    if (prev_bv!={{in_signal_name}}BufVars[0]):
-      {% for sig,args in in_signals.items() %}
-      p{{sig}}HistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0]
-      p{{sig}}SizeHistoryBuffer[pBufPos[0]][0] = {{sig}}BufVars[0] - {{sig}}BufVars[1]
-      {% endfor %}
-      break;
-    nanosleep(&ts_pause, NULL)
-
-  prev_bv = {{in_signal_name}}BufVars[0]
-
-  pBufPos[0]+=1
-  if (pBufPos[0] > {{history_pad_length}}):
-    pBufPos[0] = 0
-  {% endif %}
 {%- endif %}
 
-{%for dep_name, dep_val in dependencies.items() %}
+{% for dep_name, dep_tuple in out_sig_dependency_info.items() %}
   # printf("module 1 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
   {{dep_name}}BufVars[2] += {{dep_name}}BufVars[5]
   {{dep_name}}BufVars[10] += 1
@@ -372,10 +328,11 @@ while(True):
   {{dep_name}}BufVars[11] = 0  
   # printf("module 3 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
 
-{%for i in range(dep_val[0]) %}
-  sem_post(pSigSems[{{dep_val[1]}}])
-{%endfor%}
-{%endfor%}
+  {% for i in range(dep_tuple[0]) %}
+  sem_post(pSigSems[{{dep_tuple[1]}}])
+  {%- endfor %}
+{%- endfor %}
+
   atomic_thread_fence(memory_order_seq_cst)
   sem_post(pTickDownSem)
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)

@@ -3,8 +3,6 @@ import parallel
 
 # __DRIVER_CODE__ variables
 
-cdef unsigned char inVal
-
 
 # __DRIVER_CODE__ setup
 
@@ -14,8 +12,7 @@ sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
 # __DRIVER_CODE__ read
 
-  inVal = <unsigned char>pport.getData()
-  bufCurPtr[0] = inVal
+  inBuf[0] = <unsigned char>pport.getData()
 
 {%- if async %}
 

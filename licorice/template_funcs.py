@@ -1,7 +1,7 @@
-import copy
 import os
 import platform
 import shutil
+import string
 import subprocess
 import sys
 import warnings
@@ -27,7 +27,6 @@ from licorice.utils import __find_in_path, __handle_completed_process
 
 TEMPLATE_MODULE_C = "module.c.j2"
 TEMPLATE_MODULE_PY = "module.pyx.j2"
-TEMPLATE_LOGGER = "logger.j2"
 TEMPLATE_SINK_PY = "sink.pyx.j2"
 TEMPLATE_SINK_C = "sink.c.j2"
 TEMPLATE_SOURCE_PY = "source.pyx.j2"
@@ -55,7 +54,7 @@ OUTPUT_CONSTANTS = "constants.h"
 
 BUF_VARS_LEN = 16
 # TODO maybe a cleaner way to have a default value for this
-HISTORY_PAD_LENGTH = 4999
+HISTORY_DEFAULT = 5000
 
 
 # change dtype to C format
@@ -69,6 +68,19 @@ def fix_dtype(dtype):
     elif dtype == "object":
         return "void"
     raise ValueError(f"Unsupported dtype: {dtype}")
+
+
+# get number of bytes for a given ctype
+def bytes_for_ctype(ctype):
+    if "int" in ctype:
+        return int(ctype.strip(string.ascii_letters)[:-1]) // 8
+    elif ctype == "double":
+        return 8
+    elif ctype == "float":
+        return 4
+    # TODO handle void
+    else:
+        raise ValueError(f"Unsupported ctype: {ctype}")
 
 
 # change dtype to msgpack format
@@ -132,13 +144,6 @@ def generate(paths, config, confirmed):
     modules = {}
     if "modules" in config and config["modules"]:
         modules = config["modules"]
-
-    if "logger" in modules:
-        print("Logger detected in model. Adding a bufferer module...")
-        bufferer = {}
-        bufferer["language"] = "python"
-        bufferer["in"] = modules["logger"]["in"]
-        modules["bufferer"] = bufferer
 
     for module_name, module_args in iter(modules.items()):
         if isinstance(module_args.get("in"), dict):
@@ -330,8 +335,9 @@ def parse(paths, config, confirmed):
 
     platform_system = platform.system()
 
+    # TODO determine if we want to keep this
     # save unmodified config to pass to user-space code
-    unmodified_config = copy.deepcopy(config)
+    # unmodified_config = copy.deepcopy(config)
 
     # set default values in config
     if not config.get("config"):
@@ -354,13 +360,6 @@ def parse(paths, config, confirmed):
     signals = {}
     if "signals" in config and config["signals"]:
         signals = config["signals"]
-
-    if "logger" in modules:
-        print("Logger detected in model. Adding a bufferer module...")
-        bufferer = {}
-        bufferer["language"] = "python"
-        bufferer["in"] = modules["logger"]["in"]
-        modules["bufferer"] = bufferer
 
     # set up output directory
     if os.path.exists(paths["output"]):
@@ -391,6 +390,7 @@ def parse(paths, config, confirmed):
             template_path,
             paths["output"],
             ignore=shutil.ignore_patterns(("*.j2")),
+            dirs_exist_ok=True,
         )
 
     # set up signal helper variables
@@ -410,13 +410,13 @@ def parse(paths, config, confirmed):
         if signal_args["sig_shape"] == "":
             signal_args["sig_shape"] = str(signal_args["shape"]) + ")"
 
+        # TODO test setting this to low values
         if "history" not in signal_args:
-            signal_args["history"] = 1
+            signal_args["history"] = HISTORY_DEFAULT
         signal_history = signal_args["history"]
 
         signal_args["sig_shape"] = (
-            f"({signal_history + HISTORY_PAD_LENGTH},"
-            f"{signal_args['sig_shape']}"
+            f"({signal_history}," f"{signal_args['sig_shape']}"
         )
         signal_args["buf_tot_numel"] = np.prod(
             np.array(literal_eval(str(signal_args["sig_shape"])))
@@ -426,6 +426,7 @@ def parse(paths, config, confirmed):
         )
         signal_args["ctype"] = fix_dtype(signal_args["dtype"])
         signal_args["dtype_msgpack"] = fix_dtype_msgpack(signal_args["dtype"])
+        signal_args["bytes"] = bytes_for_ctype(signal_args["ctype"])
 
         if "max_packets_per_tick" not in signal_args:
             # TODO top-level signals should potentially inherit from source
@@ -480,7 +481,6 @@ def parse(paths, config, confirmed):
     all_names = list(modules)
     assert len(all_names) == len(set(all_names))
 
-    logger_database_filename = ""
     compile_for_line = False
     for module_name, module_args in iter(modules.items()):
 
@@ -527,10 +527,6 @@ def parse(paths, config, confirmed):
             out_sig_name = module_args["out"]["name"]
             assert "type" in signals[out_sig_name]["args"]
             out_signals[out_sig_name] = signals[out_sig_name]["args"]["type"]
-            if out_signals[out_sig_name] in ["disk"]:
-                logger_database_filename = signals[out_sig_name]["args"][
-                    "save_file"
-                ]
             if out_signals[out_sig_name] in ["line"]:
                 compile_for_line = True
         else:
@@ -547,10 +543,7 @@ def parse(paths, config, confirmed):
 
     # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
     for sig_name in internal_signals:
-        if (
-            sig_name not in list(source_outputs)
-            and sig_name not in sig_sem_dict
-        ):
+        if sig_name not in sig_sem_dict:
             sig_sem_dict[sig_name] = sem_location
             sem_location += 1
     num_sem_sigs = len(sig_sem_dict)
@@ -611,12 +604,13 @@ def parse(paths, config, confirmed):
 
             if module_language == "python":
                 template = TEMPLATE_SOURCE_PY
-                in_extension = ".py"
+                # TODO split cython and python?
+                in_extensions = [".pyx.j2", ".pyx", ".py.j2", ".py"]
                 out_extension = ".pyx"
             else:
                 raise NotImplementedError()
                 template = TEMPLATE_SOURCE_C
-                in_extension = ".c"
+                in_extensions = [".c.j2", ".c"]
                 out_extension = ".c"
             in_signal = signals[module_args["in"]["name"]]
             out_signals = {
@@ -650,51 +644,26 @@ def parse(paths, config, confirmed):
                     np.array(literal_eval(str(args["shape"])))
                 )
 
-            parser_code = ""
-            if has_parser:
-                if module_args["parser"] is True:
-                    module_args["parser"] = name + "_parser"
-                with open(
-                    __find_in_path(
-                        paths["modules"], module_args["parser"] + in_extension
-                    ),
-                    "r",
-                ) as f:
-                    parser_code = f.read()
-                    parser_code = parser_code.replace("\n", "\n  ")
-                    parser_code = jinja2.Template(parser_code)
-                    parser_code = parser_code.render(unmodified_config)
+            sig_sems = []
+            for out_sig in module_args["out"]:
+                sig_sems.append((out_sig, sig_sem_dict[out_sig]))
 
-            construct_code = ""
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = name + "_constructor"
-                with open(
-                    __find_in_path(
-                        paths["modules"],
-                        module_args["constructor"] + in_extension,
-                    ),
-                    "r",
-                ) as f:
-                    construct_code = f.read()
-                    construct_code = jinja2.Template(construct_code)
-                    construct_code = construct_code.render(unmodified_config)
+            out_sig_dependency_info = {}
+            for out_sig in module_args["out"]:
+                for tmp_name in all_names:
+                    mod = modules[tmp_name]
+                    for in_sig in mod["in"]:
+                        if in_sig == out_sig:
+                            if out_sig in out_sig_dependency_info:
+                                out_sig_dependency_info[out_sig] += 1
+                            else:
+                                out_sig_dependency_info[out_sig] = 1
 
-            destruct_code = ""
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = name + "_destructor"
-                with open(
-                    __find_in_path(
-                        paths["modules"],
-                        module_args["destructor"] + in_extension,
-                    ),
-                    "r",
-                ) as f:
-                    destruct_code = f.read()
-                    destruct_code = destruct_code.replace("\n", "\n  ")
-                    destruct_code = jinja2.Template(destruct_code)
-                    destruct_code = destruct_code.render(unmodified_config)
+            for out_sig in out_sig_dependency_info:
+                out_sig_dependency_info[out_sig] = (
+                    out_sig_dependency_info[out_sig],
+                    sig_sem_dict[out_sig],
+                )
 
             driver_template_name = f'{in_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
@@ -705,9 +674,6 @@ def parse(paths, config, confirmed):
                 "source_num": source_names.index(name),
                 "config": config,
                 "has_parser": has_parser,
-                "parser_code": parser_code,
-                "construct_code": construct_code,
-                "destruct_code": destruct_code,
                 "async": async_source,
                 "async_reader_name": async_reader_name,
                 "async_reader_num": (
@@ -727,14 +693,84 @@ def parse(paths, config, confirmed):
                     else out_sig_types[list(out_signals)[0]]
                 ),
                 "out_sig_nums": out_sig_nums,
+                "out_sig_dependency_info": out_sig_dependency_info,
                 "default_params": default_params,
                 "num_sem_sigs": num_sem_sigs,
+                "sig_sems": sig_sems,
                 "in_dtype": in_dtype,
                 "sig_types": out_sig_types,
                 "buf_vars_len": BUF_VARS_LEN,
                 "py_maj_version": sys.version_info[0],
                 "platform_system": platform_system,
             }
+
+            parser_code = ""
+            if has_parser:
+                if module_args["parser"] is True:
+                    module_args["parser"] = name + "_parser"
+                with open(
+                    __find_in_path(
+                        paths["modules"],
+                        [
+                            f"{module_args['parser']}{ext}"
+                            for ext in in_extensions
+                        ],
+                    ),
+                    "r",
+                ) as f:
+                    parser_code = f.read()
+                    parser_code = parser_code.replace("\n", "\n  ")
+                    parser_code = jinja2.Template(parser_code)
+                    parser_code = parser_code.render(**source_template_kwargs)
+
+            construct_code = ""
+            if "constructor" in module_args and module_args["constructor"]:
+                if module_args["constructor"] is True:
+                    module_args["constructor"] = name + "_constructor"
+                with open(
+                    __find_in_path(
+                        paths["modules"],
+                        [
+                            f"{module_args['constructor']}{ext}"
+                            for ext in in_extensions
+                        ],
+                    ),
+                    "r",
+                ) as f:
+                    construct_code = f.read()
+                    construct_code = jinja2.Template(construct_code)
+                    construct_code = construct_code.render(
+                        **source_template_kwargs
+                    )
+
+            destruct_code = ""
+            if "destructor" in module_args and module_args["destructor"]:
+                if module_args["destructor"] is True:
+                    module_args["destructor"] = name + "_destructor"
+                with open(
+                    __find_in_path(
+                        paths["modules"],
+                        [
+                            f"{module_args['destructor']}{ext}"
+                            for ext in in_extensions
+                        ],
+                    ),
+                    "r",
+                ) as f:
+                    destruct_code = f.read()
+                    destruct_code = destruct_code.replace("\n", "\n  ")
+                    destruct_code = jinja2.Template(destruct_code)
+                    destruct_code = destruct_code.render(
+                        **source_template_kwargs
+                    )
+
+            source_template_kwargs.update(
+                {
+                    "parser_code": parser_code,
+                    "construct_code": construct_code,
+                    "destruct_code": destruct_code,
+                }
+            )
 
             # parse source driver
             driver_template_file = f"{driver_template_name}.pyx.j2"
@@ -786,12 +822,13 @@ def parse(paths, config, confirmed):
             print(" - " + name + " (sink)")
             if module_language == "python":
                 template = TEMPLATE_SINK_PY
-                in_extension = ".py"
+                # TODO split cython and python?
+                in_extensions = [".pyx.j2", ".pyx", ".py.j2", ".py"]
                 out_extension = ".pyx"
             else:
                 raise NotImplementedError()
                 template = TEMPLATE_SINK_C
-                in_extension = ".c"
+                in_extensions = [".c.j2", ".c"]
                 out_extension = ".c"
             in_signals = {}
             if "in" in module_args:
@@ -803,19 +840,22 @@ def parse(paths, config, confirmed):
             }
             out_signal = signals[module_args["out"]["name"]]
             has_parser = "parser" in module_args and module_args["parser"]
-            if (not has_parser) and (out_signal["args"]["type"] != "disk"):
-                assert len(in_signals) == 1
+
+            if not has_parser:
+                # TODO this validation should happen in the driver code
+                if len(in_signals) != 1:
+                    warnings.warn(
+                        "No parser specified for multiple sink input signals."
+                        "Parser must happen in sink"
+                    )
 
             in_sig_sems = []
             for sig, args in iter(in_signals.items()):
-                if sig in list(source_outputs):
-                    # store the signal name in 0 and location of sem in 1
-                    source_outputs[sig] += 1
-                else:
-                    in_sig_sems.append((sig, sig_sem_dict[sig]))
+                # store the signal name in 0 and location of sem in 1
+                in_sig_sems.append((sig, sig_sem_dict[sig]))
 
             out_dtype = None
-            if has_parser and out_signal["args"]["type"] != "vis_pygame":
+            if "schema" in out_signal:
                 out_dtype = out_signal["schema"]["data"]["dtype"]
                 out_dtype = fix_dtype(out_dtype)
             in_sig_types = {}
@@ -827,53 +867,14 @@ def parse(paths, config, confirmed):
                     assert (
                         out_dtype == dtype
                     )  # in_signals has length 1 for no parser
+                args["packet_size"] = np.prod(
+                    np.array(literal_eval(str(args["shape"])))
+                )
             if not out_dtype:
-                out_dtype = "uint8_t"
-
-            parser_code = ""
-            if has_parser and (module_args["parser"] is True):
-                module_args["parser"] = name + "_parser"
-                with open(
-                    __find_in_path(
-                        paths["modules"], module_args["parser"] + in_extension
-                    ),
-                    "r",
-                ) as f:
-                    parser_code = f.read()
-                    parser_code = parser_code.replace("\n", "\n  ")
-                    parser_code = jinja2.Template(parser_code)
-                    parser_code = parser_code.render(unmodified_config)
-
-            construct_code = ""
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = name + "_constructor"
-                with open(
-                    __find_in_path(
-                        paths["modules"],
-                        module_args["constructor"] + in_extension,
-                    ),
-                    "r",
-                ) as f:
-                    construct_code = f.read()
-                    construct_code = jinja2.Template(construct_code)
-                    construct_code = construct_code.render(unmodified_config)
-
-            destruct_code = ""
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = name + "_destructor"
-                with open(
-                    __find_in_path(
-                        paths["modules"],
-                        module_args["destructor"] + in_extension,
-                    ),
-                    "r",
-                ) as f:
-                    destruct_code = f.read()
-                    destruct_code = destruct_code.replace("\n", "\n  ")
-                    destruct_code = jinja2.Template(destruct_code)
-                    destruct_code = destruct_code.render(unmodified_config)
+                if len(in_signals) == 1:
+                    out_dtype = list(in_signals.values())[0]["ctype"]
+                else:
+                    out_dtype = "uint8_t"
 
             # if logger, group signals in different data structs depending on
             # storage type
@@ -889,6 +890,13 @@ def parse(paths, config, confirmed):
             raw_num_sigs = []  # single number signals
 
             if out_signal["args"]["type"] == "disk":
+                # TODO this validation and logic should be moved to driver
+                # TODO validate history is at least FLUSH length and
+                # set automatically if not
+
+                # TODO figure out buffer sizing
+                schema_size = 0
+
                 for sig, args in iter(in_signals.items()):
 
                     # determine whether signal should be logged or not
@@ -903,6 +911,8 @@ def parse(paths, config, confirmed):
                         log = True
 
                     if log is True:
+                        schema_size += args["buf_tot_numel"] * args["bytes"]
+
                         # automatically determinae  optimal signal storage type
                         if "log_storage" not in args or (
                             args["log_storage"]["type"] == "auto"
@@ -966,18 +976,22 @@ def parse(paths, config, confirmed):
                         in_signals.pop(sig)
                         in_sig_types.pop(sig)
 
+                out_signal["schema"] = {
+                    "data": {
+                        "size": schema_size,
+                        "dtype": "uint8",
+                    }
+                }
+
             driver_template_name = f'{out_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
             async_sink = name in async_writers_dict.keys()
             async_writer_name = async_writers_dict.get(name)
             sink_template_kwargs = {
-                "name": name,
+                "name": name,  # TODO set name properly for async, etc.
                 "non_source_num": non_source_names.index(name),
                 "config": config,
                 "has_parser": has_parser,
-                "parser_code": parser_code,
-                "construct_code": construct_code,
-                "destruct_code": destruct_code,
                 "async": async_sink,
                 "async_writer_name": async_writer_name,
                 "async_writer_num": (
@@ -985,8 +999,11 @@ def parse(paths, config, confirmed):
                     if async_sink
                     else None
                 ),
-                "in_signal_name": None if has_parser else list(in_signals)[0],
                 "in_signals": in_signals,
+                "in_signal_name": None if has_parser else list(in_signals)[0],
+                "in_signal_type": (
+                    None if (has_parser) else in_sig_types[list(in_signals)[0]]
+                ),
                 "msgpack_sigs": msgpack_sigs,
                 "raw_vec_sigs": raw_vec_sigs,
                 "raw_text_sigs": raw_text_sigs,
@@ -994,15 +1011,90 @@ def parse(paths, config, confirmed):
                 "in_sig_nums": in_sig_nums,
                 "out_sig_name": module_args["out"]["name"],
                 "out_signal": out_signal,
+                "out_signal_size": out_signal["schema"]["data"]["size"]
+                if "schema" in out_signal
+                else 1,
                 "num_sem_sigs": num_sem_sigs,
                 "in_sig_sems": in_sig_sems,
                 "sig_types": in_sig_types,
                 "out_dtype": out_dtype,
                 "buf_vars_len": BUF_VARS_LEN,
                 "source_outputs": list(source_outputs),
-                "history_pad_length": HISTORY_PAD_LENGTH,
+                "history_pad_length": HISTORY_DEFAULT,
                 "platform_system": platform_system,
+                # TODO add clear documentation on how to set this
+                "async_buf_len": min(
+                    [x["history"] for x in in_signals.values()]
+                ),
             }
+
+            parser_code = ""
+            if has_parser:
+                if module_args["parser"] is True:
+                    module_args["parser"] = name + "_parser"
+                with open(
+                    __find_in_path(
+                        paths["modules"],
+                        [
+                            f"{module_args['parser']}{ext}"
+                            for ext in in_extensions
+                        ],
+                    ),
+                    "r",
+                ) as f:
+                    parser_code = f.read()
+                    parser_code = parser_code.replace("\n", "\n  ")
+                    parser_code = jinja2.Template(parser_code)
+                    parser_code = parser_code.render(**sink_template_kwargs)
+
+            construct_code = ""
+            if "constructor" in module_args and module_args["constructor"]:
+                if module_args["constructor"] is True:
+                    module_args["constructor"] = name + "_constructor"
+                with open(
+                    __find_in_path(
+                        paths["modules"],
+                        [
+                            f"{module_args['constructor']}{ext}"
+                            for ext in in_extensions
+                        ],
+                    ),
+                    "r",
+                ) as f:
+                    construct_code = f.read()
+                    construct_code = jinja2.Template(construct_code)
+                    construct_code = construct_code.render(
+                        **sink_template_kwargs
+                    )
+
+            destruct_code = ""
+            if "destructor" in module_args and module_args["destructor"]:
+                if module_args["destructor"] is True:
+                    module_args["destructor"] = name + "_destructor"
+                with open(
+                    __find_in_path(
+                        paths["modules"],
+                        [
+                            f"{module_args['destructor']}{ext}"
+                            for ext in in_extensions
+                        ],
+                    ),
+                    "r",
+                ) as f:
+                    destruct_code = f.read()
+                    destruct_code = destruct_code.replace("\n", "\n  ")
+                    destruct_code = jinja2.Template(destruct_code)
+                    destruct_code = destruct_code.render(
+                        **sink_template_kwargs
+                    )
+
+            sink_template_kwargs.update(
+                {
+                    "parser_code": parser_code,
+                    "construct_code": construct_code,
+                    "destruct_code": destruct_code,
+                }
+            )
 
             # parse sink driver
             driver_template_file = f"{driver_template_name}.pyx.j2"
@@ -1035,7 +1127,8 @@ def parse(paths, config, confirmed):
                     ),
                     driver_code=driver_code,
                     is_main_process=False,
-                    is_writer=True**sink_template_kwargs,
+                    is_writer=True,
+                    **sink_template_kwargs,
                 )
 
             # parse sink template
@@ -1053,31 +1146,30 @@ def parse(paths, config, confirmed):
             if module_language == "python":
                 print(" - " + name + " (py)")
                 template = TEMPLATE_MODULE_PY
-                in_extension = ".py"
+                in_extensions = [".pyx.j2", ".pyx", ".py.j2", ".py"]
                 out_extension = ".pyx"
             else:
                 raise NotImplementedError()
                 print(" - " + name + " (c)")
                 template = TEMPLATE_MODULE_C
-                in_extension = ".c"
+                in_extensions = [".c.j2", ".c"]
                 out_extension = ".c"
 
             # prepare module parameters
-            dependencies = {}
+            out_sig_dependency_info = {}
             for out_sig in module_args["out"]:
                 for tmp_name in all_names:
                     mod = modules[tmp_name]
                     for in_sig in mod["in"]:
                         if in_sig == out_sig:
-                            if in_sig in dependencies:
-                                dependencies[in_sig] += 1
+                            if out_sig in out_sig_dependency_info:
+                                out_sig_dependency_info[out_sig] += 1
                             else:
-                                dependencies[in_sig] = 1
-            for dependency in dependencies:
-                # store num dependencies in 0 and location of sem in 1
-                dependencies[dependency] = (
-                    dependencies[dependency],
-                    sig_sem_dict[dependency],
+                                out_sig_dependency_info[out_sig] = 1
+            for out_sig in out_sig_dependency_info:
+                out_sig_dependency_info[out_sig] = (
+                    out_sig_dependency_info[out_sig],
+                    sig_sem_dict[out_sig],
                 )
 
             in_sig_sems = []
@@ -1089,11 +1181,8 @@ def parse(paths, config, confirmed):
                 ):
                     default_sig_name = in_sig
                     default_params = signals[in_sig]["schema"]["default"]
-                if in_sig in list(source_outputs):
-                    source_outputs[in_sig] += 1
-                else:
-                    # store the signal name in 0 and location of sem in 1
-                    in_sig_sems.append((in_sig, sig_sem_dict[in_sig]))
+                # store the signal name in 0 and location of sem in 1
+                in_sig_sems.append((in_sig, sig_sem_dict[in_sig]))
 
             sig_sems = in_sig_sems.copy()
             for out_sig in module_args["out"]:
@@ -1115,56 +1204,6 @@ def parse(paths, config, confirmed):
                 dtype = args["dtype"]
                 dtype = fix_dtype(dtype)
                 out_sig_types[sig] = dtype
-
-            user_code = ""
-            if not name == "bufferer":
-                file_path = __find_in_path(
-                    paths["modules"], name + in_extension
-                )
-                if not os.path.isfile(file_path):
-                    sys.exit(f"Error: Module {name} file does not exist.")
-                with open(file_path, "r") as f:
-                    user_code = f.read()
-                    # if module_language == 'python':
-                    #   user_code = user_code.replace("def ", "cpdef ")
-                    user_code = user_code.replace("\n", "\n  ")
-                    user_code = jinja2.Template(user_code)
-                    user_code = user_code.render(unmodified_config)
-
-            construct_code = ""
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = name + "_constructor"
-                file_path = __find_in_path(
-                    paths["modules"], module_args["constructor"] + in_extension
-                )
-                if not os.path.isfile(file_path):
-                    sys.exit(
-                        f"Error: Module {name} constructor "
-                        "file does not exist."
-                    )
-                with open(file_path, "r") as f:
-                    construct_code = f.read()
-                    construct_code = jinja2.Template(construct_code)
-                    construct_code = construct_code.render(unmodified_config)
-
-            destruct_code = ""
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = name + "_destructor"
-                file_path = __find_in_path(
-                    paths["modules"], module_args["destructor"] + in_extension
-                )
-                if not os.path.isfile(file_path):
-                    sys.exit(
-                        f"Error: Module {name} destructor"
-                        " file does not exist."
-                    )
-                with open(file_path, "r") as f:
-                    destruct_code = f.read()
-                    destruct_code = destruct_code.replace("\n", "\n  ")
-                    destruct_code = jinja2.Template(destruct_code)
-                    destruct_code = destruct_code.render(unmodified_config)
 
             sig_nums = {
                 x: internal_signals.index(x)
@@ -1201,6 +1240,108 @@ def parse(paths, config, confirmed):
                 func_sig += ")"
                 func_inputs = ",".join(module_args["in"] + module_args["out"])
                 mod_func_inst = ",".join(mod_func_insts)
+
+            module_template_kwargs = {
+                "name": name,
+                "args": module_args,
+                "config": config,
+                "out_sig_dependency_info": out_sig_dependency_info,
+                "in_sig_sems": in_sig_sems,
+                "sig_sems": sig_sems,
+                "tick_sem_idx": non_source_names.index(name),
+                "in_signals": in_signals,
+                "out_signals": out_signals,
+                "sig_nums": sig_nums,
+                "num_sem_sigs": num_sem_sigs,
+                "default_sig_name": default_sig_name,
+                "default_params": default_params,
+                "module_num": module_names.index(name),
+                "non_source_num": non_source_names.index(name),
+                "in_sig_types": in_sig_types,
+                "out_sig_types": out_sig_types,
+                "buf_vars_len": BUF_VARS_LEN,
+                "numba": module_args["numba"],
+                "numba_mod_name": "numba_" + name,
+                "numba_func_name": "numba_" + name,
+                "numba_func_inputs": func_inputs,
+                "numba_inst_inputs": mod_func_inst,
+                "top_level": all(
+                    [k in list(source_outputs) for k in list(in_signals)]
+                ),
+                "history_pad_length": HISTORY_DEFAULT,
+                "platform_system": platform_system,
+            }
+
+            user_code = ""
+            file_path = __find_in_path(
+                paths["modules"], [f"{name}{ext}" for ext in in_extensions]
+            )
+            if not os.path.isfile(file_path):
+                sys.exit(f"Error: Module {name} file does not exist.")
+            with open(file_path, "r") as f:
+                user_code = f.read()
+                # if module_language == 'python':
+                #   user_code = user_code.replace("def ", "cpdef ")
+                user_code = user_code.replace("\n", "\n  ")
+                user_code = jinja2.Template(user_code)
+                user_code = user_code.render(**module_template_kwargs)
+
+            construct_code = ""
+            if "constructor" in module_args and module_args["constructor"]:
+                if module_args["constructor"] is True:
+                    module_args["constructor"] = name + "_constructor"
+                file_path = __find_in_path(
+                    paths["modules"],
+                    [
+                        f"{module_args['constructor']}{ext}"
+                        for ext in in_extensions
+                    ],
+                )
+                if not os.path.isfile(file_path):
+                    sys.exit(
+                        f"Error: Module {name} constructor "
+                        "file does not exist."
+                    )
+                with open(file_path, "r") as f:
+                    construct_code = f.read()
+                    construct_code = jinja2.Template(construct_code)
+                    construct_code = construct_code.render(
+                        **module_template_kwargs
+                    )
+
+            destruct_code = ""
+            if "destructor" in module_args and module_args["destructor"]:
+                if module_args["destructor"] is True:
+                    module_args["destructor"] = name + "_destructor"
+                file_path = __find_in_path(
+                    paths["modules"],
+                    [
+                        f"{module_args['destructor']}{ext}"
+                        for ext in in_extensions
+                    ],
+                )
+                if not os.path.isfile(file_path):
+                    sys.exit(
+                        f"Error: Module {name} destructor"
+                        " file does not exist."
+                    )
+                with open(file_path, "r") as f:
+                    destruct_code = f.read()
+                    destruct_code = destruct_code.replace("\n", "\n  ")
+                    destruct_code = jinja2.Template(destruct_code)
+                    destruct_code = destruct_code.render(
+                        **module_template_kwargs
+                    )
+
+            module_template_kwargs.update(
+                {
+                    "user_code": user_code,
+                    "construct_code": construct_code,
+                    "destruct_code": destruct_code,
+                }
+            )
+
+            if module_args["numba"]:
                 do_jinja(
                     __find_in_path(paths["templates"], TEMPLATE_NUMBA),
                     os.path.join(paths["output"], "numba_" + name + ".py"),
@@ -1225,40 +1366,7 @@ def parse(paths, config, confirmed):
             do_jinja(
                 __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
-                name=name,
-                args=module_args,
-                config=config,
-                user_code=user_code,
-                construct_code=construct_code,
-                destruct_code=destruct_code,
-                dependencies=dependencies,
-                in_sig_sems=in_sig_sems,
-                sig_sems=sig_sems,
-                tick_sem_idx=non_source_names.index(name),
-                in_signal_name=(
-                    None if name != "bufferer" else next(iter(in_signals))
-                ),
-                in_signals=in_signals,
-                out_signals=out_signals,
-                sig_nums=sig_nums,
-                num_sem_sigs=num_sem_sigs,
-                default_sig_name=default_sig_name,
-                default_params=default_params,
-                module_num=module_names.index(name),
-                non_source_num=non_source_names.index(name),
-                in_sig_types=in_sig_types,
-                out_sig_types=out_sig_types,
-                buf_vars_len=BUF_VARS_LEN,
-                numba=module_args["numba"],
-                numba_mod_name="numba_" + name,
-                numba_func_name="numba_" + name,
-                numba_func_inputs=func_inputs,
-                numba_inst_inputs=mod_func_inst,
-                top_level=all(
-                    [k in list(source_outputs) for k in list(in_signals)]
-                ),
-                history_pad_length=HISTORY_PAD_LENGTH,
-                platform_system=platform_system,
+                **module_template_kwargs,
             )
 
     # parse Makefile
@@ -1317,6 +1425,8 @@ def parse(paths, config, confirmed):
         num_modules=len(module_names),
         sink_names=sink_names,
         num_sinks=len(sink_names),
+        async_writer_names=async_writer_names,
+        num_async_writers=len(async_writer_names),
         internal_signals={
             x: signals[x] for x in (sigkeys & set(internal_signals))
         },
@@ -1343,11 +1453,11 @@ def parse(paths, config, confirmed):
         num_sem_sigs=num_sem_sigs,
         num_non_sources=len(non_source_names),
         num_async_readers=len(async_reader_names),
+        num_async_writers=len(async_writer_names),
         num_internal_sigs=len(internal_signals),
         num_source_sigs=len(list(source_outputs)),
         buf_vars_len=BUF_VARS_LEN,
-        history_pad_length=HISTORY_PAD_LENGTH,
-        db_name=logger_database_filename,
+        history_pad_length=HISTORY_DEFAULT,
     )
 
 

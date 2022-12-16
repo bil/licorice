@@ -103,6 +103,8 @@ void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int sh
     die("mmap failed\n");
   }
   close(fd);
+
+  // TODO memset necessary to zero out buffer?
 }
 
 sem_t *create_semaphore(const char *pName, int value) {

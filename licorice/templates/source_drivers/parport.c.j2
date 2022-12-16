@@ -29,7 +29,7 @@ if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
   if (read_source_input):
     read_source_input = False
     inVal = <unsigned char>portio.inb(0x{{in_signal['args']['addr']}})
-    bufCurPtr[0] = inVal
+    inBuf[0] = inVal
   else:
     pause()
     continue
@@ -53,8 +53,8 @@ if (portio.ioperm(0x{{in_signal['args']['addr']}}, 1, 1)):
   if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[2] = 0
     {{sig}}BufVars[10] = 0
-  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
-  # if (bufCurPtr >= bufEndPtr):
-  #   bufCurPtr = bufStrtPtr
+  # inBuf = <{{in_dtype}}*>(<uint8_t*>inBuf + recvLen)
+  # if (inBuf >= inBufEnd):
+  #   inBuf = inBufStrt
 
   

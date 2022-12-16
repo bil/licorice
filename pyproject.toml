@@ -34,5 +34,4 @@ skip_glob = "*.lico/*"
 [tool.black]
 line-length = 79
 target-version = ["py36", "py37", "py38", "py39", "py310"]
-extend-exclude = "/(examples/*|tests/*)/"
-
+force-exclude = "/(examples/*|tests/*)/"

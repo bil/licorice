@@ -19,7 +19,7 @@ cdef size_t outBufLen
 
 # __DRIVER_CODE__ setup
 
-# __DRIVER_CODE__ run
+# __DRIVER_CODE__ write
 
   if(outBufLen > 0):
     if(write(named_pipe, outBuf, outBufLen) == -1):

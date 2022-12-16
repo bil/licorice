@@ -8,7 +8,7 @@ LDFLAGS = -levent -pthread -lsqlite3 {{extra_incl}}
 LDTESTFLAGS = -lsqlite3 -pthread
 CYLDFLAGS = {{py_lib}} -lsqlite3 {% if line %}-lasound{% endif %} {{py_link_flags}} {{extra_incl}} # -lpthread -lm -lutil -ldl should be included in py_link_flags
 
-all: timer {% for so in source_names %}{{so}} {% endfor %}{% for ar in async_reader_names %}{{ar}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {{"logger" if logger_needed}} {% for c in module_names %}{{c}} {% endfor %}
+all: timer {% for so in source_names %}{{so}} {% endfor %}{% for ar in async_reader_names %}{{ar}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {% for aw in async_writer_names %}{{aw}} {% endfor %} {{"logger" if logger_needed}} {% for c in module_names %}{{c}} {% endfor %}
 
 timer: timer.c utilityFunctions.c 
 	$(CC) $(CFLAGS) timer.c utilityFunctions.c -o timer $(LDFLAGS)
@@ -39,6 +39,12 @@ timer: timer.c utilityFunctions.c
 {{sink}}:  {{sink}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} #networkUtilities.c
 	cython --embed -3 -o {{sink}}.c {{sink}}.pyx
 	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} -o {{sink}} $(CYLDFLAGS)
+{% endfor -%}
+
+{% for async_writer in async_writer_names %}
+{{async_writer}}:  {{async_writer}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} #networkUtilities.c
+	cython --embed -3 -o {{async_writer}}.c {{async_writer}}.pyx
+	$(CC) $(CYFLAGS) -Wno-cpp {{async_writer}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} -o {{async_writer}} $(CYLDFLAGS)
 {% endfor -%}
 
 {% for child in module_names -%}

@@ -3,17 +3,12 @@ import parallel
 
 # __DRIVER_CODE__ variables
 
-# temporary pointer to pass to output APIs
-cdef uint8_t *outBuf
-cdef size_t outBufLen = 1
-outBuf = <uint8_t*>malloc(outBufLen)
-
 # __DRIVER_CODE__ setup
 
 # make sure parport is writeable
 pport = parallel.Parallel(port={{out_signal['args']['addr']}})
 
-# __DRIVER_CODE__ run
+# __DRIVER_CODE__ write
 
   pport.setData(<unsigned char>outBuf[0])
 

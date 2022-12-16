@@ -10,12 +10,15 @@ def __handle_completed_process(result, print_stdout=False):
         raise RuntimeError(result.stderr.decode())
 
 
-# return valid filepath if file exists in given path_list
-def __find_in_path(path_list, file, raise_error=True):
+# return valid filepath if any of files exists in given path_list
+def __find_in_path(path_list, files, raise_error=True):
+    if type(files) != list:
+        files = [files]
     for path in path_list:
-        filepath = os.path.join(path, file)
-        if os.path.exists(filepath):
-            return filepath
+        for file in files:
+            filepath = os.path.join(path, file)
+            if os.path.exists(filepath):
+                return filepath
 
     if raise_error:
         raise FileNotFoundError(

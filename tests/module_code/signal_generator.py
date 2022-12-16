@@ -1,4 +1,4 @@
-{% for sig_name, sig_dict in signals.items() %}
+{% for sig_name, sig_dict in out_signals.items() %}
 if generated_{{sig_name}} < 100:
     generated_{{sig_name}} = np.add(
         generated_{{sig_name}}, 1, dtype=np.{{sig_dict["dtype"]}}

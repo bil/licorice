@@ -66,8 +66,10 @@ modules:
       - matrix_out
     out: 
       name: log_sqlite
+      async: True
       args:
-        type: 'disk'
-        save_file: './data' # 48 character limit on db name
+        type: "disk"
+        table: "single" # default vs. "per-signal"
+        save_file: "./data" # 48 character limit on db name
                             # relative path files are saved relative to the run/out directory
                             # new db file auto increments every minute (set in constants.h.j2)

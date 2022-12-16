@@ -28,10 +28,10 @@ sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
 # __DRIVER_CODE__ read  
   pygame.event.pump()
-  (<double*>bufCurPtr)[0] = pygame_joystick.get_axis(0)
-  (<double*>bufCurPtr)[1] = pygame_joystick.get_axis(1)
+  (<double*>inBuf)[0] = pygame_joystick.get_axis(0)
+  (<double*>inBuf)[1] = pygame_joystick.get_axis(1)
   for i in range(num_buttons): 
-    (<uint8_t*>bufCurPtr)[128 + i] = pygame_joystick.get_button(i)
+    (<uint8_t*>inBuf)[128 + i] = pygame_joystick.get_button(i)
 
 {%- if async %}
 

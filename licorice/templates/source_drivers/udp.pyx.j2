@@ -98,7 +98,7 @@ sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
 # __DRIVER_CODE__ read
 
-  recvLen = recvfrom(sfd, <void *>bufCurPtr, packetSize, 0, <sockaddr *> &src_addr, &src_addr_len)
+  recvLen = recvfrom(sfd, <void *>inBuf, packetSize, 0, <sockaddr *> &src_addr, &src_addr_len)
   if (recvLen == -1 and errno != EINTR):
     die("NETWORK ERROR: recvfrom()\n")
   if (recvLen == -1):

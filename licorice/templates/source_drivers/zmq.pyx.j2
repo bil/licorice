@@ -32,7 +32,7 @@ assert (rc == 0)
 
 # __DRIVER_CODE__ read
 
-  recvLen = zmq_recv(dish, bufCurPtr, packetSize, 0)
+  recvLen = zmq_recv(dish, inBuf, packetSize, 0)
   if (recvLen == -1):
     die("zmq_recv error.\n")
 
@@ -55,9 +55,9 @@ assert (rc == 0)
   if pNumTicks[0] < 0 and ({{sig}}BufVars[7] < {{sig}}BufVars[2] + {{sig}}BufVars[6]):
     {{sig}}BufVars[2] = 0
     {{sig}}BufVars[10] = 0
-  # bufCurPtr = <{{in_dtype}}*>(<uint8_t*>bufCurPtr + recvLen)
-  # if (bufCurPtr >= bufEndPtr):
-  #   bufCurPtr = bufStrtPtr
+  # inBuf = <{{in_dtype}}*>(<uint8_t*>inBuf + recvLen)
+  # if (inBuf >= inBufEnd):
+  #   inBuf = inBufStrt
 
 
 # __DRIVER_CODE__ exit_handler

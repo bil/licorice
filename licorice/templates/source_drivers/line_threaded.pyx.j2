@@ -156,12 +156,12 @@ snd_pcm_prepare(cap_handle)
 
   sem_wait(&lineSem)
   # print({{sig}}BufVars[7], flush=True)
-  # print(bufCurPtr - bufStrtPtr, flush=True)
+  # print(inBuf - inBufStrt, flush=True)
   # print(pLineOutBufRead - pLineOutBuf, flush=True)
 
   # print(linePeriodSizeBytes, flush=True)
   # print(lineOutBufSize, flush=True)
-  memcpy(bufCurPtr, pLineOutBufRead, linePeriodSizeBytes)
+  memcpy(inBuf, pLineOutBufRead, linePeriodSizeBytes)
 
   # print(flush=True)
   pLineOutBufRead += linePeriodSizeBytes

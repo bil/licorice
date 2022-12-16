@@ -62,6 +62,7 @@ static int nonSourceModuleCheck[NUM_NON_SOURCES] = {{'{'}}{% for i in non_source
 static pid_t so_pids[NUM_SOURCES];
 static pid_t ar_pids[NUM_ASYNC_READERS];
 static pid_t si_pids[NUM_SINKS];
+static pid_t aw_pids[NUM_ASYNC_WRITERS];
 // numbered according to the index of the child's name in moduleProcnames
 static pid_t ch_pids[NUM_MODULES];
 
@@ -85,7 +86,7 @@ static sem_t *pTickUpSems[NUM_NON_SOURCES];
 // per-process computation end semaphore
 // porcess signals timer by upping this semaphore
 static sem_t *pTickDownSems[NUM_NON_SOURCES];
-// signal semaphores. synchronizes process hierarchy during runtime 
+// signal semaphores. synchronizes process hierarchy during runtime
 static sem_t *pSigSems[NUM_SEM_SIGS];
 // buffer for creating named semaphore names
 char semNameBuf[SEM_NAME_LEN];
@@ -101,7 +102,7 @@ static int sigchld_recv;
 
 // static int num_cores = {{num_cores}};
 static size_t ex_i, al_i, de_i, m_i;
-{%- if topo_height != 0 -%} 
+{%- if topo_height != 0 -%}
 static int m_j;
 {%- endif %}
 
@@ -128,7 +129,7 @@ static unsigned long numTicksMeasured = 0;
 void handle_exit(int exitStatus) {
 {%- if test_tick_time %}
   printf("%llu time over %lu ticks\n", tickTimeSum, numTicksMeasured);
-  printf("%f ns\n", ((float)tickTimeSum) / numTicksMeasured); 
+  printf("%f ns\n", ((float)tickTimeSum) / numTicksMeasured);
 {%- endif %}
   rtTimer.it_value.tv_sec = 0;
   rtTimer.it_value.tv_usec = 0;
@@ -136,6 +137,34 @@ void handle_exit(int exitStatus) {
   rtTimer.it_interval.tv_usec = 0;
   setitimer(ITIMER_REAL, &rtTimer, NULL);
   printf("exiting...\n");
+  printf("Killing async readers...\n");
+  fflush(stdout);
+  for (ex_i = 0; ex_i < NUM_ASYNC_READERS; ex_i++) {
+    if (ar_pids[ex_i] != -1) {
+      printf("Killing async reader: %d\n", ar_pids[ex_i]);
+      fflush(stdout);
+      kill(ar_pids[ex_i], SIGINT);
+      kill(ar_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
+      while(waitpid(ar_pids[ex_i], 0, WNOHANG) > 0){
+        printf("waiting for pid: %d\n", ar_pids[ex_i]);
+        fflush(stdout);
+      }
+    }
+  }
+  printf("Killing async writers...\n");
+  fflush(stdout);
+  for (ex_i = 0; ex_i < NUM_ASYNC_WRITERS; ex_i++) {
+    if (aw_pids[ex_i] != -1) {
+      printf("Killing async writer: %d\n", aw_pids[ex_i]);
+      fflush(stdout);
+      kill(aw_pids[ex_i], SIGINT);
+      kill(aw_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
+      while(waitpid(aw_pids[ex_i], 0, WNOHANG) > 0){
+        printf("waiting for pid: %d\n", aw_pids[ex_i]);
+        fflush(stdout);
+      }
+    }
+  }
   printf("Killing sinks...\n");
   for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
     if (si_pids[ex_i] && si_pids[ex_i] != -1) {
@@ -163,31 +192,16 @@ void handle_exit(int exitStatus) {
       }
     }
   }
-  printf("Killing async readers...\n");
-  fflush(stdout);
-  for (ex_i = 0; ex_i < NUM_ASYNC_READERS; ex_i++) {
-    if (ar_pids[ex_i] != -1) {
-      printf("Killing async reader: %d\n", ar_pids[ex_i]);
-      fflush(stdout);
-      kill(ar_pids[ex_i], SIGINT);
-      kill(ar_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while(waitpid(ar_pids[ex_i], 0, WNOHANG) > 0){
-        printf("waiting for pid: %d\n", ar_pids[ex_i]);
-        fflush(stdout);
-      }
-    }
-  }
-
   {%- if parport_tick_addr is not none %}
     parportRet = ioctl(parportfd,PPRELEASE);
     close(parportfd);
   {%- endif %}
 
   if (pNumTicks == NULL) {
-    printf("LiCoRICE ran for %" PRId64 " ticks.\n", (long long)(-1 * INIT_BUFFER_TICKS));
+    printf("LiCoRICE ran for %" PRId64 " ticks.\n", (int64_t)(-1 * INIT_BUFFER_TICKS));
   }
   else {
-    printf("LiCoRICE ran for %" PRId64 " ticks.\n", (*pNumTicks)+1);
+    printf("LiCoRICE ran for %" PRId64 " ticks.\n", (int64_t)(*pNumTicks)+1);
   }
 
   printf("Unmapping shared memory...\n");
@@ -268,7 +282,7 @@ static void check_children() {
   }
   outVal = ~outVal;
 {%- endif %}
-  
+
   if ((sigalrm_recv > 1))
     die("Timer missed a tick. (>1 unhandled sigalrms)");
 
@@ -276,7 +290,7 @@ static void check_children() {
   tickStartNSec = tickTimer.tv_nsec;
   tickStartSec = tickTimer.tv_sec;
 {%- endif %}
-  
+
   // increment SIGALRM counter
   (*pNumTicks)++;
 
@@ -301,7 +315,7 @@ static void check_children() {
       sem_post(pSourceUpSems[al_i]);
     }
   }
-  
+
   // normal behavior on subsequent iterations
   else {
   {%- if num_non_sources %}
@@ -315,7 +329,7 @@ static void check_children() {
         else {
           printf("Sink timing violation on tick: %" PRId64 " from sink %s\n", *pNumTicks, nonSourceProcnames[al_i]);
         }
-      } 
+      }
     }
   {%- endif %}
 
@@ -366,19 +380,19 @@ void dead_child() {
   int dead_pid;
   while ((dead_pid = waitpid((pid_t)(-1), 0, WNOHANG)) == 0);
   printf("dead pid: %d \n", dead_pid);
-  for (de_i = 0; de_i < NUM_SINKS; de_i++) {   
+  for (de_i = 0; de_i < NUM_SINKS; de_i++) {
     if (si_pids[de_i] == dead_pid) {
       si_pids[de_i] = -1;
-    }
-  }
-  for (de_i = 0; de_i < NUM_SINKS; de_i++) {   
-    if (so_pids[de_i] == dead_pid) {
-      so_pids[de_i] = -1;
     }
   }
   for (de_i = 0; de_i < NUM_MODULES; de_i++) {
     if (ch_pids[de_i] == dead_pid) {
       ch_pids[de_i] = -1;
+    }
+  }
+  for (de_i = 0; de_i < NUM_SOURCES; de_i++) {
+    if (so_pids[de_i] == dead_pid) {
+      so_pids[de_i] = -1;
     }
   }
 
@@ -456,32 +470,32 @@ int main(int argc, char* argv[]) {
   // initialize source semaphores
   for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem_%lu", m_i);
-    pSourceUpSems[m_i] = create_semaphore(&semNameBuf, 0);
+    pSourceUpSems[m_i] = create_semaphore(semNameBuf, 0);
 
     snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem_%lu", m_i);
-    pSourceDownSems[m_i] = create_semaphore(&semNameBuf, 1);
+    pSourceDownSems[m_i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize up tick semaphores
   for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/tick_up_sem_%lu", m_i);
-    pTickUpSems[m_i] = create_semaphore(&semNameBuf, 0);
+    pTickUpSems[m_i] = create_semaphore(semNameBuf, 0);
   }
 
   // initialize down tick semaphores
   for (m_i = 0; m_i < NUM_NON_SOURCES; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/tick_down_sem_%lu", m_i);
-    pTickDownSems[m_i] = create_semaphore(&semNameBuf, 1);
+    pTickDownSems[m_i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize signal semaphores
   for (m_i = 0; m_i < NUM_SEM_SIGS; m_i++) {
     snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", m_i);
-    pSigSems[m_i] = create_semaphore(&semNameBuf, 0);
+    pSigSems[m_i] = create_semaphore(semNameBuf, 0);
   }
 
   printf("Memory mapped.\nForking children...\n");
-  
+
   // set priority
   set_sched_prior(PRIORITY);
   //cpu_set_t mask;
@@ -508,7 +522,7 @@ int main(int argc, char* argv[]) {
     // TODO implement Darwin CPU affinity
   {%- endif %}
     setpriority(PRIO_PROCESS, 0, -19);
-    set_sched_prior(PRIORITY);
+    set_sched_prior(PRIORITY-1);
     char* argv[2] = {"./{{name}}", NULL};
 
     // execute source process
@@ -545,10 +559,10 @@ int main(int argc, char* argv[]) {
     {%- else %}
     // TODO implement Darwin CPU affinity
     {%- endif %}
-    setpriority(PRIO_PROCESS, 0, -19);
-    set_sched_prior(PRIORITY - 1);
+    setpriority(PRIO_PROCESS, 0, -18);
+    set_sched_prior(PRIORITY - 2);
     char* argv[2] = {"./{{name}}", NULL};
-    
+
     // execute reader process
     // signal handlers and mmap are not preserved on exec
     execvp(argv[0],argv);
@@ -573,7 +587,7 @@ int main(int argc, char* argv[]) {
   moduleTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
 {%- endfor %}
 {%- endfor %}
-  
+
   for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     for (m_j = 0; m_j < moduleTopoLens[m_i]; m_j++) {
       int childNum = moduleTopoOrder[m_i][m_j];
@@ -586,7 +600,7 @@ int main(int argc, char* argv[]) {
         //CPU_SET(m_j + CPU_OFFSET, &mask);
         //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
         setpriority(PRIO_PROCESS, 0, -19);
-        set_sched_prior(PRIORITY);
+        set_sched_prior(PRIORITY-1);
         char procBuf[64];
         sprintf(procBuf, "./%s", moduleProcnames[childNum]);
         char* argv[2] = {procBuf, NULL};
@@ -622,13 +636,13 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     //CPU_SET(LOGGER_CPU, &mask);
     //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -2);
-    set_sched_prior_low(0);
+    set_sched_prior(PRIORITY-1);
     char* argv[2] = {"./{{name}}", NULL};
-    
+
     // execute sink process
     // signal handlers and mmap are not preserved on exec
     execvp(argv[0],argv);
-    printf("logger exec error. %s \n", strerror(errno));
+    printf("sink exec error. %s \n", strerror(errno));
     exit(1);
     //in case execvp fails
   }
@@ -638,6 +652,45 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
 {% for name in sink_names -%}
   printf("{{name}}: %d\n", si_pids[{{loop.index0}}]);
 {% endfor %}
+
+{% for name in async_writer_names -%} // TODO write this loop in C
+  // fork and exec reader process
+  if ((aw_pids[{{loop.index0}}] = fork()) == -1) {
+    die("fork failed \n");
+  }
+  if (aw_pids[{{loop.index0}}] == 0) { // only runs for async writer process
+    // cpu_set_t mask;
+    // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
+    //   CPU_SET(i, &mask);
+    // }
+    printf("Async writer: {{name}}\n");
+    {%- if platform_system != "Darwin" %}
+    // TODO implement CPU affinity
+    // CPU_ZERO(&mask);
+    // CPU_SET(NETWORK_CPU, &mask);
+    // sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    {%- else %}
+    // TODO implement Darwin CPU affinity
+    {%- endif %}
+    setpriority(PRIO_PROCESS, 0, -18);
+    set_sched_prior(PRIORITY - 2);
+    char* argv[2] = {"./{{name}}", NULL};
+
+    // execute async writer process
+    // signal handlers and mmap are not preserved on exec
+    execvp(argv[0],argv);
+    printf("async writer exec error. %s \n", strerror(errno));
+    exit(1);
+    //in case execvp fails
+  }
+  pause();
+{%- endfor %}
+{%- if num_async_writers > 0 %}
+  printf("Async writers ready.\n");
+{%- endif %}
+{%- for name in async_writer_names %}
+  printf("{{name}}: %d\n", aw_pids[{{loop.index0}}]);
+{%- endfor %}
 
 {%- if platform_system != "Darwin" %}
   make_realtime();

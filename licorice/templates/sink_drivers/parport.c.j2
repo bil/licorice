@@ -15,7 +15,7 @@ cdef size_t outBufLen
 if (portio.ioperm(0x{{out_signal['args']['addr']}}, 1, 1)):
   die("io permission denied\n")
 
-# __DRIVER_CODE__ run
+# __DRIVER_CODE__ write
 
   portio.outb(<unsigned char>outBuf[0],0x{{out_signal['args']['addr']}})
 

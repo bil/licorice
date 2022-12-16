@@ -60,35 +60,25 @@ cdef extern from "constants.h":
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
   enum: BUF_VARS_OFFSET
+  enum: ASYNC_WRITER_MUTEXES_OFFSET
   enum: SEM_NAME_LEN
 
 {%- if async %}
-cdef extern from "<sys/types.h>":
-  ctypedef struct pthread_mutex_t:
-    pass
-  ctypedef struct pthread_mutexattr_t:
-    pass
-
 cdef extern from "<pthread.h>" nogil:
   struct sched_param:
     int sched_priority
-  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
-  int pthread_mutex_lock(pthread_mutex_t *)
-  int pthread_mutex_unlock(pthread_mutex_t *)
 {%- endif %}
 
 {%- if is_writer %}
 {{ driver_code["imports"] }}
 {%- endif %}
 
-cdef pid_t ppid
+# cdef variables
+cdef pid_t pid, ppid
 cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
-#cdef struct timespec tickTimer
 
-cdef int sigalrm_recv = 0
-
-cdef size_t shm_size
+cdef size_t shmSize
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
 {% if is_main_process -%}
@@ -103,6 +93,33 @@ cdef uint32_t *{{sig}}BufVars
 cdef {{dtype}} *{{sig}}StrtPtr
 cdef {{dtype}} *{{sig}}EndPtr
 {%- endfor %}
+
+{% if is_writer -%}
+cdef uint32_t packetSize = {{out_signal_size}} * sizeof({{out_dtype}})
+cdef {{out_dtype}} *outBufStrt
+cdef {{out_dtype}} *outBufEnd
+cdef {{out_dtype}} *outBuf
+{%- endif %}
+
+{% if async %}
+# track start and end vars (BufVars[8] and [9]) for each tick to flush
+ctypedef struct asyncBufTickInfo:
+{%- for sig,dtype in sig_types.items() %}
+  uint32_t {{sig}}StrtOffsetSamples  # buffered {{sig}}BufVars[0] values
+  uint32_t {{sig}}StrtOffset  # buffered {{sig}}BufVars[8] values
+  uint32_t {{sig}}EndOffset  # buffered {{sig}}BufVars[9] values
+  uint32_t {{sig}}Len  # buffered {{sig}}Len values
+{%- endfor %}
+
+cdef uint32_t asyncStrtOffset
+cdef uint32_t asyncEndOffset
+cdef uint32_t *pAsyncFlushIndexStrt
+cdef uint32_t *pAsyncFlushIndexEnd
+cdef asyncBufTickInfo *pAsyncBufInfo
+cdef uint8_t *pAsyncMem
+cdef size_t asyncShmSize
+ASYNC_BUF_LEN = {{async_buf_len}}
+{% endif %}
 
 # python variables
 lastVal = 1
@@ -120,7 +137,7 @@ shouldExit = False
 {%- endif %}
 
 cdef void handle_exit(int exitStatus):
-  global retVal, tid, radio, context, s, shm_size, pmem, pTickUpSem, pTickDownSem, pSigSems
+  global retVal, tid, radio, context, s, shmSize, pmem, pTickUpSem, pTickDownSem, pSigSems
 
 {%- if is_writer %}
 
@@ -130,20 +147,20 @@ cdef void handle_exit(int exitStatus):
 
 {%- endif %}
 
-  munmap(pmem, shm_size)
+  munmap(pmem, shmSize)
   munlockall()
 
-  sem_close
+{%- if is_main_process %}
 
   if (sem_close(pTickUpSem) == -1):
-    printf("Could not close source up semaphore. \n")
+    printf("Could not close sink up semaphore. \n")
   if (sem_close(pTickDownSem) == -1):
-    printf("Could not close source down semaphore. \n")
-{%- for sig_sem in sig_sems %}
+    printf("Could not close sink down semaphore. \n")
+  {%- for sig_sem in sig_sems %}
   if (sem_close(pSigSems[{{sig_sem[1]}}]) == -1):
-    printf("Could not close source down semaphore. \n")
-{%- endfor %}
-
+    printf("Could not close sink signal semaphore. \n")
+  {%- endfor %}
+{%- endif %}
   exit(exitStatus)
 
 cdef void int_handler(int signum):
@@ -151,7 +168,6 @@ cdef void int_handler(int signum):
 
 cdef void exit_handler(int signum):
   global shouldExit
-  printf("EXIT HANDLER for {{name}}\n")
 {%- if is_main_process %}
   handle_exit(0)
 {%- else %}
@@ -174,7 +190,7 @@ sigemptyset(&exitMask)
 sigaddset(&exitMask, SIGALRM)
 init_utils(&handle_exit, &exitMask)
 
-cdef int pid = getpid()
+pid = getpid()
 ppid = getppid()
 
 set_sighandler(SIGINT, &int_handler, &exitMask)
@@ -183,19 +199,39 @@ set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
-# open and map shared parent memory
-
-shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
-open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
+# open and map shared memory
+shmSize = ROUND_UP(SHM_SIZE, PAGESIZE)
+open_shared_mem(&pmem, SMEM0_PATHNAME, shmSize, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
-
+{%- for sig, args in in_signals.items() %}
+{{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
+{% endfor %}
+{%- if is_main_process %}
 pTickUpSem = sem_open("/tick_up_sem_{{non_source_num}}", 0)
 pTickDownSem = sem_open("/tick_down_sem_{{non_source_num}}", 0)
-{%- for in_sig_sem in in_sig_sems %}
-snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", {{in_sig_sem[1]}})
-pSigSems[{{in_sig_sem[1]}}] = sem_open(semNameBuf, 0)
-{%- endfor %}
+  {%- for name, sem_num in in_sig_sems %}
+snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", {{sem_num}})
+pSigSems[{{sem_num}}] = sem_open(semNameBuf, 0)
+  {%- endfor %}
+{%- endif %}
+
+{%- if async %}
+# put buffer flush tracking variables in shared memory between
+asyncShmSize = ROUND_UP(sizeof(asyncBufTickInfo) * ASYNC_BUF_LEN, PAGESIZE)
+{% if is_main_process %}
+open_shared_mem(&pAsyncMem, "/async_mem_{{name}}", asyncShmSize, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE)
+{% else %}
+open_shared_mem(&pAsyncMem, "/async_mem_{{name}}", asyncShmSize, O_RDWR, PROT_READ | PROT_WRITE)
+{% endif %}
+pAsyncFlushIndexStrt = <uint32_t *>pAsyncMem
+pAsyncFlushIndexEnd = <uint32_t *>(pAsyncMem + sizeof(uint32_t))
+pAsyncBufInfo = <asyncBufTickInfo *>(pAsyncMem + 2 * sizeof(uint32_t))
+pAsyncFlushIndexStrt[0] = 0
+pAsyncFlushIndexEnd[0] = 0
+{%- endif %}
+
+{% if is_writer -%}
 
 {%- if platform_system == "Linux" %}
 created_mem = sa.list()
@@ -203,7 +239,6 @@ created_mem = sa.list()
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
   {{sig}}Raw = in_sigs['{{sig}}']
-  {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
     {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
     {%- else %}
@@ -211,29 +246,48 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
     {%- endif %}
 else:
   die("numpy signal not created\n")
-    {% if out_signal['args']['type'] != 'vis_pygame' %}
-{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0]
-{{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
+    {% if out_signal["args"]["type"] != "vis_pygame" %}
+{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs["{{sig}}"].__array_interface__["data"][0]
+{{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs["{{sig}}"])
     {% endif %}
+    {% if in_signals|length == 1 %}
+in_sig = in_sigs["{{sig}}"]
+    {%- endif %}
   {% endfor %}
 {%- else %}
   {% for sig,args in in_signals.items() %}
-in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
-{{sig}}Raw = in_sigs['{{sig}}']
-{{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
+in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
+{{sig}}Raw = in_sigs["{{sig}}"]
     {%- if args["max_packets_per_tick"] == 1 %}
 {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
     {%- else %}
 {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
     {%- endif %}
-    {% if out_signal['args']['type'] != 'vis_pygame' %}
-{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs['{{sig}}'].__array_interface__['data'][0]
-{{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs['{{sig}}'])
+    {% if out_signal["args"]["type"] != "vis_pygame" %}
+{{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs["{{sig}}"].__array_interface__["data"][0]
+{{sig}}EndPtr = {{sig}}StrtPtr + len(in_sigs["{{sig}}"])
     {% endif %}
+    {% if in_signals|length == 1 %}
+in_sig = in_sigs["{{sig}}"]
+    {%- endif %}
   {% endfor %}
 {%- endif %}
 
 {{ driver_code["setup"] }}
+
+{%- endif %}
+
+{% if is_writer %}
+  {%- if in_signals|length == 1 %}
+outBufStrt = <{{in_signal_type}} *><long>in_sig.__array_interface__["data"][0]
+outBuf = outBufStrt
+outBufEnd = outBufStrt + {{in_signal_name}}BufVars[7]
+  {%- else %}
+outBufStrt = <{{out_dtype}} *>malloc(packetSize)
+outBuf = outBufStrt
+outBufEnd = outBufStrt + packetSize
+  {%- endif %}
+{%- endif %}
 
 {% if default_params -%}
 {{default_sig_name}} = {{default_params}}
@@ -247,29 +301,93 @@ make_realtime()
 kill(ppid,SIGUSR1)
 
 while(True):
+{%- if is_main_process %}
   sem_wait(pTickUpSem)
-{%- for in_sig_sem in in_sig_sems %}
-  sem_wait(pSigSems[{{in_sig_sem[1]}}])
-{%- endfor %}
-
-{% for sig,args in in_signals.items() %}
-  {%- if args["max_packets_per_tick"] == 1 %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-  {%- else %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-  {%- endif %}
-  {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
-  # print({{sig}}Len, flush=True)
-{% endfor %}
-
-  {{parser_code}} 
-
-{%- if not has_parser and out_signal['args']['type'] != 'vis_pygame' %}
-  outBuf = <uint8_t *>({{in_signal_name}}StrtPtr + {{in_signal_name}}BufVars[0])
-  outBufLen = ({{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0]) * sizeof({{in_signal_name}}StrtPtr[0])
+  {%- for name, sem_num in in_sig_sems %}
+  sem_wait(pSigSems[{{sem_num}}])
+  {%- endfor %}
+  {% if async %}
+  # async main process updates buffer flush end variable
+  if ((pAsyncFlushIndexEnd[0] + 1) == pAsyncFlushIndexStrt[0]) or (
+    (pAsyncFlushIndexEnd[0] == ASYNC_BUF_LEN) and
+    (pAsyncFlushIndexStrt[0] == 0)
+  ):
+    die("Async buffer overrun. Consider increasing signal history sizes.")
+  {% for sig,args in in_signals.items() %}
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffsetSamples = {{sig}}BufVars[0]
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffset = {{sig}}BufVars[8]
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}EndOffset ={{sig}}BufVars[9]
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+  {% endfor %}
+  pAsyncFlushIndexEnd[0] += 1
+  if pAsyncFlushIndexEnd[0] >= ASYNC_BUF_LEN:
+    pAsyncFlushIndexEnd[0] = 0
+  {% endif %}
 {%- endif %}
 
-{{ driver_code["run"] }}
+{%- if is_writer %}
 
+  {% if async -%} # async buffering and parser logic
+
+  # async writer udpates buffer flush start variable
+  if pAsyncFlushIndexStrt[0] == pAsyncFlushIndexEnd[0]:
+    if (shouldExit) and (pAsyncFlushIndexStrt[0] == pAsyncFlushIndexEnd[0]):
+      handle_exit(0)
+    # wait for half a tick if there is no data
+    time.sleep({{config["config"]["tick_len"]}} / (2. * 1e6))
+    continue
+
+    {% for sig, args in in_signals.items() %}
+  asyncStrtOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffset
+  asyncEndOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}EndOffset
+  if asyncEndOffset - asyncStrtOffset == 1:
+    {{sig}} = {{sig}}Raw[asyncStrtOffset]
+  else:
+    {{sig}} = {{sig}}Raw[asyncStrtOffset:asyncEndOffset]
+  {{sig}}Len =  pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}Len
+    {% endfor %}
+
+    {% if has_parser %}
+
+    {{parser_code}}
+
+    {% else %}
+  outBuf = outBufStrt + pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{in_signal_name}}StrtOffsetSamples
+    {% endif %}
+  pAsyncFlushIndexStrt[0] += 1
+  if pAsyncFlushIndexStrt[0] >= ASYNC_BUF_LEN:
+    pAsyncFlushIndexStrt[0] = 0
+
+  {% else -%} # synchronous parser logic
+
+  # perform parsing for each packet
+    {% for sig, args in in_signals.items() %}
+  if {{sig}}BufVars[9] - {{sig}}BufVars[8] == 1:
+    {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  else:
+    {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+    {% endfor %}
+
+  {% if has_parser %}
+
+  {{parser_code}}
+
+    {% else -%}
+  outBuf = outBufStrt + {{in_signal_name}}BufVars[0]
+    {%- endif %}
+
+  {% endif %}
+
+
+{{ driver_code["write"] }}
+
+  {%- if not is_main_process %}
+  if (shouldExit) and (pAsyncFlushIndexStrt[0] == pAsyncFlushIndexEnd[0]):
+    handle_exit(0)
+  {%- endif %}
+{%- endif %}
+
+{%- if is_main_process %}
   sem_post(pTickDownSem)
-  sigalrm_recv -= 1
+{%- endif %}

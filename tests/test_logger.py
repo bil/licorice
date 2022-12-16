@@ -8,7 +8,7 @@ import pytest
 
 import licorice
 
-NUM_TICKS = 1000
+NUM_TICKS = 100
 
 logger_model_template = {
     "config": {
@@ -27,7 +27,11 @@ logger_model_template = {
             "in": [],
             "out": {
                 "name": "log_sqlite",
-                "args": {"type": "disk", "save_file": "./data"},
+                "async": True,
+                "args": {
+                    "type": "disk",
+                    "save_file": "./data"
+                },
             },
         },
     },
@@ -333,12 +337,13 @@ def test_suffixes(capfd):
     assert set(suffixes) == set(table_suffixes)
 
 
-def test_create_new_db(capfd):
+@pytest.mark.parametrize(
+    "new_db_num_ticks, sql_logger_flush", [(12, 7), (10, 5)]
+)
+def test_create_new_db(new_db_num_ticks, sql_logger_flush, capfd):
     scalar_shape = 1
     dtype = np.float64
     dtype_str = "float64"
-    new_db_num_ticks = 400
-    sql_logger_flush = 100
 
     # create LiCoRICE model dict
     logger_model = copy.deepcopy(logger_model_template)
@@ -367,18 +372,23 @@ def test_create_new_db(capfd):
     captured = capfd.readouterr()
     assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
     assert captured.err == ""
-    print(captured.out)
 
     # read values written to sqlite databases
     values = []
-    i = 0
-    for i in range(math.ceil(NUM_TICKS / new_db_num_ticks)):
+    num_dbs = math.ceil(NUM_TICKS / new_db_num_ticks)
+    for i in range(num_dbs):
         conn = sqlite3.connect(
             f"{pytest.test_dir}/module_code/run.lico/out/data_000{i}.db"
         )
         cur = conn.cursor()
         cur.execute("SELECT * FROM signals;")
         vals = cur.fetchall()
+        if i == num_dbs - 1:
+            assert (
+                len(vals) == (NUM_TICKS % new_db_num_ticks) or new_db_num_ticks
+            )
+        else:
+            assert len(vals) == new_db_num_ticks
         values.extend([val[0] for val in vals])
     assert len(values) == NUM_TICKS
 

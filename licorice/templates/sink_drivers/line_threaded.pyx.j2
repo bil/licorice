@@ -141,7 +141,7 @@ CPU_SET(4, &mask)
 pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask)
 
 
-# __DRIVER_CODE__ run
+# __DRIVER_CODE__ write
 
   lineBytesWrapped = (pLineOutBufWrite - pLineOutBuf) + outBufLen - lineOutBufSize
   linePeriodsWritten = 0

@@ -1,7 +1,7 @@
 # cimport C libraries
 cimport cython
 cimport numpy as np
-from libc.stdio cimport fprintf, printf, stderr, stdout, fflush
+from libc.stdio cimport fprintf, printf, snprintf, stderr, stdout, fflush
 from libc.stdlib cimport exit, malloc, free, calloc, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
@@ -40,6 +40,17 @@ cdef extern from "semaphore.h" nogil:
   int sem_wait(sem_t *)
   int sem_post(sem_t *)
   int sem_close(sem_t *sem)
+  int sem_getvalue(sem_t * sem, int * sval);
+
+cdef extern from "stdatomic.h":
+  enum memory_order:
+    memory_order_relaxed,
+    memory_order_consume,
+    memory_order_acquire,
+    memory_order_release,
+    memory_order_acq_rel,
+    memory_order_seq_cst
+  void atomic_thread_fence(memory_order)
 
 cdef extern from "utilityFunctions.h":
   void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
@@ -61,7 +72,8 @@ cdef extern from "constants.h":
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
   enum: BUF_VARS_OFFSET
-  enum: ASYNC_MUTEXES_OFFSET
+  enum: ASYNC_READER_MUTEXES_OFFSET
+  enum: SEM_NAME_LEN
 
 {%- if async %}
 cdef extern from "<sys/types.h>":
@@ -88,6 +100,7 @@ cdef sigset_t exitMask
 cdef char pathName[MAX_PATH_LEN]
 cdef char *outbuf
 cdef int parse_idx
+cdef int semVal;
 
 cdef size_t shm_size
 cdef uint8_t *pmem
@@ -95,6 +108,8 @@ cdef int64_t *pNumTicks
 {% if is_main_process -%}
 cdef sem_t *pSourceUpSem
 cdef sem_t *pSourceDownSem
+cdef sem_t *pSigSems[NUM_SEM_SIGS]
+cdef char semNameBuf[SEM_NAME_LEN]
 {%- endif %}
 {%- if async %}
 cdef pthread_mutex_t *pAsyncMutex
@@ -111,21 +126,20 @@ cdef uint32_t *pBufVars
 cdef unsigned long packetNum = 0
 cdef unsigned long numDropped = 0
 cdef int i
-
-{% if is_reader -%}
-cdef uint32_t packetSize = {{in_signal["schema"]["data"]["size"]}} * sizeof({{in_dtype}})
-cdef {{in_dtype}} *bufStrtPtr
-cdef {{in_dtype}} *bufEndPtr
-cdef {{in_dtype}} *bufCurPtr
-{%- endif %}
-
 {%- for sig, dtype in (sig_types.items()) %} # declare signal BufVars pointers (to point into pBufVars)
 cdef uint32_t *{{sig}}BufVars
   {%- if is_reader and has_parser %}
 cdef {{dtype}} *{{sig}}StrtPtr
+cdef {{dtype}} *{{sig}}EndPtr
   {%- endif %}
 {%- endfor %}
 
+{% if is_reader -%}
+cdef uint32_t packetSize = {{in_signal["schema"]["data"]["size"]}} * sizeof({{in_dtype}})
+cdef {{in_dtype}} *inBufStrt
+cdef {{in_dtype}} *inBufEnd
+cdef {{in_dtype}} *inBuf
+{%- endif %}
 
 # python variables
 # declare output signals
@@ -144,7 +158,7 @@ shouldExit = False
 
 # function to close the source
 cdef void handle_exit(int exitStatus):
-  global pmem, shm_size, udpReadThread, exitMutex, exitRoutine, pSourceUpSem, pSourceDownSem
+  global pmem, shm_size, udpReadThread, exitMutex, exitRoutine, pSourceUpSem, pSourceDownSem, pSigSems
 
 {%- if is_reader %}
 
@@ -166,7 +180,7 @@ cdef void handle_exit(int exitStatus):
   {%- endif %}
 
   {%- if has_parser %}
-  free(bufStrtPtr)
+  free(inBufStrt)
   {%- endif %}
 
 {{ driver_code["exit_handler"] }}
@@ -177,10 +191,15 @@ cdef void handle_exit(int exitStatus):
   munlockall()
 
 {%- if is_main_process %}
+
   if (sem_close(pSourceUpSem) == -1):
     printf("Could not close source up semaphore. \n")
   if (sem_close(pSourceDownSem) == -1):
     printf("Could not close source down semaphore. \n")
+  {%- for name, sem_num in sig_sems %}
+  if (sem_close(pSigSems[{{sem_num}}]) == -1):
+    printf("Could not close source signal semaphore. \n")
+  {%- endfor %}
 {%- endif %}
 
   exit(exitStatus)
@@ -222,6 +241,7 @@ set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
 
+# open and map shared memory
 shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
@@ -229,9 +249,13 @@ pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {% if is_main_process -%}
 pSourceUpSem = sem_open("/source_up_sem_{{source_num}}", 0)
 pSourceDownSem = sem_open("/source_down_sem_{{source_num}}", 0)
+  {%- for sig_sem in sig_sems %}
+snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", {{sig_sem[1]}})
+pSigSems[{{sig_sem[1]}}] = sem_open(semNameBuf, 0)
+  {%- endfor %}
 {%- endif %}
 {%- if async %}
-pAsyncMutex = <pthread_mutex_t *>(pmem + ASYNC_MUTEXES_OFFSET + sizeof(pthread_mutex_t) * {{async_reader_num}})
+pAsyncMutex = <pthread_mutex_t *>(pmem + ASYNC_READER_MUTEXES_OFFSET + sizeof(pthread_mutex_t) * {{async_reader_num}})
   {%- if is_main_process %}
 if(pthread_mutex_init(pAsyncMutex, NULL) != 0):
   die("Mutex could not be initialized.\n")
@@ -267,6 +291,7 @@ out_sigs["{{sig}}"] = create_shared_array(
 {{sig}}Raw = out_sigs["{{sig}}"]
 {{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]
 {{sig}}StrtPtr = <{{sig_types[sig]}} *><long>{{sig}}Raw.__array_interface__["data"][0]
+{{sig}}EndPtr = {{sig}}StrtPtr + len(out_sigs["{{sig}}"])
     {%- else %}
 out_sig = out_sigs["{{sig}}"]
     {%- endif %}
@@ -283,14 +308,14 @@ sa.mlock(out_sigs["{{sig}}"])
 
 {% if is_reader %}
   {%- if has_parser %}
-bufStrtPtr = <{{in_dtype}} *>malloc(packetSize)
-bufCurPtr = bufStrtPtr
-bufEndPtr = bufStrtPtr + packetSize
+inBufStrt = <{{in_dtype}} *>malloc(packetSize)
+inBuf = inBufStrt
+inBufEnd = inBufStrt + packetSize
   {%- else %}
-bufStrtPtr = <{{out_signal_type}} *><long>out_sig.__array_interface__["data"][0]
-bufCurPtr = bufStrtPtr
-bufEndPtr = bufStrtPtr + {{out_signal_name}}BufVars[7]
-# bufEndPtr = bufStrtPtr + packetSize
+inBufStrt = <{{out_signal_type}} *><long>out_sig.__array_interface__["data"][0]
+inBuf = inBufStrt
+inBufEnd = inBufStrt + {{out_signal_name}}BufVars[7]
+# inBufEnd = inBufStrt + packetSize
   {%- endif %}
 {%- endif %}
 
@@ -322,7 +347,7 @@ while(True):
   {%- endif %}
 
   {%- if not has_parser %}
-  bufCurPtr = bufStrtPtr + {{out_signal_name}}BufVars[2]
+  inBuf = inBufStrt + {{out_signal_name}}BufVars[2]
   {%- endif %}
 
 {{ driver_code["read"] }}
@@ -382,5 +407,13 @@ while(True):
   {%- if async %}
   pthread_mutex_unlock(pAsyncMutex)
   {%- endif %}
+  atomic_thread_fence(memory_order_seq_cst)
+
+{% for dep_name, dep_tuple in out_sig_dependency_info.items() %}
+  {% for i in range(dep_tuple[0]) %}
+  if (pNumTicks[0] >= 0):
+    sem_post(pSigSems[{{dep_tuple[1]}}])
+  {%- endfor %}
+{%- endfor %}
   sem_post(pSourceDownSem)
 {%- endif %}

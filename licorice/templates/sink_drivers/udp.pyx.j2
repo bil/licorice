@@ -62,7 +62,7 @@ if (named_pipe == -1):
   die("Could not open pipe \n")
 
 
-# __DRIVER_CODE__ run
+# __DRIVER_CODE__ write
 
   for sentBytes in range(0,outBufLen,1472): # TODO read in MTU or make constant for user. or could use sendto max
     if (sendto(s, outBuf + sentBytes, 1472, 0, <sockaddr *>&si_other, slen)==-1):
