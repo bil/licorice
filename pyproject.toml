@@ -1,29 +1,29 @@
 [build-system]
-requires = ["setuptools<60"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-# [project]
-# name = "licorice"
-# version = "0.0.5"
-# description = "Linux Comodular Realtime Interactive Compute Environment"
-# readme = "README.md"
-# license = {file = "LICENSE"}
-# authors = [
-#   {email = "licorice@bil.stanford.edu"},
-#   {name = "Stanford Brain Interfacing Laboratory"}
-# ]
-# classifiers = [
-#   "Programming Language :: Python :: 3"
-# ]
-# requires-python = ">=3.6"
-# dynamic = ["dependencies"]
+[project]
+name = "licorice"
+version = "0.0.5"
+description = "Linux Comodular Realtime Interactive Compute Environment"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+  {email = "licorice@bil.stanford.edu"},
+  {name = "Stanford Brain Interfacing Laboratory"}
+]
+classifiers = [
+  "Programming Language :: Python :: 3"
+]
+requires-python = ">=3.6"
+dynamic = ["dependencies"]
 
-# [project.scripts]
-# licorice = "licorice.cli:main"
+[project.scripts]
+licorice = "licorice.cli:main"
 
-# [tool.setuptools]
-# packages = ["licorice"]
-# include-package-data = true
+[tool.setuptools]
+packages = ["licorice"]
+include-package-data = true
 
 [tool.isort]
 profile = "black"

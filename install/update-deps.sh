@@ -12,6 +12,6 @@ pyenv activate licorice
 pip install --upgrade pip "setuptools<60"
 pip install wheel pip-tools
 
-pip-compile "./requirements.in"
-pip-compile "./requirements-dev.in"
+pip-compile "./requirements.in" --resolver=backtracking
+pip-compile "./requirements-dev.in" --resolver=backtracking
 pip-sync "./requirements.txt" "./requirements-dev.txt"
