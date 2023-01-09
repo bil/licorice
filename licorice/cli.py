@@ -14,7 +14,7 @@ from warnings import warn
 import yaml
 
 import licorice.template_funcs as template_funcs
-from licorice.utils import __find_in_path, __handle_completed_process
+from licorice.utils import __find_in_path, __handle_completed_process, __dict_deep_update
 
 # LiCoRICE paths are of the form f"LICORICE_{path}_PATH"
 LICORICE_PATHS = ["WORKING", "TEMPLATE", "GENERATOR", "MODULE", "MODEL"]
@@ -166,6 +166,11 @@ def __load_and_validate_model(**kwargs):
     if not set(model_dict.keys()).issubset(set(top_level)):
         raise RuntimeError("Invalid model definition.")
 
+    # overwrite model_dict with supplied config
+    if kwargs["config"]:
+        # deep merge dicts, favoring second
+        model_dict = __dict_deep_update(model_dict, kwargs["config"])
+
     # compute model hash
     hasher = hashlib.sha256()
     hasher.update(json.dumps(model_dict, sort_keys=True).encode())
@@ -219,6 +224,11 @@ def __parse_args(input_tuple=None):
         action="store_true",
         help="run LiCoRICE with realtime timing guarantees",
     )
+    arg_parser.add_argument(
+        "--config",
+        type=str,
+        help="override model configuration. accepts JSON input"
+    )
 
     for lico_path in LICORICE_PATHS:
         arg_parser.add_argument(
@@ -244,6 +254,9 @@ def __parse_args(input_tuple=None):
         args = arg_parser.parse_args(input_tuple)
     else:
         args = arg_parser.parse_args()
+
+    if args.config:
+        args.config = json.loads(args.config)
 
     return args
 

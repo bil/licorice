@@ -67,8 +67,8 @@ static pid_t aw_pids[NUM_ASYNC_WRITERS];
 static pid_t ch_pids[NUM_MODULES];
 
 {%- if parport_tick_addr is not none %}
-int parportfd, parportRet, parportMode;
-static unsigned char outVal = 0;
+int parportfd, parportMode;
+static unsigned char parportOutVal = 0b00000001;
 {%- endif %}
 
 // pointer to start of shared memory
@@ -193,7 +193,13 @@ void handle_exit(int exitStatus) {
     }
   }
   {%- if parport_tick_addr is not none %}
-    parportRet = ioctl(parportfd,PPRELEASE);
+    parportOutVal = 0b00000000;
+    if (ioctl(parportfd, PPWDATA, &parportOutVal) == -1) {
+      die("parport ioctl PPWDATA failed.\n");
+    }
+    if (ioctl(parportfd, PPRELEASE) == -1) {
+      die("parport ioctl PPRELEASE failed.");
+    }
     close(parportfd);
   {%- endif %}
 
@@ -275,13 +281,6 @@ static void check_children() {
   clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
   printf("tick %li began at %f.\n", (*pNumTicks)+1, tickTimer.tv_nsec/1000000.);
 {% endif %}
-{%- if parport_tick_addr is not none %}
-  // flip bits and output to parallel port
-  if ((parportRet = ioctl(parportfd, PPWDATA, &outVal)) == -1) {
-    die("parport ioctl failed,\n");
-  }
-  outVal = ~outVal;
-{%- endif %}
 
   if ((sigalrm_recv > 1))
     die("Timer missed a tick. (>1 unhandled sigalrms)");
@@ -301,13 +300,13 @@ static void check_children() {
   }
 {%- endif %}
 
-  {%- if num_sources %}
+{%- if num_sources %}
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
       if (sem_trywait(pSourceDownSems[al_i])) {
         printf("Source timing violation on tick: %" PRId64 " from source %s\n", *pNumTicks, sourceProcnames[al_i]);
       }
     }
-  {%- endif %}
+{%- endif %}
 
   // only trigger sources on first iterations
   if (*pNumTicks < 0) {
@@ -318,7 +317,19 @@ static void check_children() {
 
   // normal behavior on subsequent iterations
   else {
-  {%- if num_non_sources %}
+{%- if parport_tick_addr is not none %}
+  // flip bits and output to parallel port
+  if (ioctl(parportfd, PPWDATA, &parportOutVal) == -1) {
+    die("parport ioctl failed,\n");
+  }
+  if (parportOutVal == 0b00000001) {
+    parportOutVal = 0b10000001;
+  }
+  else {
+    parportOutVal = 0b00000001;
+  }
+{%- endif %}
+{%- if num_non_sources %}
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       if (sem_trywait(pTickDownSems[al_i])) {
@@ -331,18 +342,18 @@ static void check_children() {
         }
       }
     }
-  {%- endif %}
+{%- endif %}
 
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
       sem_post(pSourceUpSems[al_i]);
     }
 
-    {%- if num_non_sources %}
+{%- if num_non_sources %}
     // trigger all non-source processes
     for (al_i = 0; al_i < NUM_NON_SOURCES; al_i++) {
       sem_post(pTickUpSems[al_i]);
     }
-    {%- endif %}
+{%- endif %}
   }
 
 {%- if test_tick_time %}
@@ -422,15 +433,17 @@ int main(int argc, char* argv[]) {
 
   // make sure parport is writeable
   if ((parportfd = open("/dev/parport{{parport_tick_addr}}", O_RDWR)) == -1) {
-    die("parport open\n");
+    die("parport open failed.\n");
   }
-  if ((parportRet = ioctl(parportfd,PPCLAIM))) {
-    die("ioctl PPCLAIM\n");
+  if (ioctl(parportfd, PPCLAIM) == -1) {
+    die("parport ioctl PPCLAIM failed.\n");
   }
-
   parportMode = IEEE1284_MODE_COMPAT;
-  if ((parportRet = ioctl(parportfd,PPNEGOT,&parportMode)) == -1) /* 0 on success, -1 on failure */ {
-    die("ioctl PPNEGOT\n");
+  if (ioctl(parportfd, PPNEGOT, &parportMode) == -1) /* 0 on success, -1 on failure */ {
+    die("parport ioctl PPNEGOT failed.\n");
+  }
+  if (ioctl(parportfd, PPWDATA, &parportOutVal) == -1) {
+    die("parport ioctl PPWDATA failed.\n");
   }
 {%- endif %}
 

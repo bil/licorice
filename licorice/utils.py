@@ -26,3 +26,12 @@ def __find_in_path(path_list, files, raise_error=True):
         )
     else:
         return None
+
+# recursively update dict, overwriting conflicts with update
+def __dict_deep_update(orig_dict, update_dict):
+    for k, v in orig_dict.items():
+        if k not in update_dict:
+            update_dict[k] = v
+        elif isinstance(v, dict):
+            __dict_deep_update(v, update_dict[k])
+    return update_dict
