@@ -7,8 +7,8 @@
 #
 
 config:
-  tick_len: 100000
-  num_ticks: 10
+  tick_len: 10000
+  num_ticks: 30
   init_buffer_ticks: 10
 
 signals:

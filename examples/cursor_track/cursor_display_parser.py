@@ -3,7 +3,12 @@ if pygame.event.peek(eventtype=pygame.QUIT):
     handle_exit(0)
 
 # update cursor position every tick
-vel = (joystick_axis[0] * vel_scale, joystick_axis[1] * vel_scale)
+# take mean of joystick_axis to support async input
+ja = joystick_axis
+if len(ja.shape) > 1:
+    ja = np.mean(ja, axis=0)
+
+vel = (ja[0] * vel_scale, ja[1] * vel_scale)
 pos = [pos[0] + vel[0], pos[1] + vel[1]]
 
 # push cursor position to screen every refresh_rate

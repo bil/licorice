@@ -1,3 +1,7 @@
+if pygame.event.peek(eventtype=pygame.QUIT):
+    pygame.quit()
+    handle_exit(0)
+
 if pNumTicks[0] == 0:
     # need to set size & color again on first tick because they were empty when the constructor ran
 

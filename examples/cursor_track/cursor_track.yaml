@@ -51,6 +51,7 @@ modules:
     in:
       - joystick_axis
     out:
+      async: True
       name: viz
       args:
         type: vis_pygame    # sink type for pygame

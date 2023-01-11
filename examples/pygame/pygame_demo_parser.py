@@ -1,3 +1,7 @@
+if pygame.event.peek(eventtype=pygame.QUIT):
+    pygame.quit()
+    handle_exit(0)
+
 if not pNumTicks[0] % refresh_rate:
 
     theta += math.pi / 64

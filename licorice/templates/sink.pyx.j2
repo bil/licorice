@@ -124,7 +124,7 @@ ASYNC_BUF_LEN = {{async_buf_len}}
 # python variables
 lastVal = 1
 in_sigs = {}
-{%- if in_signals|length == 1 %}
+{%- if has_in_signal == 1 %}
 in_sig = None
 {%- endif %}
 {%- if not is_main_process %}
@@ -278,7 +278,7 @@ in_sig = in_sigs["{{sig}}"]
 {%- endif %}
 
 {% if is_writer %}
-  {%- if in_signals|length == 1 %}
+  {%- if has_in_signal %}
 outBufStrt = <{{in_signal_type}} *><long>in_sig.__array_interface__["data"][0]
 outBuf = outBufStrt
 outBufEnd = outBufStrt + {{in_signal_name}}BufVars[7]
@@ -292,7 +292,11 @@ outBufEnd = outBufStrt + packetSize
 {% if default_params -%}
 {{default_sig_name}} = {{default_params}}
 {%- endif %}
+
+{% if is_writer -%}
 {{construct_code}}
+{%- endif %}
+
 
 {%- if platform_system != "Darwin" %}
 make_realtime()
@@ -347,11 +351,13 @@ while(True):
   {{sig}}Len =  pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}Len
     {% endfor %}
 
-    {% if has_parser %}
+    {%- if has_parser %}
 
-    {{parser_code}}
+  {{parser_code}}
+    {%- endif %}
 
-    {% else %}
+    {%- if has_in_signal %}
+
   outBuf = outBufStrt + pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{in_signal_name}}StrtOffsetSamples
     {% endif %}
   pAsyncFlushIndexStrt[0] += 1
@@ -369,11 +375,13 @@ while(True):
   {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
     {% endfor %}
 
-  {% if has_parser %}
+    {%- if has_parser %}
 
   {{parser_code}}
+    {%- endif %}
 
-    {% else -%}
+    {%- if has_in_signal %}
+
   outBuf = outBufStrt + {{in_signal_name}}BufVars[0]
     {%- endif %}
 

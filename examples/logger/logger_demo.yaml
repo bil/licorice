@@ -65,7 +65,7 @@ modules:
       - vector_floats
       - matrix_out
     out: 
-      name: log_sqlite
+      name: sqlite_logger
       async: True
       args:
         type: "disk"

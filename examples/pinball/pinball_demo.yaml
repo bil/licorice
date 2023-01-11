@@ -147,7 +147,9 @@ modules:
       - pos_target
       - state_task
     out:
-      name: sqlite_logger
+      name: log_sqlite
+      async: True
       args:
-        type: 'disk'
-        save_file: './datalogger'
+        type: "disk"
+        table: "single"
+        save_file: "./datalogger"

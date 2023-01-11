@@ -35,5 +35,5 @@ def test_run_matrix_multiply(capsys):
     )
     captured = capsys.readouterr()
     # TODO snapshottest
-    assert "LiCoRICE ran for 10 ticks." in captured.out
+    assert "LiCoRICE ran for 30 ticks." in captured.out
     assert captured.err == ""

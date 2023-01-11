@@ -3,6 +3,7 @@
 # testing
 pygame
 pytest
+syrupy
 
 # formatting
 black

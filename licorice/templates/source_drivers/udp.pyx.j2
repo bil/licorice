@@ -1,6 +1,7 @@
 # __DRIVER_CODE__ imports
 
 from time import sleep
+from posix.types cimport suseconds_t, time_t
 
 cdef extern from "<netdb.h>":
   const char *gai_strerror(int ecode);
@@ -30,6 +31,8 @@ cdef extern from "<sys/socket.h>":
   enum: AF_INET
   enum: SOCK_DGRAM
   enum: MSG_DONTWAIT
+  enum: SOL_SOCKET
+  enum: SO_RCVTIMEO
   struct sockaddr:
     unsigned char sa_len
     unsigned char sa_family  
@@ -37,11 +40,17 @@ cdef extern from "<sys/socket.h>":
   ssize_t recvfrom(int, void *restrict, size_t, int, sockaddr *restrict, socklen_t *restrict)
   int bind(int, const sockaddr *, socklen_t)
   int socket(int domain, int type, int protocol)
+  int setsockopt(int socket, int level, int option_name,
+       const void *option_value, socklen_t option_len);
 
   cdef struct sockaddr_storage:
       unsigned char sa_len
       sa_family_t sa_family
 
+cdef extern from "<sys/time.h>":
+  cdef struct timeval:
+    time_t tv_sec
+    suseconds_t tv_usec
 
 # __DRIVER_CODE__ variables
 
@@ -52,6 +61,7 @@ cdef addrinfo hints
 cdef addrinfo *result, *rp
 cdef int sfd, s
 cdef ssize_t recvLen
+cdef timeval tv
 
 cdef enum:
   MAX_NUM_PACKETS_PER_TICK = {{in_signal['schema']['max_packets_per_tick']}}
@@ -92,6 +102,12 @@ if (rp == NULL): # No address succeeded
     fprintf(stderr, "Could not bind\n")
     die("Could not bind")
 
+
+tv.tv_sec = 60
+tv.tv_usec = 0
+if (setsockopt(sfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0):
+    die("Could not set socket timeout.")
+
 freeaddrinfo(result) # No longer needed
 
 sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
@@ -110,6 +126,5 @@ sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
 
 # __DRIVER_CODE__ exit_handler
-
   if (sfd):
     close(sfd)
