@@ -27,6 +27,7 @@ def has_joystick():
     return pygame.joystick.get_count() >= 1
 
 
+# TODO create better test that senses if ESP32 is connected
 @pytest.mark.skipif(
     num_parports() < 1, reason="No parallel ports connected."
 )
@@ -42,12 +43,22 @@ def test_jitter(capfd):
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     assert captured.err == ""
 
-    with pytest.raises(Exception) as e_info:
+    try:
         mean, std_dev, min_val, max_val = udp_server_recv(3333, timeout=1.)
-        print(mean, std_dev, min_val, max_val)
-        assert False
+        results_str = f"{mean},{std_dev},{min_val},{max_val}\n"
+    except Exception as e:
+        print(e)
+        results_str = None
 
-    print(e_info)
+    if results_str:
+        write_header = False
+        if not os.path.exists(f"{pytest.test_dir}/jitter_results.csv"):
+            write_header = True
+
+        with open(f"{pytest.test_dir}/jitter_results.csv", "w") as f:
+            if write_header:
+                f.write("mean,std_dev,min_val,max_val\n")
+            f.write(results_str)
 
 
 @pytest.mark.skipif(

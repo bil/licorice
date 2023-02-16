@@ -114,14 +114,14 @@
 #define NUM_SOURCE_SIGS {{num_source_sigs}}
 
 // Number of of microseconds for the timer interrupt (1 ms resolution)
-#define USECREQ {{tick_len_us}}
+#define TICK_LEN_NS {{tick_len_ns}}
 
 // Number of seconds for the timer interrupt
-#define SECREQ {{tick_len_s}}
+#define TICK_LEN_S {{tick_len_s}}
 
 // Process priority (1 (low) to 99 (high))
 // Don't set to 99, or else process cannot be killed
-#define PRIORITY 49
+#define PRIORITY 95
 
 // Used to prefault the stack
 #define MAX_SAFE_STACK (8*1024*1024)

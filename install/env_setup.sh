@@ -14,7 +14,8 @@ case $OSTYPE in
                 zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget \
                 curl llvm libncursesw5-dev xz-utils tk-dev libxml2-dev \
                 libxmlsec1-dev libffi-dev liblzma-dev # python deps
-            sudo apt-get install libopenblas-base libopenblas-dev sqlite3 \ libmsgpack-dev libevent-dev libasound2-dev gfortran
+            sudo apt-get install -y libopenblas-base libopenblas-dev sqlite3 \
+                libmsgpack-dev libevent-dev libasound2-dev gfortran
         else
             echo "Automatic dependency installation not supported for your " \
                  "flavor of Linux. Please install dependencies manually."
@@ -51,6 +52,5 @@ pyenv virtualenv -f 3.8.12 licorice
 "$(dirname "$0")/update-deps.sh"
 
 # install pre-commit hooks
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
+exec $SHELL
 pre-commit install

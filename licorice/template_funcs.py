@@ -1456,7 +1456,7 @@ def parse(paths, config, confirmed):
         os.path.join(paths["output"], OUTPUT_CONSTANTS),
         config=config,
         num_ticks=config["config"]["num_ticks"],
-        tick_len_us=config["config"]["tick_len"] % 1000000,
+        tick_len_ns=(config["config"]["tick_len"] % 1000000) * 1000,
         tick_len_s=config["config"]["tick_len"] // 1000000,
         init_buffer_ticks=((config["config"].get("init_buffer_ticks")) or 100),
         num_sem_sigs=num_sem_sigs,

@@ -79,8 +79,6 @@ However, this directory structure is completely configurable. Users should set `
     licorice
     ```
 
-
-
 1. Ensure Permissions and Paths
 
     To ensure you have the correct permissions, create a new limits file with ```sudo vi /etc/security/limits.d/licorice.conf ``` and add these lines to ensure your user can run licorice. _Replace `user` with the user you are using to run licorice_.
@@ -129,6 +127,14 @@ arise
 The examples folder contains instructions on how to get started with LiCoRICE.
 
 It is recommended that first-time users work through the examples to become familiar with the basics of the LiCoRICE workflow.
+
+To run parallel port examples to test jitter, make sure you have a parallel port installed and that your user is in the `lp` group. You can add your user to this group with:
+
+```bash
+sudo usermod -aG lp <user>
+````
+
+and log out and back in to apply the change.
 
 ## Usage
 
