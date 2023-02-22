@@ -24,12 +24,12 @@ signals:
 modules:
 
   # sources
-  joystick_out:
+  joystick_reader:
     language: python
     constructor: True # the constructor and parser perform all the USB manipulation through pygame
     parser: True
     in:
-      name: jdev
+      name: joystick_raw
       async: True
       args:
         type: pygame_joystick

@@ -14,7 +14,7 @@ Generate
 
     licorice generate <model_name>
 
-Generate LiCoRICE user-level per-tick Python snippet files. This includes parsers, constructors, and destructors. Filenames are taken from module definintions in the YAML configuration and files are written to the default module directory (overridden by ``LICORICE_MODULE_PATH``). The generated files are just a scaffold and must be filled out by the user with code that will run for that module function each tick.
+Generate LiCoRICE user-level per-tick Python snippet files. This includes parsers, constructors, and destructors. Filenames are taken from module definitions in the YAML configuration and files are written to the default module directory (overridden by ``LICORICE_MODULE_PATH``). The generated files are just a scaffold and must be filled out by the user with code that will run for that module function each tick.
 
 
 Parse

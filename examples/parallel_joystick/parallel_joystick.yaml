@@ -32,11 +32,11 @@ signals:
 
 modules:
 
-  joystick_out:
+  joystick_reader:
     language: python
     parser: True
     in:
-      name: jdev
+      name: joystick_raw
       args:
         type: pygame_joystick
       schema:

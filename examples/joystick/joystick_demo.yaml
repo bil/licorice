@@ -23,7 +23,7 @@ signals:
 
 modules:
 
-  joystick_out:
+  joystick_reader:
     language: python
     parser: True
     in:

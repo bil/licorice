@@ -40,6 +40,8 @@ def test_jitter(capfd):
     )
     captured = capfd.readouterr()
     # TODO snapshottest/syrupy
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     assert captured.err == ""
 
@@ -73,6 +75,8 @@ def test_parallel_toggle(capfd):
     )
     captured = capfd.readouterr()
     # TODO snapshottest/syrupy
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     assert captured.err == ""
 
@@ -86,6 +90,8 @@ def test_matrix_multiply(capfd):
     )
     captured = capfd.readouterr()
     # TODO snapshottest/syrupy
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     assert captured.err == ""
 
@@ -100,6 +106,8 @@ def test_logger(capfd, snapshot):
     )
     captured = capfd.readouterr()
     # TODO snapshottest/syrupy
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     # TODO address UserWarning for no parser. Move validation into drivers
     # assert captured.err == ""
@@ -145,6 +153,8 @@ def test_pygame(capfd):
     )
     captured = capfd.readouterr()
     # TODO snapshottest/syrupy
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     assert captured.err == ""
 
@@ -162,6 +172,8 @@ def test_cursor_track(capfd):
     )
     captured = capfd.readouterr()
     # TODO snapshottest/syrupy
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     assert captured.err == ""
 
@@ -179,6 +191,8 @@ def test_pinball(capfd):
     )
     captured = capfd.readouterr()
     # TODO snapshottest/syrupy
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
     # TODO address UserWarning for no parser. Move validation into drivers
     # assert captured.err == ""
