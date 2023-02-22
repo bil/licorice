@@ -80,7 +80,6 @@ Open the created file add the following:
     modules:
       joystick_reader:
         language: python
-        constructor: True
         parser: True
         in:
           name: joystick_raw
@@ -113,29 +112,13 @@ Generate joystick modules
 
     licorice generate tutorial-6 -y
 
-This should generate a few files: ``$LICORICE_WORKING_PATH/joystick_print.py``, ``$LICORICE_WORKING_PATH/joystick_reader_parser.py`` and ``$LICORICE_WORKING_PATH/joystick_reader_constructor.py``.
+This should generate a couple files: ``$LICORICE_WORKING_PATH/joystick_print.py`` and ``$LICORICE_WORKING_PATH/joystick_reader_parser.py``.
 
 
 Write joystick modules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Open the constructor (``$LICORICE_WORKING_PATH/joystick_reader_constructor.py``) and add the following:
-
-.. code-block:: python
-
-    import pygame
-
-    pygame.display.init()
-    pygame.joystick.init()
-
-    if pygame.joystick.get_count() < 1:
-        die('No joystick found!\n')
-
-    usb_joystick = pygame.joystick.Joystick(0)
-    usb_joystick.init()
-
-
-The constructor will initialize pygame's built-in `joystick <https://www.pygame.org/docs/ref/joystick.html>`_ and `display <https://www.pygame.org/docs/ref/display.html>`_ tooling and creates a ``Joystick`` object for connecting to and reading from our joystick.
+The ``pygame_joystick`` driver will initialize pygame's built-in `joystick <https://www.pygame.org/docs/ref/joystick.html>`_ and `display <https://www.pygame.org/docs/ref/display.html>`_ tooling and creates a ``Joystick`` object for connecting to and reading from our joystick, so there's no need to do this in a constructor.
 
 Then open the parser (``$LICORICE_WORKING_PATH/joystick_reader_parser.py``) and add the following:
 
@@ -143,10 +126,10 @@ Then open the parser (``$LICORICE_WORKING_PATH/joystick_reader_parser.py``) and 
 
     pygame.event.pump()
 
-    ax0 = usb_joystick.get_axis(0)
-    ax1 = usb_joystick.get_axis(1)
+    ax0 = pygame_joystick.get_axis(0)
+    ax1 = pygame_joystick.get_axis(1)
 
-    buttons = [ usb_joystick.get_button(i) for i in range(usb_joystick.get_numbuttons()) ]
+    buttons = [ pygame_joystick.get_button(i) for i in range(pygame_joystick.get_numbuttons()) ]
 
     joystick_axis[0] = ax0
     joystick_axis[1] = ax1
@@ -384,7 +367,6 @@ Also change our joystick_reader module specification to:
 .. code-block:: yaml
 
     language: python
-    constructor: True # the constructor and parser perform all the USB manipulation through pygame
     parser: True
     in:
       name: joystick_raw

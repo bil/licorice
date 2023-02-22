@@ -23,7 +23,8 @@ if pygame.joystick.get_count() < 1:
 
 pygame_joystick = pygame.joystick.Joystick(0)
 pygame_joystick.init()
-num_buttons = 6 #pygame_joystick.get_numbuttons()
+num_buttons = pygame_joystick.get_numbuttons()
+pygame.event.pump()
 sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
 # __DRIVER_CODE__ read  

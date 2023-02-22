@@ -143,8 +143,8 @@
 <section id="reference">
 <h2>Reference<a class="headerlink" href="#reference" title="Permalink to this heading"></a></h2>
 <p>The full CLI command reference can be viewed by running <code class="docutils literal notranslate"><span class="pre">licorice</span> <span class="pre">-h</span></code> and is printed below for convenience:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: licorice [-h] [-y] [--rt] [--config CONFIG]
-                [--working_path WORKING_PATH] [--template_path TEMPLATE_PATH]
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: licorice [-h] [-y] [--rt] [--working_path WORKING_PATH]
+                [--template_path TEMPLATE_PATH]
                 [--generator_path GENERATOR_PATH] [--module_path MODULE_PATH]
                 [--model_path MODEL_PATH] [--output_dir OUTPUT_DIR]
                 [--export_dir EXPORT_DIR] [--tmp_module_dir TMP_MODULE_DIR]
@@ -163,7 +163,6 @@ optional arguments:
   -h, --help            show this help message and exit
   -y, --confirm         bypass user confirmation on action
   --rt, --realtime      run LiCoRICE with realtime timing guarantees
-  --config CONFIG       override model configuration. accepts JSON input
   --working_path WORKING_PATH
                         Overrides LiCoRICE PATH environment variable
                         LICORICE_WORKING_PATH

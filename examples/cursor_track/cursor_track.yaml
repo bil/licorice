@@ -26,7 +26,6 @@ modules:
   # sources
   joystick_reader:
     language: python
-    constructor: True # the constructor and parser perform all the USB manipulation through pygame
     parser: True
     in:
       name: joystick_raw

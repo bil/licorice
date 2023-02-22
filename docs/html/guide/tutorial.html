@@ -153,7 +153,6 @@ pip install pygame
 <span class="w"> </span><span class="nt">modules</span><span class="p">:</span><span class="w"></span>
 <span class="w">   </span><span class="nt">joystick_reader</span><span class="p">:</span><span class="w"></span>
 <span class="w">     </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
-<span class="w">     </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
 <span class="w">     </span><span class="nt">parser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
 <span class="w">     </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
 <span class="w">       </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_raw</span><span class="w"></span>
@@ -183,31 +182,18 @@ It also specifies two signals, which track the joystick’s current axis and the
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>licorice generate tutorial-6 -y
 </pre></div>
 </div>
-<p>This should generate a few files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_print.py</span></code>, <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_reader_parser.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_reader_constructor.py</span></code>.</p>
+<p>This should generate a couple files: <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_print.py</span></code> and <code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_reader_parser.py</span></code>.</p>
 </section>
 <section id="write-joystick-modules">
 <h4>Write joystick modules<a class="headerlink" href="#write-joystick-modules" title="Permalink to this heading"></a></h4>
-<p>Open the constructor (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_reader_constructor.py</span></code>) and add the following:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pygame</span>
-
-<span class="n">pygame</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
-<span class="n">pygame</span><span class="o">.</span><span class="n">joystick</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
-
-<span class="k">if</span> <span class="n">pygame</span><span class="o">.</span><span class="n">joystick</span><span class="o">.</span><span class="n">get_count</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
-    <span class="n">die</span><span class="p">(</span><span class="s1">&#39;No joystick found!</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
-
-<span class="n">usb_joystick</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">joystick</span><span class="o">.</span><span class="n">Joystick</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="n">usb_joystick</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
-</pre></div>
-</div>
-<p>The constructor will initialize pygame’s built-in <a class="reference external" href="https://www.pygame.org/docs/ref/joystick.html">joystick</a> and <a class="reference external" href="https://www.pygame.org/docs/ref/display.html">display</a> tooling and creates a <code class="docutils literal notranslate"><span class="pre">Joystick</span></code> object for connecting to and reading from our joystick.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">pygame_joystick</span></code> driver will initialize pygame’s built-in <a class="reference external" href="https://www.pygame.org/docs/ref/joystick.html">joystick</a> and <a class="reference external" href="https://www.pygame.org/docs/ref/display.html">display</a> tooling and creates a <code class="docutils literal notranslate"><span class="pre">Joystick</span></code> object for connecting to and reading from our joystick, so there’s no need to do this in a constructor.</p>
 <p>Then open the parser (<code class="docutils literal notranslate"><span class="pre">$LICORICE_WORKING_PATH/joystick_reader_parser.py</span></code>) and add the following:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">pygame</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">pump</span><span class="p">()</span>
 
-<span class="n">ax0</span> <span class="o">=</span> <span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_axis</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="n">ax1</span> <span class="o">=</span> <span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_axis</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">ax0</span> <span class="o">=</span> <span class="n">pygame_joystick</span><span class="o">.</span><span class="n">get_axis</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">ax1</span> <span class="o">=</span> <span class="n">pygame_joystick</span><span class="o">.</span><span class="n">get_axis</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 
-<span class="n">buttons</span> <span class="o">=</span> <span class="p">[</span> <span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_button</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">usb_joystick</span><span class="o">.</span><span class="n">get_numbuttons</span><span class="p">())</span> <span class="p">]</span>
+<span class="n">buttons</span> <span class="o">=</span> <span class="p">[</span> <span class="n">pygame_joystick</span><span class="o">.</span><span class="n">get_button</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">pygame_joystick</span><span class="o">.</span><span class="n">get_numbuttons</span><span class="p">())</span> <span class="p">]</span>
 
 <span class="n">joystick_axis</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">ax0</span>
 <span class="n">joystick_axis</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">ax1</span>
@@ -407,7 +393,6 @@ licorice go tutorial-6 -y
 </div>
 <p>Also change our joystick_reader module specification to:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
-<span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"> </span><span class="c1"># the constructor and parser perform all the USB manipulation through pygame</span><span class="w"></span>
 <span class="nt">parser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
 <span class="nt">in</span><span class="p">:</span><span class="w"></span>
 <span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_raw</span><span class="w"></span>
