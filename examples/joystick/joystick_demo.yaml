@@ -27,9 +27,9 @@ modules:
     language: python
     parser: True
     in:
-      name: jdev
+      name: joystick_raw
       args:
-        type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
+        type: pygame_joystick
       schema:
         data:
           # TODO support this syntax

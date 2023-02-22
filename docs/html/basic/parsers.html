@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parsers &mdash; LiCoRICE  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Advanced Usage" href="../advanced/index.html" />
+    <link rel="prev" title="Drivers" href="drivers.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> LiCoRICE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../install/licorice.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../guide/index.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Basic Usage</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="directory_structure.html">Directory Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html">Drivers</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Parsers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#source-parsers">Source Parsers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sink-parsers">Sink Parsers</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">LiCoRICE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Basic Usage</a></li>
+      <li class="breadcrumb-item active">Parsers</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/basic/parsers.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="parsers">
+<h1>Parsers<a class="headerlink" href="#parsers" title="Permalink to this heading"></a></h1>
+<p>LiCoRICE uses parsers to convert external buffers to internal signals and vice versa. This allows a 1-dimensional buffer passed into LiCoRICE through a driver to be treated as multiple n-dimensional signals. Or it can define how multiple signals are packed into a buffer for output. Parsers also allow the user to define a packet structure for their data which differs from the default. If no parser is specified, LiCoRICE expects there to be only one signal and for the buffer size and type to match that of the signal.</p>
+<p>In general, parsers can be thought of as the tick-level code that runs for a source or sink, similar to the “user code” section of a module. LiCoRICE also provides the ability to add a constructor and a destructor to spin up and tear down resources needed to run the parser.</p>
+<section id="source-parsers">
+<h2>Source Parsers<a class="headerlink" href="#source-parsers" title="Permalink to this heading"></a></h2>
+<p>In sources, the parser functions to convert the buffer supplied by the driver (<code class="docutils literal notranslate"><span class="pre">inBuf</span></code>) to a number of signals that can be used by LiCoRICE.</p>
+<p>Consider the <code class="docutils literal notranslate"><span class="pre">joystick_reader</span></code> source taken from the <code class="docutils literal notranslate"><span class="pre">joystick</span></code> demo and defined below:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nn">...</span><span class="w"></span>
+
+<span class="nt">joystick_reader</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w"></span>
+<span class="w">  </span><span class="nt">parser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
+<span class="w">  </span><span class="nt">in</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_raw</span><span class="w"></span>
+<span class="w">    </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pygame_joystick</span><span class="w"></span>
+<span class="w">    </span><span class="nt">schema</span><span class="p">:</span><span class="w"></span>
+<span class="w">      </span><span class="nt">data</span><span class="p">:</span><span class="w"></span>
+<span class="w">        </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uint8</span><span class="w"></span>
+<span class="w">        </span><span class="nt">size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">22</span><span class="w"></span>
+<span class="w">    </span><span class="nt">async</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w"></span>
+<span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_axis</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_buttons</span><span class="w"></span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w"></span>
+</pre></div>
+</div>
+<p>This source takes as input the external signal named <code class="docutils literal notranslate"><span class="pre">joystick_raw</span></code> which is a 22 element <code class="docutils literal notranslate"><span class="pre">uint8</span></code> buffer supplied by the <code class="docutils literal notranslate"><span class="pre">pygame_joystick</span></code> driver. It has a parser, which is shown below:</p>
+<div class="highlight-cython notranslate"><div class="highlight"><pre><span></span><span class="n">joystick_axis</span><span class="p">[:]</span> <span class="o">=</span> <span class="p">[</span> <span class="p">(</span><span class="o">&lt;</span><span class="n">double</span> <span class="o">*&gt;</span><span class="n">inBuf</span><span class="p">)[</span><span class="mf">0</span><span class="p">],</span> <span class="p">(</span><span class="o">&lt;</span><span class="n">double</span> <span class="o">*&gt;</span><span class="n">inBuf</span><span class="p">)[</span><span class="mf">1</span><span class="p">]</span> <span class="p">]</span>
+<span class="n">joystick_buttons</span><span class="p">[:]</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="o">&lt;</span><span class="n">uint8_t</span> <span class="o">*&gt;</span><span class="n">inBuf</span><span class="p">)[</span><span class="mf">128</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">joystick_buttons</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p>The format of <code class="docutils literal notranslate"><span class="pre">inBuf</span></code> is a mixed-type buffer with <code class="docutils literal notranslate"><span class="pre">double</span></code>s representing the analog stick x- and y-coordinates followed by an array of enough <code class="docutils literal notranslate"><span class="pre">uint8_t</span></code>s to represent the joystick buttons. The parser first casts each of the analog stick coordinates from <code class="docutils literal notranslate"><span class="pre">inBuf</span></code> to <code class="docutils literal notranslate"><span class="pre">double</span></code> and packs them into the <code class="docutils literal notranslate"><span class="pre">joystick_axis</span></code> signal. It then casts each of the button values from <code class="docutils literal notranslate"><span class="pre">inBuf</span></code> to <code class="docutils literal notranslate"><span class="pre">uint8_t</span></code> and packs them into <code class="docutils literal notranslate"><span class="pre">joystick_buttons</span></code>. This way, the <code class="docutils literal notranslate"><span class="pre">joystick_reader</span></code> source can output a more readable data format than a flat buffer.</p>
+</section>
+<section id="sink-parsers">
+<h2>Sink Parsers<a class="headerlink" href="#sink-parsers" title="Permalink to this heading"></a></h2>
+<p>Sink parsers do more or less the opposite of source parsers, converting a number of LiCoRICE signals to a buffer that will be supplied to a driver for external output.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="drivers.html" class="btn btn-neutral float-left" title="Drivers" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../advanced/index.html" class="btn btn-neutral float-right" title="Advanced Usage" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, The Board of Trustees of the Leland Stanford Junior University.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Drivers &mdash; LiCoRICE  documentation</title>
+  <title>Custom Drivers &mdash; LiCoRICE  documentation</title>
       <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -45,10 +45,9 @@
 <li class="toctree-l1"><a class="reference internal" href="../install/licorice.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/index.html">User Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../basic/index.html">Basic Usage</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="index.html">Advanced Usage</a><ul class="current">
-<li class="toctree-l2 current"><a class="current reference internal" href="#">Drivers</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#sync-vs-async">Sync vs Async</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#custom-drivers">Custom Drivers</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Custom Drivers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#example">Example</a></li>
 </ul>
 </li>
@@ -73,9 +72,9 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home"></a></li>
           <li class="breadcrumb-item"><a href="index.html">Advanced Usage</a></li>
-      <li class="breadcrumb-item active">Drivers</li>
+      <li class="breadcrumb-item active">Custom Drivers</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/advanced/drivers.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/advanced/custom_drivers.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -83,18 +82,9 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="drivers">
-<h1>Drivers<a class="headerlink" href="#drivers" title="Permalink to this heading"></a></h1>
-<p>LiCoRICE uses the concept of drivers to interface with external systems. LiCoRICE includes drivers for a number of default inputs and outputs and gives users the ability to write custom drivers for additional I/O support. Code for default drivers can be found under the <code class="docutils literal notranslate"><span class="pre">licorice/templates/source_drivers</span></code> and
-<code class="docutils literal notranslate"><span class="pre">licorice/templates/sink_drivers</span></code> directories.</p>
-<section id="sync-vs-async">
-<h2>Sync vs Async<a class="headerlink" href="#sync-vs-async" title="Permalink to this heading"></a></h2>
-<p>By default, LiCoRICE input and output driver code is run synchronously inside the respective source or sink. Drivers may also be run asynchronously by specifying the <code class="docutils literal notranslate"><span class="pre">async:</span> <span class="pre">True</span></code> flag on that driver’s external signal. This creates two processes for the asynchronous sources or sink: one <em>async reader</em> or <em>async writer</em> which reads in or writes data and handles buffering; and another <em>realtime stamper</em> which defines tick boundaries in the data by updating buffer housekeeping variables according to the realtime clock.</p>
-</section>
-<section id="custom-drivers">
-<h2>Custom Drivers<a class="headerlink" href="#custom-drivers" title="Permalink to this heading"></a></h2>
+  <section id="custom-drivers">
+<h1>Custom Drivers<a class="headerlink" href="#custom-drivers" title="Permalink to this heading"></a></h1>
 <p>Users may extend LiCoRICE by writing their own drivers to interface with peripherals. For now, sink drivers must be added to the <code class="docutils literal notranslate"><span class="pre">licorice/templates/sink_drivers/</span></code> folder and source to <code class="docutils literal notranslate"><span class="pre">licorice/templates/source</span> <span class="pre">_drivers/</span></code>. Eventually, users will be able to add their drivers to custom folders by setting an environment variable.</p>
-</section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Permalink to this heading"></a></h2>
 <p>The following is an implementation of a parallel port source driver which uses pyparallel to read in data each tick. It implements four driver code sections (<code class="docutils literal notranslate"><span class="pre">imports</span></code>, <code class="docutils literal notranslate"><span class="pre">variables</span></code>, <code class="docutils literal notranslate"><span class="pre">setup</span></code>, and <code class="docutils literal notranslate"><span class="pre">read</span></code>) and omits one (<code class="docutils literal notranslate"><span class="pre">exit_handler</span></code>) that is not used. The driver code sections are directly dropped into the source template using <a class="reference external" href="https://jinja.palletsprojects.com/en/3.1.x/">Jinja2 templating</a>. Note that templating can also be used in the driver itself. In this instance, the <code class="docutils literal notranslate"><span class="pre">async</span></code> flag is used to ensure that for async modules, the read call happens at most twice per tick (since the <code class="docutils literal notranslate"><span class="pre">sleep_duration</span></code> is half a tick-length). The exact same driver can then be used for a synchronous parallel port source since the sleep call will be skipped and reads will happen once per tick.</p>

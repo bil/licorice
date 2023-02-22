@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>&lt;no title&gt; &mdash; LiCoRICE  documentation</title>
+  <title>Drivers &mdash; LiCoRICE  documentation</title>
       <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -19,7 +19,9 @@
         <script src="../_static/sphinx_highlight.js"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" /> 
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Parsers" href="parsers.html" />
+    <link rel="prev" title="Directory Structure" href="directory_structure.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -38,12 +40,20 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../realtime.html">Why Realtime?</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../install/licorice.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/index.html">User Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../basic/index.html">Basic Usage</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Basic Usage</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="directory_structure.html">Directory Structure</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Drivers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#sync-vs-async">Sync vs Async</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="parsers.html">Parsers</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
 </ul>
@@ -62,9 +72,10 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home"></a></li>
-      <li class="breadcrumb-item active">&lt;no title&gt;</li>
+          <li class="breadcrumb-item"><a href="index.html">Basic Usage</a></li>
+      <li class="breadcrumb-item active">Drivers</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/partials/_rt_setup.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/basic/drivers.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -72,54 +83,23 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <ol class="arabic">
-<li><p>Disable all ACPI and USB support in the BIOS of the target system.</p>
-<p>USB and ACPI features throw interrupts which can interfere with
-realtime performance.</p>
-<p>If USB support is needed for peripherals, enable only the minimum USB
-version necessary on as few ports as possible if such options in the
-BIOS exist.</p>
-</li>
-<li><p>Compiling a realtime kernel is not a requirement to run LiCoRICE, but
-realtime performance is one of the central features of the platform.
-Without a realtime kernel, timing assurances are harder to deliver.
-Tick violations are more likely to occur as model complexity grows.
-For basic platform testing and evaluation, a realtime kernel is not
-necessary, but for any production deployments, realtime kernel
-compilation is strongly advised.</p>
-<p>The instructions for realtime kernel compilation here should be applied
-to a stock install of Ubuntu server 20.04 LTS.</p>
-<p>From the top-level LiCoRICE repository directory, run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
-</pre></div>
-</div>
-<p>This script will take from one to five hours to complete, depending on
-the speed and processor count of the system. Reboot to finish
-installation when notified. Any USB keyboards will not work after this
-point (USB support is disabled in this realtime kernel), use a PS/2
-keyboard or ssh into the system.</p>
-<p>Note: if USB support is necessary (e.g., system requires realtime
-support for a USB peripheral), install the USB enabled kernel instead
-via <code class="docutils literal notranslate"><span class="pre">ENABLE_USB=1</span> <span class="pre">./install/kernel_setup.sh</span></code> instead. Enabling USB support will
-degrade system performance by a small amount, but may still fit within
-application tolerances. In general, a limited number of USB devices do
-not preclude consistently meeting 1ms ticks. Regardless, it is
-important to always verify timings for a given system deployment.</p>
-</li>
-<li><p>The default installed kernel version is listed in the
-<code class="docutils literal notranslate"><span class="pre">kernel_setup.sh</span></code> script as <code class="docutils literal notranslate"><span class="pre">KERNEL_RT_VERSION</span></code>. Feel free to
-change this to fit your needs. For example, on an Ubuntu 18.04
-system, you may wish to run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">UBUNTU_VERSION</span><span class="o">=</span><span class="m">18</span>.04 <span class="nv">KERNEL_RT_VERSION</span><span class="o">=</span><span class="m">4</span>.16.18-rt12 <span class="nv">ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
-</pre></div>
-</div>
-</li>
-</ol>
+  <section id="drivers">
+<h1>Drivers<a class="headerlink" href="#drivers" title="Permalink to this heading"></a></h1>
+<p>LiCoRICE uses the concept of drivers to interface with external systems. LiCoRICE includes drivers for a number of default inputs and outputs and gives users the ability to write custom drivers for additional I/O support. Code for default drivers can be found under the <code class="docutils literal notranslate"><span class="pre">licorice/templates/source_drivers</span></code> and
+<code class="docutils literal notranslate"><span class="pre">licorice/templates/sink_drivers</span></code> directories.</p>
+<section id="sync-vs-async">
+<h2>Sync vs Async<a class="headerlink" href="#sync-vs-async" title="Permalink to this heading"></a></h2>
+<p>By default, LiCoRICE input and output driver code is run synchronously inside the respective source or sink. Drivers may also be run asynchronously by specifying the <code class="docutils literal notranslate"><span class="pre">async:</span> <span class="pre">True</span></code> flag on that driver’s external signal. This creates two processes for the asynchronous sources or sink: one <em>async reader</em> or <em>async writer</em> which reads in or writes data and handles buffering; and another <em>realtime stamper</em> which defines tick boundaries in the data by updating buffer housekeeping variables according to the realtime clock.</p>
+</section>
+</section>
 
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="directory_structure.html" class="btn btn-neutral float-left" title="Directory Structure" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="parsers.html" class="btn btn-neutral float-right" title="Parsers" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 

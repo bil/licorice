@@ -60,6 +60,7 @@
 <li class="toctree-l2"><a class="reference internal" href="python.html">LiCoRICE Python API</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../basic/index.html">Basic Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
 </ul>
@@ -128,12 +129,6 @@ files and are broken up into the following sections:</p>
 </tr>
 </tbody>
 </table>
-<p>TODO:</p>
-<ul class="simple">
-<li><p>source_init_ticks</p></li>
-<li><p>module_init_ticks</p></li>
-<li><p>sink_init_ticks</p></li>
-</ul>
 </section>
 <section id="signals">
 <h3>Signals<a class="headerlink" href="#signals" title="Permalink to this heading"></a></h3>
@@ -206,11 +201,6 @@ internal module given the signals attributed to that module.</p>
 <section id="external-signals">
 <h4>External Signals<a class="headerlink" href="#external-signals" title="Permalink to this heading"></a></h4>
 <p>External signals are information that is passed in and out of our model. Having an external signal is what defines modules as either a sink or a source(any module should only ever have one). Given the inherent complexity of dealing with external devices or applications, additional information is needed to define these signals.</p>
-<p>TODO</p>
-<ul class="simple">
-<li><p>in-built source drivers</p></li>
-<li><p>in-built sink drivers</p></li>
-</ul>
 </section>
 </section>
 </section>
@@ -241,9 +231,9 @@ internal module given the signals attributed to that module.</p>
 <span class="linenos">23</span><span class="w">      </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python</span><span class="w">  </span><span class="c1"># can be C or python</span><span class="w"></span>
 <span class="linenos">24</span><span class="w">      </span><span class="nt">constructor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True.</span><span class="w"> </span><span class="c1"># signifies we will use a constructor</span><span class="w"></span>
 <span class="linenos">25</span><span class="w">      </span><span class="nt">in</span><span class="p">:</span><span class="w">   </span><span class="c1"># An External Signal (Joystick in USB)</span><span class="w"></span>
-<span class="linenos">26</span><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jdev</span><span class="w"></span>
+<span class="linenos">26</span><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">joystick_raw</span><span class="w"></span>
 <span class="linenos">27</span><span class="w">        </span><span class="nt">args</span><span class="p">:</span><span class="w"></span>
-<span class="linenos">28</span><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">usb_input</span><span class="w"></span>
+<span class="linenos">28</span><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pygame_joystick</span><span class="w"></span>
 <span class="linenos">29</span><span class="w">        </span><span class="nt">schema</span><span class="p">:</span><span class="w"></span>
 <span class="linenos">30</span><span class="w">            </span><span class="nt">max_packets_per_tick</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"> </span><span class="c1"># defaults to 1 for sync, None for async</span><span class="w"></span>
 <span class="linenos">31</span><span class="w">            </span><span class="nt">data</span><span class="p">:</span><span class="w"></span>

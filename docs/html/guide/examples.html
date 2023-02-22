@@ -64,6 +64,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../basic/index.html">Basic Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
 </ul>
@@ -95,40 +96,14 @@
              
   <section id="licorice-examples">
 <h1>LiCoRICE Examples<a class="headerlink" href="#licorice-examples" title="Permalink to this heading"></a></h1>
-<p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory contains examples on how to use LiCoRICE. Please follow <a class="reference internal" href="../install/licorice.html#installation"><span class="std std-ref">instructions for installing LiCoRICE</span></a> first.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory contains working models that highlight LiCoRICE’s capabilities. Please follow <a class="reference internal" href="../install/licorice.html#installation"><span class="std std-ref">instructions for installing LiCoRICE</span></a> as a prerequisite to running any of the example models.</p>
 <section id="directory-structure">
 <h2>Directory structure<a class="headerlink" href="#directory-structure" title="Permalink to this heading"></a></h2>
-<p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory is laid out similarly to how it might be used in a deployed system.</p>
-<p>We recommend creating a directory structure in the following manner:</p>
-<ul class="simple">
-<li><p>model_1</p>
-<ul>
-<li><p>model_1.yaml (YAML file specifying the given LiCoRICE model)</p></li>
-<li><p>model_1_module.py (user code for a <cite>model_1</cite> module)</p></li>
-<li><p>model_1_module_constructor.py (user code for a <cite>model_1</cite> module constructor)</p></li>
-</ul>
-</li>
-<li><p>model_2</p>
-<ul>
-<li><p>model_2.yaml</p></li>
-<li><p>model_2_source.c</p></li>
-<li><p>model_2_source_constructor.c</p></li>
-<li><p>model_2_source_destructor.c</p></li>
-<li><p>model_2_module.py</p></li>
-</ul>
-</li>
-<li><p>shared_modules</p>
-<ul>
-<li><p>shared_module.py</p></li>
-<li><p>shared_module_constructor.py</p></li>
-</ul>
-</li>
-</ul>
-<p>This is LiCoRICE’s default behavior, but may be overrided by setting the <code class="docutils literal notranslate"><span class="pre">LICORICE_*_PATH</span></code> and <code class="docutils literal notranslate"><span class="pre">LICORICE_*_DIR</span></code> <a class="reference internal" href="../api/env_vars.html#environment-variables"><span class="std std-ref">environment variables</span></a>.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory is laid out similarly to how it might be used in a deployed system. Take a look at the <a class="reference internal" href="../install/licorice.html#installation"><span class="std std-ref">recommended directory structure</span></a></p>
 </section>
 <section id="example-models">
 <h2>Example models<a class="headerlink" href="#example-models" title="Permalink to this heading"></a></h2>
-<p>To use these examples, simply run <code class="docutils literal notranslate"><span class="pre">./examples/&lt;example_name&gt;/run.sh</span></code> from the licorice repository root directory. Setting of the correct LICORICE_* environment variables is handled by the run scripts, so please take a look at how those work if you’re curious.</p>
+<p>To use these examples, simply run <code class="docutils literal notranslate"><span class="pre">./examples/&lt;example_name&gt;/run.sh</span></code> from the licorice repository root directory. Setting of the correct <code class="docutils literal notranslate"><span class="pre">LICORICE_*</span></code> environment variables is handled by the run scripts, so please take a look at how those work if you’re curious.</p>
 <p>These demos are listed in order of increasing model feature complexity.
 If a specific demo does not work, it is advised to try a less complex one to assist with debugging.</p>
 <section id="jitter">
@@ -144,10 +119,11 @@ It is helpful to measure core timing performance of the operating system (e.g., 
 <p>Then log out and back in for the changes to take effect.</p>
 <p>After installing LiCoRICE, the model can be executed with the following command:</p>
 <blockquote>
-<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>examples/jitter/run.sh
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>examples/jitter/run.sh --rt
 </pre></div>
 </div>
 </div></blockquote>
+<p>Adding the <code class="docutils literal notranslate"><span class="pre">--rt</span></code> flag to the command is optional, but should improve timing by using realtime constructs such as lowering the <a class="reference external" href="https://man7.org/linux/man-pages/man1/nice.1.html">niceness</a> of the timer process.</p>
 <p>An oscilloscope tapping pin 9 of the parallel port should show a square wave with a 2ms period on 3.3V or 5V rails.</p>
 </section>
 <section id="parallel-toggle">

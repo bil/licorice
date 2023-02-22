@@ -45,6 +45,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../install/licorice.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/index.html">User Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../basic/index.html">Basic Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="index.html">Developer Guide</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="contributing.html">Contributing</a></li>
@@ -120,10 +121,11 @@
 <blockquote>
 <div><p>To ensure you have the correct permissions, create a new limits file with
 <code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">vi</span> <span class="pre">/etc/security/limits.d/licorice.conf</span></code> and add these lines to
-ensure your user can run licorice. <em>Replace</em> <code class="docutils literal notranslate"><span class="pre">user</span></code> <em>with the user you are
+ensure your user can run licorice. <em>Replace</em> <code class="docutils literal notranslate"><span class="pre">&lt;user&gt;</span></code> <em>with the user you are
 using to run licorice</em>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>user - rtprio <span class="m">95</span>
-user - memlock unlimited
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>&lt;user&gt; - rtprio <span class="m">95</span>
+&lt;user&gt; - memlock unlimited
+&lt;user&gt; - nice -20
 </pre></div>
 </div>
 <p>Now log out and back in and you are set up for non-realtime licorice development and usage!</p>
@@ -132,17 +134,8 @@ user - memlock unlimited
 <li><p>Optional - Modify BIOS settings and compile realtime kernel.</p>
 <blockquote>
 <div><ol class="arabic">
-<li><dl>
-<dt>Set user or group permissions by opening <code class="docutils literal notranslate"><span class="pre">/etc/security/limits.conf</span></code> and</dt><dd><p>adding the following line:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&lt;</span><span class="n">user</span><span class="o">&gt;</span> <span class="o">-</span> <span class="n">nice</span> <span class="o">-</span><span class="mi">20</span>
-</pre></div>
-</div>
-<p>Log in and back out for this change to take effect.</p>
-</dd>
-</dl>
-</li>
-<li><p>Disable all USB and ACPI support in the BIOS of the target system</p>
-<p>USB and ACPI features throw CPU interrupts which can interfere with
+<li><p>Disable all ACPI and USB support in the BIOS of the target system.</p>
+<p>USB and ACPI features throw interrupts which can interfere with
 realtime performance.</p>
 <p>If USB support is needed for peripherals, enable only the minimum USB
 version necessary on as few ports as possible if such options in the
@@ -158,21 +151,29 @@ compilation is strongly advised.</p>
 <p>The instructions for realtime kernel compilation here should be applied
 to a stock install of Ubuntu server 20.04 LTS.</p>
 <p>From the top-level LiCoRICE repository directory, run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./install/kernel_setup.sh
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
 </pre></div>
 </div>
-<p>This script will take from one to five hours to complete, depeding on
+<p>This script will take from one to five hours to complete, depending on
 the speed and processor count of the system. Reboot to finish
 installation when notified. Any USB keyboards will not work after this
 point (USB support is disabled in this realtime kernel), use a PS/2
 keyboard or ssh into the system.</p>
 <p>Note: if USB support is necessary (e.g., system requires realtime
 support for a USB peripheral), install the USB enabled kernel instead
-via <code class="docutils literal notranslate"><span class="pre">./install/kernel_setup_usb.sh</span></code> instead. Enabling USB support will
+via <code class="docutils literal notranslate"><span class="pre">ENABLE_USB=1</span> <span class="pre">./install/kernel_setup.sh</span></code> instead. Enabling USB support will
 degrade system performance by a small amount, but may still fit within
 application tolerances. In general, a limited number of USB devices do
 not preclude consistently meeting 1ms ticks. Regardless, it is
 important to always verify timings for a given system deployment.</p>
+</li>
+<li><p>The default installed kernel version is listed in the
+<code class="docutils literal notranslate"><span class="pre">kernel_setup.sh</span></code> script as <code class="docutils literal notranslate"><span class="pre">KERNEL_RT_VERSION</span></code>. Feel free to
+change this to fit your needs. For example, on an Ubuntu 18.04
+system, you may wish to run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">UBUNTU_VERSION</span><span class="o">=</span><span class="m">18</span>.04 <span class="nv">KERNEL_RT_VERSION</span><span class="o">=</span><span class="m">4</span>.16.18-rt12 <span class="nv">ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
+</pre></div>
+</div>
 </li>
 </ol>
 </div></blockquote>

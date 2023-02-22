@@ -38,7 +38,7 @@ modules:
     in:
       name: jdev
       args:
-        type: usb_input # this is an arbitrary input type that supports inputs that are read at some interval
+        type: pygame_joystick
       schema:
         data:
           # TODO support this syntax

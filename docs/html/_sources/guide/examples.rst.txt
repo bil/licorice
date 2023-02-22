@@ -2,42 +2,18 @@
 LiCoRICE Examples
 ******************************************************************************
 
-The ``examples/`` directory contains examples on how to use LiCoRICE. Please follow :ref:`instructions for installing LiCoRICE <install/licorice:Installation>` first.
+The ``examples/`` directory contains working models that highlight LiCoRICE's capabilities. Please follow :ref:`instructions for installing LiCoRICE <install/licorice:Installation>` as a prerequisite to running any of the example models.
 
 
 Directory structure
 ===============================================================================
 
-The ``examples/`` directory is laid out similarly to how it might be used in a deployed system.
-
-We recommend creating a directory structure in the following manner:
-
-* model_1
-
-  - model_1.yaml (YAML file specifying the given LiCoRICE model)
-  - model_1_module.py (user code for a `model_1` module)
-  - model_1_module_constructor.py (user code for a `model_1` module constructor)
-
-* model_2
-
-  - model_2.yaml
-  - model_2_source.c
-  - model_2_source_constructor.c
-  - model_2_source_destructor.c
-  - model_2_module.py
-
-* shared_modules
-
-  - shared_module.py
-  - shared_module_constructor.py
-
-This is LiCoRICE's default behavior, but may be overrided by setting the ``LICORICE_*_PATH`` and ``LICORICE_*_DIR`` :ref:`environment variables <api/env_vars:Environment Variables>`.
-
+The ``examples/`` directory is laid out similarly to how it might be used in a deployed system. Take a look at the :ref:`recommended directory structure  <install/licorice:Installation>`
 
 Example models
 ===============================================================================
 
-To use these examples, simply run ``./examples/<example_name>/run.sh`` from the licorice repository root directory. Setting of the correct LICORICE_* environment variables is handled by the run scripts, so please take a look at how those work if you're curious.
+To use these examples, simply run ``./examples/<example_name>/run.sh`` from the licorice repository root directory. Setting of the correct ``LICORICE_*`` environment variables is handled by the run scripts, so please take a look at how those work if you're curious.
 
 These demos are listed in order of increasing model feature complexity.
 If a specific demo does not work, it is advised to try a less complex one to assist with debugging.
@@ -62,7 +38,9 @@ After installing LiCoRICE, the model can be executed with the following command:
 
   .. code-block:: bash
 
-    examples/jitter/run.sh
+    examples/jitter/run.sh --rt
+
+Adding the ``--rt`` flag to the command is optional, but should improve timing by using realtime constructs such as lowering the `niceness <https://man7.org/linux/man-pages/man1/nice.1.html>`_ of the timer process.
 
 An oscilloscope tapping pin 9 of the parallel port should show a square wave with a 2ms period on 3.3V or 5V rails.
 

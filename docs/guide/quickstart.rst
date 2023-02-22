@@ -276,7 +276,9 @@ You should see the same output as the ``quickstart-2`` model in your terminal, b
 Examine the results
 -------------------------------------------------------------------------------
 
-TODO: Make sure user has installed sqlite3 with ``sudo apt install sqlite3``
+..
+    TODO:
+    Make sure user has installed sqlite3 with ``sudo apt install sqlite3``
 
 To examine the SQLite database file, run:
 

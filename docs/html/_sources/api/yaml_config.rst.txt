@@ -31,11 +31,12 @@ num_ticks         Number of ticks to run the model for
 init_buffer_ticks Number of ticks to run sources before modules start
 ================= =============================================================
 
-TODO:
+..
+    TODO:
 
-* source_init_ticks
-* module_init_ticks
-* sink_init_ticks
+    * source_init_ticks
+    * module_init_ticks
+    * sink_init_ticks
 
 
 Signals
@@ -79,10 +80,11 @@ External Signals
 
 External signals are information that is passed in and out of our model. Having an external signal is what defines modules as either a sink or a source(any module should only ever have one). Given the inherent complexity of dealing with external devices or applications, additional information is needed to define these signals.
 
-TODO
+..
+    TODO
 
-* in-built source drivers
-* in-built sink drivers
+    * in-built source drivers
+    * in-built sink drivers
 
 Example Model
 ===============================================================================
@@ -115,9 +117,9 @@ Example Model
           language: python  # can be C or python
           constructor: True. # signifies we will use a constructor
           in:   # An External Signal (Joystick in USB)
-            name: jdev
+            name: joystick_raw
             args:
-                type: usb_input
+                type: pygame_joystick
             schema:
                 max_packets_per_tick: 1 # defaults to 1 for sync, None for async
                 data:

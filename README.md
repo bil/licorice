@@ -21,7 +21,7 @@ Although real-time computational platforms do exist, many of them are either exp
 * Python 3.6+
 * GCC toolchain
 
-**NOTE**: The setup scripts here are currently only tested on Ubuntu 20.04.4 LTS (Focal Fossa).
+**NOTE**: The setup scripts here are currently only tested on Ubuntu 20.04 LTS (Focal Fossa).
 We recommend starting with a stock install of Ubuntu Server 20.04 LTS.
 Use of any other UNIX platform requires manual installation of packages.
 

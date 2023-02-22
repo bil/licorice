@@ -17,5 +17,6 @@ library support of Python while enabling realtime timing guarantees.
    install/licorice.rst
    guide/index.rst
    api/index.rst
+   basic/index.rst
    advanced/index.rst
    developers/index.rst

@@ -1,15 +1,6 @@
-#. Set user or group permissions by opening ``/etc/security/limits.conf`` and
-    adding the following line:
+#.  Disable all ACPI and USB support in the BIOS of the target system.
 
-    .. code-block::
-
-        <user> - nice -20
-
-    Log in and back out for this change to take effect.
-
-#.  Disable all USB and ACPI support in the BIOS of the target system
-
-    USB and ACPI features throw CPU interrupts which can interfere with
+    USB and ACPI features throw interrupts which can interfere with
     realtime performance.
 
     If USB support is needed for peripherals, enable only the minimum USB
@@ -31,9 +22,9 @@
 
     .. code-block:: bash
 
-        ./install/kernel_setup.sh
+        ENABLE_USB=0 ./install/kernel_setup.sh
 
-    This script will take from one to five hours to complete, depeding on
+    This script will take from one to five hours to complete, depending on
     the speed and processor count of the system. Reboot to finish
     installation when notified. Any USB keyboards will not work after this
     point (USB support is disabled in this realtime kernel), use a PS/2
@@ -41,8 +32,19 @@
 
     Note: if USB support is necessary (e.g., system requires realtime
     support for a USB peripheral), install the USB enabled kernel instead
-    via ``./install/kernel_setup_usb.sh`` instead. Enabling USB support will
+    via ``ENABLE_USB=1 ./install/kernel_setup.sh`` instead. Enabling USB support will
     degrade system performance by a small amount, but may still fit within
     application tolerances. In general, a limited number of USB devices do
     not preclude consistently meeting 1ms ticks. Regardless, it is
     important to always verify timings for a given system deployment.
+
+#.  The default installed kernel version is listed in the
+    ``kernel_setup.sh`` script as ``KERNEL_RT_VERSION``. Feel free to
+    change this to fit your needs. For example, on an Ubuntu 18.04
+    system, you may wish to run:
+
+    .. code-block:: bash
+
+        UBUNTU_VERSION=18.04 KERNEL_RT_VERSION=4.16.18-rt12 ENABLE_USB=0 ./install/kernel_setup.sh
+
+

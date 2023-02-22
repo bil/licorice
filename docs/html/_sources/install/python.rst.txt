@@ -4,7 +4,7 @@
 Installing Python and virtualenv
 ******************************************************************************
 
-We support a few different options for installing Python. Of course, you're welcome to use any other method that you prefer as well. We do recommend that you use a `virtual environment <https://docs.python.org/3/library/venv.html>`_ no matter how Python is installed.
+We support a few different options for installing Python. The `install/env_setup.sh` script will install Python via pyenv as described below. Of course, you're welcome to use any other method that you prefer as well. We do recommend that you use a `virtual environment <https://docs.python.org/3/library/venv.html>`_ no matter how Python is installed.
 
 Pyenv
 ===============================================================================
@@ -14,8 +14,7 @@ Use `Pyenv's automatic installer <https://github.com/pyenv/pyenv-installer>`_ fo
 .. code-block:: bash
 
   curl https://pyenv.run | bash
-  export PATH="$HOME/.pyenv/bin:$PATH"
-  echo 'eval "$(pyenv init --path)"' >> ~/.bashrc
+  echo 'export PATH="$HOME/.pyenv/bin:$PATH"' >> ~/.bashrc
   echo 'eval "$(pyenv init -)"' >> ~/.bashrc
   echo 'eval "$(pyenv virtualenv-init -)"' >> ~/.bashrc
   exec $SHELL

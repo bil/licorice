@@ -43,6 +43,7 @@
 <li class="toctree-l1"><a class="reference internal" href="licorice.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/index.html">User Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../basic/index.html">Basic Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../developers/index.html">Developer Guide</a></li>
 </ul>
@@ -73,13 +74,12 @@
              
   <section id="installing-python-and-virtualenv">
 <h1>Installing Python and virtualenv<a class="headerlink" href="#installing-python-and-virtualenv" title="Permalink to this heading"></a></h1>
-<p>We support a few different options for installing Python. Of course, you’re welcome to use any other method that you prefer as well. We do recommend that you use a <a class="reference external" href="https://docs.python.org/3/library/venv.html">virtual environment</a> no matter how Python is installed.</p>
+<p>We support a few different options for installing Python. The <cite>install/env_setup.sh</cite> script will install Python via pyenv as described below. Of course, you’re welcome to use any other method that you prefer as well. We do recommend that you use a <a class="reference external" href="https://docs.python.org/3/library/venv.html">virtual environment</a> no matter how Python is installed.</p>
 <section id="pyenv">
 <h2>Pyenv<a class="headerlink" href="#pyenv" title="Permalink to this heading"></a></h2>
 <p>Use <a class="reference external" href="https://github.com/pyenv/pyenv-installer">Pyenv’s automatic installer</a> for the simplest setup. Assuming you’re using BASH with a ~/.bashrc file:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl https://pyenv.run <span class="p">|</span> bash
-<span class="nb">export</span> <span class="nv">PATH</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.pyenv/bin:</span><span class="nv">$PATH</span><span class="s2">&quot;</span>
-<span class="nb">echo</span> <span class="s1">&#39;eval &quot;$(pyenv init --path)&quot;&#39;</span> &gt;&gt; ~/.bashrc
+<span class="nb">echo</span> <span class="s1">&#39;export PATH=&quot;$HOME/.pyenv/bin:$PATH&quot;&#39;</span> &gt;&gt; ~/.bashrc
 <span class="nb">echo</span> <span class="s1">&#39;eval &quot;$(pyenv init -)&quot;&#39;</span> &gt;&gt; ~/.bashrc
 <span class="nb">echo</span> <span class="s1">&#39;eval &quot;$(pyenv virtualenv-init -)&quot;&#39;</span> &gt;&gt; ~/.bashrc
 <span class="nb">exec</span> <span class="nv">$SHELL</span>

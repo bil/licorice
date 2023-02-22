@@ -5,7 +5,7 @@ LiCoRICE Tutorial
 Welcome to LiCoRICE! This tutorial is intended for new users to LiCoRICE and provides guided examples in increasing difficulty to get you started with writing and running your own models.
 
 
-0-5: Prerequisites
+0-5: Prerequisites (Quickstart)
 ===============================================================================
 
 If you're here, we assume that you've completed the :ref:`quickstart guide <guide/quickstart:LiCoRICE Quickstart>`.
@@ -78,14 +78,14 @@ Open the created file add the following:
         dtype: uint8
 
     modules:
-      joystick_out:
+      joystick_reader:
         language: python
         constructor: True
         parser: True
         in:
-          name: jdev
+          name: joystick_raw
           args:
-            type: usb_input
+            type: pygame_joystick
           schema:
             data:
               dtype: uint8
@@ -100,7 +100,7 @@ Open the created file add the following:
           - joystick_axis
           - joystick_buttons
 
-This specifies two LiCoRICE models, first ``joystick_out`` which reads in the incoming data from the joystick and then ``joystick_print`` which outputs joystick positional data and button clicks.
+This specifies two LiCoRICE models, first ``joystick_reader`` which reads in the incoming data from the joystick and then ``joystick_print`` which outputs joystick positional data and button clicks.
 It also specifies two signals, which track the joystick's current axis and the activity of any buttons on the joystick.
 
 Be sure to specify ``joystick_buttons`` to match your joystick's specific inputs if you are using a non-Logitech F310 controller.
@@ -113,13 +113,13 @@ Generate joystick modules
 
     licorice generate tutorial-6 -y
 
-This should generate a few files: ``$LICORICE_WORKING_PATH/joystick_print.py``, ``$LICORICE_WORKING_PATH/joystick_out_parser.py`` and ``$LICORICE_WORKING_PATH/joystick_out_constructor.py``.
+This should generate a few files: ``$LICORICE_WORKING_PATH/joystick_print.py``, ``$LICORICE_WORKING_PATH/joystick_reader_parser.py`` and ``$LICORICE_WORKING_PATH/joystick_reader_constructor.py``.
 
 
 Write joystick modules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Open the constructor (``$LICORICE_WORKING_PATH/joystick_out_constructor.py``) and add the following:
+Open the constructor (``$LICORICE_WORKING_PATH/joystick_reader_constructor.py``) and add the following:
 
 .. code-block:: python
 
@@ -137,7 +137,7 @@ Open the constructor (``$LICORICE_WORKING_PATH/joystick_out_constructor.py``) an
 
 The constructor will initialize pygame's built-in `joystick <https://www.pygame.org/docs/ref/joystick.html>`_ and `display <https://www.pygame.org/docs/ref/display.html>`_ tooling and creates a ``Joystick`` object for connecting to and reading from our joystick.
 
-Then open the parser (``$LICORICE_WORKING_PATH/joystick_out_parser.py``) and add the following:
+Then open the parser (``$LICORICE_WORKING_PATH/joystick_reader_parser.py``) and add the following:
 
 .. code-block:: python
 
@@ -379,7 +379,7 @@ Open ``$LICORICE_WORKING_PATH/tutorial-6.yaml`` and change our pygame_display mo
         args:
           type: vis_pygame    # sink type for pygame
 
-Also change our joystick_out module specification to:
+Also change our joystick_reader module specification to:
 
 .. code-block:: yaml
 
@@ -387,10 +387,10 @@ Also change our joystick_out module specification to:
     constructor: True # the constructor and parser perform all the USB manipulation through pygame
     parser: True
     in:
-      name: jdev
+      name: joystick_raw
       async: True
       args:
-        type: usb_input
+        type: pygame_joystick
       schema:
         max_packets_per_tick: 2
         data:
@@ -651,7 +651,7 @@ Next, open the pinball task constructor (``$LICORICE_WORKING_PATH/pinball_task_c
 
     cursor_vel_scale = 10
 
-This should initalize all the variables for our pinball tasks.
+This should initialize all the variables for our pinball tasks.
 
 Finally, open the pinball task parser(``$LICORICE_WORKING_PATH/pinball_task.py``) and add the following:
 

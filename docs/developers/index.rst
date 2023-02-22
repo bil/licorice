@@ -14,9 +14,10 @@ LiCoRICE codebase.
    packaging.rst
 
 
-TODO:
+..
+   TODO:
 
-* LiCoRICE parsing, compiling, and running
-* Jinja2 Templating
-* Processes vs Threads
-* Timer parent
+   * LiCoRICE parsing, compiling, and running
+   * Jinja2 Templating
+   * Processes vs Threads
+   * Timer parent
