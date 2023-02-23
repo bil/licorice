@@ -77,10 +77,10 @@ modules:
   # sources
   joystick_reader:
     language: python
-    parser: True
+    parser: true
     in:
       name: joystick_raw
-      async: True
+      async: true
       args:
         type: pygame_joystick
       schema:
@@ -147,7 +147,7 @@ modules:
       - state_task
     out:
       name: log_sqlite
-      async: True
+      async: true
       args:
         type: "disk"
         table: "single"

@@ -69,3 +69,11 @@ time_end = 10
 acceptance_window = 100
 
 cursor_vel_scale = 10
+
+pos_cursor[:] = pos_cursor_i
+pos_target[:] = pos_target_i
+size_cursor[:] = size_cursor_i
+size_target[:] = size_target_i
+color_cursor[:] = color_cursor_i
+color_target[:] = color_target_i
+state_task[:] = task_state

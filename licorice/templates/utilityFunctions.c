@@ -88,6 +88,7 @@ void set_sighandler(int signum, void *psh, sigset_t *block_mask) {
 void open_shared_mem(uint8_t **ppmem, const char *pName, size_t numBytes, int shm_flags, int mmap_flags) {
   int fd = shm_open(pName, shm_flags, 0666);
   if(fd == -1) {
+    printf("%s\n", pName);
     printf("%s\n", strerror(errno));
     fflush(stdout);
     die("shm_open failed.\n");

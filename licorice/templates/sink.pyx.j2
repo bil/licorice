@@ -160,6 +160,8 @@ cdef void handle_exit(int exitStatus):
   if (sem_close(pSigSems[{{sig_sem[1]}}]) == -1):
     printf("Could not close sink signal semaphore. \n")
   {%- endfor %}
+
+  shm_unlink("/async_mem_{{name}}")
 {%- endif %}
   exit(exitStatus)
 
@@ -220,9 +222,21 @@ pSigSems[{{sem_num}}] = sem_open(semNameBuf, 0)
 # put buffer flush tracking variables in shared memory between
 asyncShmSize = ROUND_UP(sizeof(asyncBufTickInfo) * ASYNC_BUF_LEN, PAGESIZE)
 {% if is_main_process %}
-open_shared_mem(&pAsyncMem, "/async_mem_{{name}}", asyncShmSize, O_TRUNC | O_CREAT | O_RDWR, PROT_READ | PROT_WRITE)
+open_shared_mem(
+  &pAsyncMem,
+  "/async_mem_{{name}}",
+  asyncShmSize,
+  O_TRUNC | O_CREAT | O_RDWR,
+  PROT_READ | PROT_WRITE
+)
 {% else %}
-open_shared_mem(&pAsyncMem, "/async_mem_{{name}}", asyncShmSize, O_RDWR, PROT_READ | PROT_WRITE)
+open_shared_mem(
+  &pAsyncMem,
+  "/async_mem_{{name}}",
+  asyncShmSize,
+  O_RDWR,
+  PROT_READ | PROT_WRITE
+)
 {% endif %}
 pAsyncFlushIndexStrt = <uint32_t *>pAsyncMem
 pAsyncFlushIndexEnd = <uint32_t *>(pAsyncMem + sizeof(uint32_t))
