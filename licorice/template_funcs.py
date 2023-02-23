@@ -1406,6 +1406,7 @@ def parse(paths, config, confirmed):
         py_lib=get_config_var("PY_LDFLAGS"),
         py_link_flags=py_link_flags,
         line=compile_for_line,
+        darwin=(platform_system == "Darwin"),
     )
 
     # parse timer parent

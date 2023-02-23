@@ -10,8 +10,8 @@ CYLDFLAGS = {{py_lib}} -lsqlite3 {% if line %}-lasound{% endif %} {{py_link_flag
 
 all: timer {% for so in source_names %}{{so}} {% endfor %}{% for ar in async_reader_names %}{{ar}} {% endfor %}{% for si in sink_names %}{{si}} {% endfor %} {% for aw in async_writer_names %}{{aw}} {% endfor %} {{"logger" if logger_needed}} {% for c in module_names %}{{c}} {% endfor %}
 
-timer: timer.c utilityFunctions.c 
-	$(CC) $(CFLAGS) timer.c utilityFunctions.c -o timer $(LDFLAGS)
+timer: timer.c utilityFunctions.c {% if darwin %}darwin_compat/clock_nanosleep.c{% endif %}
+	$(CC) $(CFLAGS) timer.c utilityFunctions.c {% if darwin %}darwin_compat/clock_nanosleep.c{% endif %} -o timer $(LDFLAGS)
 
 {% for source in source_names -%}
 {% if source_types[loop.index0] == 'python' -%}

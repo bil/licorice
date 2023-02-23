@@ -33,6 +33,10 @@
 
 #include "constants.h"
 #include "utilityFunctions.h"
+#ifdef __APPLE__
+#include "darwin_compat/clock_nanosleep.h"
+#endif
+
 
 #define TOPO_HEIGHT {{topo_height}}
 #define NUM_SOURCES {{num_sources}}
@@ -292,6 +296,7 @@ static void timer_cleanup(struct period_info *pinfo) {
   {%- endif %}
 }
 
+#ifndef __APPLE__
 /*
  * set scheduler to SCHED_FIFO with the given priority
  */
@@ -302,6 +307,7 @@ void set_sched_prior(int priority) {
     die("pthread_setschedparam failed.\n");
   }
 }
+#endif
 
 static void check_children(struct period_info *pinfo) {
 {%- if test_tick_time %}
@@ -567,7 +573,7 @@ int main(int argc, char* argv[]) {
     die("fork failed \n");
   }
   if (so_pids[{{loop.index0}}] == 0) { // only runs for source process
-  {%- if platform_system != "Darwin" %}
+#ifndef __APPLE__
     cpu_set_t mask;
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
@@ -575,11 +581,12 @@ int main(int argc, char* argv[]) {
     CPU_ZERO(&mask);
     CPU_SET(NETWORK_CPU, &mask);
     sched_setaffinity(0, sizeof(mask), &mask);
-  {%- else %}
-    // TODO implement Darwin CPU affinity
-  {%- endif %}
     setpriority(PRIO_PROCESS, 0, -19);
     set_sched_prior(PRIORITY-1);
+#else
+    // TODO implement Darwin CPU affinity
+    // TODO implement Darwin priority
+#endif
     char* argv[2] = {"./{{name}}", NULL};
 
     // execute source process
@@ -603,21 +610,21 @@ int main(int argc, char* argv[]) {
     die("fork failed \n");
   }
   if (ar_pids[{{loop.index0}}] == 0) { // only runs for reader process
+    printf("Source: {{name}}\n");
+#ifndef __APPLE__
+    // TODO implement CPU affinity
     // cpu_set_t mask;
+    // CPU_ZERO(&mask);
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
-    printf("Source: {{name}}\n");
-    {%- if platform_system != "Darwin" %}
-    // TODO implement CPU affinity
-    // CPU_ZERO(&mask);
-    // CPU_SET(NETWORK_CPU, &mask);
     // sched_setaffinity(0, sizeof(mask), &mask);
-    {%- else %}
-    // TODO implement Darwin CPU affinity
-    {%- endif %}
     setpriority(PRIO_PROCESS, 0, -18);
     set_sched_prior(PRIORITY - 2);
+#else
+    // TODO implement Darwin CPU affinity
+    // TODO implement Darwin priority
+#endif
     char* argv[2] = {"./{{name}}", NULL};
 
     // execute reader process
@@ -652,12 +659,17 @@ int main(int argc, char* argv[]) {
         die("fork failed\n");
       }
       if (ch_pids[childNum] == 0) {  // only runs for child processes
+#ifndef __APPLE__
         //cpu_set_t mask;
         //CPU_ZERO(&mask);
         //CPU_SET(m_j + CPU_OFFSET, &mask);
         //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
         setpriority(PRIO_PROCESS, 0, -19);
         set_sched_prior(PRIORITY-1);
+#else
+        // TODO implement Darwin CPU affinity
+        // TODO implement Darwin priority
+#endif
         char procBuf[64];
         sprintf(procBuf, "./%s", moduleProcnames[childNum]);
         char* argv[2] = {procBuf, NULL};
@@ -685,6 +697,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     die("fork failed \n");
   }
   if (si_pids[{{loop.index0}}] == 0) { // only runs for logger process
+#ifndef __APPLE__
     // cpu_set_t mask;
     // for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
@@ -694,6 +707,10 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
     setpriority(PRIO_PROCESS, 0, -2);
     set_sched_prior(PRIORITY-1);
+#else
+    // TODO implement Darwin CPU affinity
+    // TODO implement Darwin priority
+#endif
     char* argv[2] = {"./{{name}}", NULL};
 
     // execute sink process
@@ -716,21 +733,21 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     die("fork failed \n");
   }
   if (aw_pids[{{loop.index0}}] == 0) { // only runs for async writer process
+    printf("Async writer: {{name}}\n");
+#ifndef __APPLE__
+    // TODO implement CPU affinity
     // cpu_set_t mask;
+    // CPU_ZERO(&mask);
     // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
     //   CPU_SET(i, &mask);
     // }
-    printf("Async writer: {{name}}\n");
-    {%- if platform_system != "Darwin" %}
-    // TODO implement CPU affinity
-    // CPU_ZERO(&mask);
-    // CPU_SET(NETWORK_CPU, &mask);
     // sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    {%- else %}
-    // TODO implement Darwin CPU affinity
-    {%- endif %}
     setpriority(PRIO_PROCESS, 0, -18);
     set_sched_prior(PRIORITY - 2);
+#else
+    // TODO implement Darwin CPU affinity
+    // TODO implement Darwin priority
+#endif
     char* argv[2] = {"./{{name}}", NULL};
 
     // execute async writer process
@@ -798,6 +815,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
 
   /* Set affinity mask to include CPUs 1. */
   // TODO expose this as config var
+#ifndef __APPLE__
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(1, &cpuset);
@@ -805,6 +823,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
   if (pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset)) {
     die("pthread setaffinity_np failed\n");
   }
+#endif
 
   //  /* Check the actual affinity mask assigned to the thread. */
   // if (pthread_attr_getaffinity_np(&attr, sizeof(cpuset), &cpuset)) {
