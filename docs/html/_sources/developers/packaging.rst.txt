@@ -33,5 +33,5 @@ If the created executable `dist/licorice` is experiencing issues, first try buil
     ./packaging/create_binary.sh licorice_onedir.spec
 
 
-This will create a portable folder `dist/licorice` that contains an executable `licorice`
+This will create a portable folder ``dist/licorice`` that contains an executable `licorice`
 

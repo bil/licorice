@@ -51,9 +51,6 @@ screen = pygame.display.set_mode((screen_width, screen_height))
 screen.fill(black)
 
 refresh_rate = 2  # ticks (20 ms)
-print("GOT HERE", flush=True)
-print(size_cursor, flush=True)
-print(size_target, flush=True)
 sprite_cursor = Circle(color_cursor, size_cursor[0], pos_cursor)
 sprite_target = Circle(color_target, size_target[0], pos_target)
 

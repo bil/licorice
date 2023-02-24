@@ -22,6 +22,11 @@ Basic Install
         brew install openblas msgpack libevent
 
 
+    .. note::
+
+        If numpy is unable to link openblas , it may be necessary to put ``export OPENBLAS=$(brew --prefix openblas)`` in your ``~/.bashrc`` or similar.
+
+
 #. Install LiCoRICE using pip. Make sure the virtualenv you created in step 1 is activated:
 
     .. code-block:: bash
@@ -33,7 +38,7 @@ Basic Install
 
     .. code-block:: bash
 
-        pip install git+https://github.com/bil/lico-dev@main
+        pip install git+https://github.com/bil/licorice@main
 
 #. Ensure Correct Permissions
 

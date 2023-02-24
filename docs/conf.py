@@ -34,6 +34,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinxcontrib.programoutput",
+    # "sphinx_tabs.tabs"
 ]
 
 # Make sure the target is unique

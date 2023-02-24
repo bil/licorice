@@ -4,6 +4,28 @@ Development Environment Setup
 
 #. Clone the LiCoRICE repository.
 
+    .. code-block:: bash
+
+            git clone https://github.com/bil/licorice.git
+            cd licorice
+
+    ..
+        TODO use sphinx-tabs
+        .. tabs::
+
+            .. code-tab:: bash HTTPS
+
+                git clone https://github.com/bil/licorice.git
+
+            .. code-tab:: bash SSH
+
+                git clone git@github.com:bil/licorice.git
+
+            .. code-tab:: bash GitHub CLI
+
+                gh repo clone bil/licorice
+
+
 #. Python virtualenv setup
 
     From the top-level LiCoRICE directory, run:
@@ -11,8 +33,6 @@ Development Environment Setup
     .. code-block:: bash
 
         ./install/env_setup.sh
-
-    This script will take 15 to 30 minutes to complete.
 
 #. `Install pyenv and pyenv-virtualenv in your shell config. <https://github.com/pyenv/pyenv#set-up-your-shell-environment-for-pyenv>`_ Bash users can use the following:
 
@@ -32,11 +52,11 @@ Development Environment Setup
 
         pyenv activate licorice
 
-    Or alternatively include a ``.python-version`` file in the top-level LiCoRICE directory with the single line:
+    Or alternatively include a ``.python-version`` file in the top-level LiCoRICE directory containing ``licorice``:
 
     .. code-block::
 
-        licorice
+        echo licorice > .python-version
 
 #. Ensure Correct Permissions
 

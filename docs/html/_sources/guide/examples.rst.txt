@@ -8,12 +8,15 @@ The ``examples/`` directory contains working models that highlight LiCoRICE's ca
 Directory structure
 ===============================================================================
 
-The ``examples/`` directory is laid out similarly to how it might be used in a deployed system. Take a look at the :ref:`recommended directory structure  <install/licorice:Installation>`
+The ``examples/`` directory is laid out similarly to how it might be used in a deployed system. Take a look at the :ref:`recommended directory structure  <install/licorice:Installation>` to learn more.
 
 Example models
 ===============================================================================
 
-To use these examples, simply run ``./examples/<example_name>/run.sh`` from the licorice repository root directory. Setting of the correct ``LICORICE_*`` environment variables is handled by the run scripts, so please take a look at how those work if you're curious.
+..
+  TODO add download_examples command and remove need to clone repository
+
+To use these examples, simply clone the LiCoRICE repository and run ``./examples/<example_name>/run.sh`` from the repository root directory. Setting of the correct ``LICORICE_*`` environment variables is handled by the run scripts, so please take a look at how those work if you're curious.
 
 These demos are listed in order of increasing model feature complexity.
 If a specific demo does not work, it is advised to try a less complex one to assist with debugging.

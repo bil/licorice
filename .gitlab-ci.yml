@@ -24,7 +24,7 @@ before_script:
   # DOCKER
   - export APT_CACHE_DIR=`pwd`/apt-cache && mkdir -pv $APT_CACHE_DIR
   - apt-get update -y
-  - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y libopenblas-base libopenblas-dev sqlite3  libsqlite3-dev libmsgpack-dev libevent-dev gfortran netcat
+  - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y libopenblas-base libopenblas-dev sqlite3  libsqlite3-dev libmsgpack-dev libevent-dev gfortran netcat libasound2-dev
   # SHELL
   # - echo `whoami`
   # - sudo apt-get update -y

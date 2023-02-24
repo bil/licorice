@@ -98,6 +98,10 @@ sudo apt install -y libevent-dev libsqlite3-dev libmsgpack-dev libopenblas-base 
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>brew install openblas msgpack libevent
 </pre></div>
 </div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If numpy is unable to link openblas , it may be necessary to put <code class="docutils literal notranslate"><span class="pre">export</span> <span class="pre">OPENBLAS=$(brew</span> <span class="pre">--prefix</span> <span class="pre">openblas)</span></code> in your <code class="docutils literal notranslate"><span class="pre">~/.bashrc</span></code> or similar.</p>
+</div>
 </div></blockquote>
 </li>
 <li><p>Install LiCoRICE using pip. Make sure the virtualenv you created in step 1 is activated:</p>
@@ -109,7 +113,7 @@ sudo apt install -y libevent-dev libsqlite3-dev libmsgpack-dev libopenblas-base 
 </li>
 <li><p>To install the latest development version of LiCoRICE, you can instead use:</p>
 <blockquote>
-<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip install git+https://github.com/bil/lico-dev@main
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip install git+https://github.com/bil/licorice@main
 </pre></div>
 </div>
 </div></blockquote>

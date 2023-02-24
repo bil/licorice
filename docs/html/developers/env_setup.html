@@ -83,14 +83,20 @@
   <section id="development-environment-setup">
 <h1>Development Environment Setup<a class="headerlink" href="#development-environment-setup" title="Permalink to this heading"></a></h1>
 <ol class="arabic">
-<li><p>Clone the LiCoRICE repository.</p></li>
+<li><p>Clone the LiCoRICE repository.</p>
+<blockquote>
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone https://github.com/bil/licorice.git
+<span class="nb">cd</span> licorice
+</pre></div>
+</div>
+</div></blockquote>
+</li>
 <li><p>Python virtualenv setup</p>
 <blockquote>
 <div><p>From the top-level LiCoRICE directory, run:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./install/env_setup.sh
 </pre></div>
 </div>
-<p>This script will take 15 to 30 minutes to complete.</p>
 </div></blockquote>
 </li>
 <li><p><a class="reference external" href="https://github.com/pyenv/pyenv#set-up-your-shell-environment-for-pyenv">Install pyenv and pyenv-virtualenv in your shell config.</a> Bash users can use the following:</p>
@@ -111,8 +117,8 @@
 <div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pyenv activate licorice
 </pre></div>
 </div>
-<p>Or alternatively include a <code class="docutils literal notranslate"><span class="pre">.python-version</span></code> file in the top-level LiCoRICE directory with the single line:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">licorice</span>
+<p>Or alternatively include a <code class="docutils literal notranslate"><span class="pre">.python-version</span></code> file in the top-level LiCoRICE directory containing <code class="docutils literal notranslate"><span class="pre">licorice</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">echo</span> <span class="n">licorice</span> <span class="o">&gt;</span> <span class="o">.</span><span class="n">python</span><span class="o">-</span><span class="n">version</span>
 </pre></div>
 </div>
 </div></blockquote>

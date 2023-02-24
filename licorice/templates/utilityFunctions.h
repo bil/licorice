@@ -15,7 +15,7 @@
 void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask);
 
 /* 
- * finish necessary real-time setup before process execution begins
+ * finish necessary realtime setup before process execution begins
  */
 void make_realtime();
 

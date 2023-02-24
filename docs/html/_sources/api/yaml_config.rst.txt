@@ -8,7 +8,7 @@ LiCoRICE uses YAML configuration files to specify the model that will be constru
 Models
 ===============================================================================
 
-Models define the architecture of your real-time analysis pipeline from data
+Models define the architecture of your realtime analysis pipeline from data
 acquisition (sources) to processing (modules) to output (sinks). Models are
 defined through `yaml <https://www.cloudbees.com/blog/yaml-tutorial-everything-you-need-get-started>`_
 files and are broken up into the following sections:
@@ -24,10 +24,11 @@ Config
 High-level configuration variables are set by the user here. Here we define aspects of the setup, timing, and ticks(our metric of time) in order to control the way our system interacts with the real world.
 
 ================= =============================================================
-Keyword           Usage
+Keyword           Description
 ================= =============================================================
-tick_len          Set the time per tick in microseconds
-num_ticks         Number of ticks to run the model for
+tick_len          Realtime clock frequency in microseconds
+num_ticks         Number of ticks to run the model for. Defaults to -1
+                  (indefinite)
 init_buffer_ticks Number of ticks to run sources before modules start
 ================= =============================================================
 
@@ -42,17 +43,17 @@ init_buffer_ticks Number of ticks to run sources before modules start
 Signals
 -------------------------------------------------------------------------------
 
-Here we define how data will be passed between our modules. We also define how much of this data to keep over time and how to store it if necessary for our use case. At a high-level, signals are represented as NumPy arrays in our modules. However, in implementation, they are actually shared arrays, shared memory that allows for the fast transfer of data between models required for real-time analysis.
+Here we define how data will be passed between our modules. We also define how much of this data to keep over time and how to store it if necessary for our use case. At a high-level, signals are represented as NumPy arrays in our modules. However, in implementation, they are actually shared arrays, shared memory that allows for the fast transfer of data between models required for realtime analysis.
 
 
 ============= ===============================================================
-Keyword       Usage
+Keyword       Description
 ============= ===============================================================
-shape         The shape of the incoming data as a NumPy array
-dtype         The type of the data
-history       How many ticks worth of data to keep
+shape         The shape of the numpy signal as a tuple (single tick)
+dtype         The dtype of the numpy signal
+history       Number of ticks of data to store in memory
 log           Whether or not to log the signal
-log_storage   Specifications for how to log the data (see examples )
+log_storage   Specifications for how to log the data (see examples)
 ============= ===============================================================
 
 
@@ -65,15 +66,22 @@ LiCoRICE will automatically detect whether a module is a source, sink, or
 internal module given the signals attributed to that module.
 
 ============ ==================================================================
-Keyword      Usage
+Keyword      Description
 ============ ==================================================================
 language     The programming language used to write the module (Python or C)
 constructor  Indicates that a constructor is used to initialize the module
-parser       Indicates that a parser is used to read data from an external source
-destructor   Indicates that a destructor is used to correctly breakdown a module
-in           Under this key, you define each of your inputs for this module
-out          Under this key, you define each of your outputs for this module
+parser       Indicates that a parser is used for tick-level code (only for
+             sources and sinks)
+destructor   Indicates that a destructor is used to teardown resources
+in           Defines module and sink inputs as an array. Defines source input
+             as a dict
+out          Defines module and source outputs as an array. Defines sink output
+             as a dict
 ============ ==================================================================
+
+.. TODO
+
+    expand. include detailed information about filename conventions
 
 External Signals
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -94,8 +102,8 @@ Example Model
 
     config:
 
-      tick_len: 100000 # in microseconds
-      # number of ticks to run for; defaults to None (run until terminated by the user)
+      tick_len: 100000 # in microseconds (0.1s)
+      # number of ticks to run for; defaults to -1 (run until terminated by the user)
       num_ticks: 10
 
 

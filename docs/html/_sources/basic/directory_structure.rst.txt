@@ -4,7 +4,7 @@ Directory Structure
 
 We recommend creating a directory structure to house your LiCoRICE models in the following manner:
 
-.. code::
+.. code-block:: text
 
   licorice_workspace
   └──model_1

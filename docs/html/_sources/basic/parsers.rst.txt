@@ -13,7 +13,7 @@ In sources, the parser functions to convert the buffer supplied by the driver (`
 
 Consider the ``joystick_reader`` source taken from the ``joystick`` demo and defined below:
 
-.. code:: yaml
+.. code-block:: yaml
 
   ...
 
@@ -37,7 +37,7 @@ Consider the ``joystick_reader`` source taken from the ``joystick`` demo and def
 
 This source takes as input the external signal named ``joystick_raw`` which is a 22 element ``uint8`` buffer supplied by the ``pygame_joystick`` driver. It has a parser, which is shown below:
 
-.. code:: cython
+.. code-block:: cython
 
     joystick_axis[:] = [ (<double *>inBuf)[0], (<double *>inBuf)[1] ]
     joystick_buttons[:] = [

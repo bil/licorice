@@ -4,7 +4,7 @@
 Installing Python and virtualenv
 ******************************************************************************
 
-We support a few different options for installing Python. The `install/env_setup.sh` script will install Python via pyenv as described below. Of course, you're welcome to use any other method that you prefer as well. We do recommend that you use a `virtual environment <https://docs.python.org/3/library/venv.html>`_ no matter how Python is installed.
+We support a few different options for installing Python. The ``install/env_setup.sh`` script will install Python via pyenv as described below. Of course, you're welcome to use any other method that you prefer as well. We do recommend that you use a `virtual environment <https://docs.python.org/3/library/venv.html>`_ no matter how Python is installed.
 
 Pyenv
 ===============================================================================
@@ -39,7 +39,9 @@ Install `conda <https://docs.conda.io/projects/conda/en/latest/>`_ by downloadin
   conda create -n licorice
   conda activate licorice
 
-Note: conda installation is not yet tested.
+.. note::
+
+  conda installation is not yet tested.
 
 System Python
 ===============================================================================
@@ -60,5 +62,5 @@ Mac:
 .. code-block:: bash
 
   brew install python
-  python m venv ~/.envs/licorice
+  python -m venv ~/.envs/licorice
   source ~/.envs/licorice/bin/activate
