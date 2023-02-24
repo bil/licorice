@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "licorice"
-version = "0.0.5"
+version = "0.0.6"
 description = "Linux Comodular Realtime Interactive Compute Environment"
 readme = "README.md"
 license = {file = "LICENSE"}
