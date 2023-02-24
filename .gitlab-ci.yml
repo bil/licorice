@@ -33,7 +33,7 @@ before_script:
   - pip install virtualenv
   - virtualenv venv
   - source venv/bin/activate
-  - pip install "setuptools<60"
+  - pip install setuptools
   - pushd install
   - pip install -r requirements-dev.txt
   - popd
