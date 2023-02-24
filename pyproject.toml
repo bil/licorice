@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "licorice"
-version = "0.0.6"
+version = "0.0.7"
 description = "Linux Comodular Realtime Interactive Compute Environment"
-readme = "README.md"
+readme = "README.rst"
 license = {file = "LICENSE"}
 authors = [
   {email = "licorice@bil.stanford.edu"},
