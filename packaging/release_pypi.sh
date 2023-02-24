@@ -8,7 +8,7 @@ eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
 GIT_CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD`
-GIT_DEFAULT_BRANCH=`basename "$(git rev-parse --abbrev-ref origin/HEAD)"`
+GIT_DEFAULT_BRANCH=`git remote show origin | grep "HEAD branch" | sed 's/.*: //'`
 VERSION_REGEX="^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$"
 
 GIT_VERSION_TAG="$(python -c 'import importlib.metadata; print(importlib.metadata.version("licorice"))')"
