@@ -1,7 +1,7 @@
 #!/bin/bash
 
 make clean
+rm -rf ./docs/html ./docs/build
 make -C docs html
-rm -rf ./docs/html
 cp -r docs/build/html/. ./docs/html
 
