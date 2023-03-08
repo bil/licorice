@@ -297,15 +297,12 @@ if (rc != SQLITE_OK):
   die("sqlite3async control failed\n")
 
 # create numpy signals table sql insert queries
+# TODO support {{in_signals|length}} = 0
 queryLen = (
   strlen(INSERT_STR) + strlen(DATALOGGER_SIGNALS_TABLE_NAME) + 
   strlen(VALUES_STR) + strlen(OPEN_BRACE) + 
-{%- for sig in in_signals %}
-  strlen(QUESTION){{" + strlen(COMMA) + " if not loop.last}}
-{%- endfor %} +
-{%- for i in range(raw_vec_sigs['total']) %}
-  strlen(COMMA) + strlen(QUESTION) +
-{%- endfor %}
+  (strlen(QUESTION) + strlen(COMMA)) * {{in_signals|length}} - strlen(COMMA) +
+  (strlen(COMMA) + strlen(QUESTION)) * {{raw_vec_sigs['total']}} +
   strlen(CLOSE_BRACE_SEMI) 
 )
 signalsQuery = <char *> malloc(queryLen + 1)
