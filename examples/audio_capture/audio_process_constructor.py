@@ -21,12 +21,18 @@ print(flush=True)
 
 midi_avail = True
 if pygame.midi.get_count() < 3:
-    print("External MIDI board not found! Disabling FX.\n", flush=True)
     midi_avail = False
 
 if midi_avail:
-    midi_input_device = 3
-    mIn = pygame.midi.Input(midi_input_device)
+    try:
+        midi_input_device = 5
+        mIn = pygame.midi.Input(midi_input_device)
+    except Exception as e:
+        print(e)
+        midi_avail = False
+
+if not midi_avail:
+    print("External MIDI board not found! Disabling FX.\n", flush=True)
 
 sample_rate = 44100
 
@@ -37,7 +43,8 @@ gain_boards = [
     Pedalboard([Gain(gain_db=(gain_max - gain_min) * (i / 127.0) + gain_min)])
     for i in range(128)
 ]
-gain_board = gain_boards[len(gain_boards) // 2]
+# gain_board = gain_boards[len(gain_boards) // 2]
+gain_board = gain_boards[len(gain_boards)-1]
 
 # distortion
 clip_ratio = 0.2

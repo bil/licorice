@@ -164,6 +164,8 @@ cdef void handle_exit(int exitStatus):
 
   {{ destruct_code }}
 
+{{ driver_code["exit_handler"] }}
+
   # delete the signal's shared memory array
   {%- if platform_system == "Linux" %}
   sa_names = [sig.name for sig in sa.list()]
@@ -182,8 +184,6 @@ cdef void handle_exit(int exitStatus):
   {%- if has_parser %}
   free(inBufStrt)
   {%- endif %}
-
-{{ driver_code["exit_handler"] }}
 
 {%- endif %}
 

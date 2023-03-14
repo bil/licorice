@@ -2,17 +2,21 @@
 
 config:
   tick_len: 100000
-  num_ticks: 10
+  num_ticks: 40
   source_init_ticks: 2
+
+  # user-defined config
+  # TODO merge with sink args
+  sampling_rate: 48000
 
 signals:
   sine_wave:
-    # shape: (9600, )
-    # dtype: float32
-    # history: 100
-    shape: (8820, )
+    shape: (9600, )
     dtype: int16
-    history: 10000
+    history: 100
+    # shape: (8820, )
+    # dtype: int16
+    # history: 1000
 
 
 modules:
@@ -31,12 +35,22 @@ modules:
       name: sine_out
       args:
         type: line
+        pcm:
+          device: "default"
+          mode: 0  # SND_PCM_NONBLOCK # SND_PCM_ASYNC
+          access: SND_PCM_ACCESS_RW_INTERLEAVED
+          format: SND_PCM_FORMAT_S16
+          channels: 2
+          rate: 48000
+          buffer_time: 0  # ring buffer length in us
+          period_time: 100000  # period time in us
+          periods: 2
       schema:
         data:
-          # dtype: float32
-          # size: 9600
           dtype: int16
-          size: 8820
+          size: 9600
+          # dtype: int16
+          # size: 8820
       async: True
       buffered: True # TODO, setting False should allow copying directly from signal history. maybe this is the same as having an "empty" parser
 

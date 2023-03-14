@@ -165,8 +165,10 @@ void handle_exit(int exitStatus) {
 {%- endif %}
 
   printf("exiting...\n");
-  printf("Killing async readers...\n");
-  fflush(stdout);
+  if (NUM_ASYNC_READERS) {
+    printf("Killing async readers...\n");
+    fflush(stdout);
+  }
   for (ex_i = 0; ex_i < NUM_ASYNC_READERS; ex_i++) {
     if (ar_pids[ex_i] != -1) {
       printf("Killing async reader: %d\n", ar_pids[ex_i]);
@@ -179,8 +181,10 @@ void handle_exit(int exitStatus) {
       }
     }
   }
-  printf("Killing async writers...\n");
-  fflush(stdout);
+  if (NUM_ASYNC_WRITERS) {
+    printf("Killing async writers...\n");
+    fflush(stdout);
+  }
   for (ex_i = 0; ex_i < NUM_ASYNC_WRITERS; ex_i++) {
     if (aw_pids[ex_i] != -1) {
       printf("Killing async writer: %d\n", aw_pids[ex_i]);
@@ -193,7 +197,9 @@ void handle_exit(int exitStatus) {
       }
     }
   }
-  printf("Killing sinks...\n");
+  if (NUM_SINKS) {
+    printf("Killing sinks...\n");
+  }
   for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
     if (si_pids[ex_i] && si_pids[ex_i] != -1) {
       printf("Killing sink: %d\n", si_pids[ex_i]);
@@ -201,7 +207,9 @@ void handle_exit(int exitStatus) {
       while (waitpid(si_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
-  printf("Killing modules...\n");
+  if (NUM_MODULES) {
+    printf("Killing modules...\n");
+  }
   for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
     if (ch_pids[ex_i] && ch_pids[ex_i] != -1) {
       printf("Killing module: %d\n", ch_pids[ex_i]);
@@ -209,7 +217,9 @@ void handle_exit(int exitStatus) {
       while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
     }
   }
-  printf("Killing sources...\n");
+  if (NUM_SOURCES) {
+    printf("Killing sources...\n");
+  }
   for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
     if (so_pids[ex_i] && so_pids[ex_i] != -1) {
       printf("Killing source: %d\n", so_pids[ex_i]);

@@ -98,6 +98,7 @@ cdef uint32_t packetSize = {{out_signal_size}} * sizeof({{out_dtype}})
 cdef {{out_dtype}} *outBufStrt
 cdef {{out_dtype}} *outBufEnd
 cdef {{out_dtype}} *outBuf
+cdef size_t outBufLen
 {%- endif %}
 
 {% if async %}
@@ -300,6 +301,7 @@ outBufStrt = <{{out_dtype}} *>malloc(packetSize)
 outBuf = outBufStrt
 outBufEnd = outBufStrt + packetSize
   {%- endif %}
+outBufLen = outBufEnd - outBufStrt
 {%- endif %}
 
 {% if default_params -%}
@@ -372,6 +374,7 @@ while(True):
     {%- if has_in_signal %}
 
   outBuf = outBufStrt + pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{in_signal_name}}StrtOffsetSamples
+  outBufLen = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{in_signal_name}}Len
     {% endif %}
   pAsyncFlushIndexStrt[0] += 1
   if pAsyncFlushIndexStrt[0] >= ASYNC_BUF_LEN:
@@ -396,6 +399,7 @@ while(True):
     {%- if has_in_signal %}
 
   outBuf = outBufStrt + {{in_signal_name}}BufVars[0]
+  outBufLen = {{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0]
     {%- endif %}
 
   {% endif %}

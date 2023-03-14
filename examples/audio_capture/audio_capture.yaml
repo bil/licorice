@@ -1,18 +1,18 @@
-# Output a sine wave over line out
+# Read audio over line in, manipulate it, and output over line out
 
 config:
   tick_len: 100000
-  # num_ticks: 1000
+  # num_ticks: 2
   source_init_ticks: 10
 
 signals:
   audio_signal_source:
-    shape: (17640, )
+    shape: (4410, )
     dtype: int16
     history: 10000
   
   audio_signal_sink:
-    shape: (8820, )
+    shape: (4410, )
     dtype: int16
     history: 1000
 
@@ -21,14 +21,24 @@ modules:
     language: python
     in:  
       name: audio_source
-      async: True
+      # async: True
       args:
         type: line
-      schema: # TODO move line constants here
-        max_packets_per_tick: 10
+        pcm:
+          device: "default"
+          mode: 0  # SND_PCM_NONBLOCK # SND_PCM_ASYNC
+          access: SND_PCM_ACCESS_RW_INTERLEAVED
+          format: SND_PCM_FORMAT_S16
+          channels: 1
+          rate: 44100
+          buffer_time: 0  # ring buffer length in us
+          period_time: 100000  # period time in us
+          periods: 2
+      schema:
+        max_packets_per_tick: 2
         data:
           dtype: int16
-          size: 17640
+          size: 4410
 
     out:
       - audio_signal_source
@@ -47,9 +57,29 @@ modules:
       - audio_signal_sink
     out:  
       name: audio_sink
+      # async: True
       args:
         type: line
+        pcm:
+          device: "default"
+          mode: 0  # SND_PCM_NONBLOCK # SND_PCM_ASYNC
+          access: SND_PCM_ACCESS_RW_INTERLEAVED
+          format: SND_PCM_FORMAT_S16
+          channels: 1
+          rate: 44100
+          buffer_time: 0 # ring buffer length in us
+          period_time: 100000  # period time in us
+          periods: 2
       schema:
         data:
           dtype: int16
-          size: 8820
+          size: 4410
+
+  # audio_vis:
+  #   language: python
+  #   in:
+  #     - audio_signal_source
+  #   out:
+  #     name: viz
+  #     args:
+  #       type: vis_pygame

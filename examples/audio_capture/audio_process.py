@@ -7,7 +7,7 @@ if midi_avail:
     while mIn.poll():
         event = mIn.read(1)[0]
         ev_data = event[0]
-        # print(event, flush=True)
+        print(event, flush=True)
 
         area = ev_data[0]
         control = ev_data[1]  # which button
@@ -82,9 +82,18 @@ if midi_avail:
                 )
 
 
+# res = np.repeat(audio_signal_source[:], 2)
 res = audio_signal_source[:]
-res = res[::2]
-# print(res, flush=True)
+# res = res[::2] # grab mono (left?) input from stereo
+# print(
+#     "module (num_ticks, bf8, bf9): ", pNumTicks[0],
+#     audio_signal_sourceBufVars[8], audio_signal_sourceBufVars[9],
+#     audio_signal_sourceBufVars[0], audio_signal_sourceBufVars[1],
+#     audio_signal_sourceLen,
+#     flush=True
+# )
+# print(audio_signal_source, flush=True)
+# print(audio_signal_source.shape, flush=True)c
 # print(np.count_nonzero(res), flush=True)
 
 # weird noise
@@ -92,7 +101,7 @@ res = res[::2]
 # res = (res / max_val) * np.iinfo(np.int16).max / 2
 
 # gain
-res = gain_board(res, sample_rate)
+res = gain_board(res.astype(np.float32), sample_rate)
 
 # distortion
 if enable_distortion:
@@ -145,7 +154,7 @@ if power_off:
 
 # res = np.random.random(res.shape) * 1000
 # res = np.zeros(res.shape)
-audio_signal_sink[:] = res
+audio_signal_sink[:] = res.astype(np.int16)
 # audio_signal_sink[:] = audio_signal_source[:]
 
 # print(res.shape, flush=True)

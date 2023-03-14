@@ -146,12 +146,12 @@ def generate(paths, config, confirmed):
     if "modules" in config and config["modules"]:
         modules = config["modules"]
 
-    for module_name, module_args in iter(modules.items()):
-        if isinstance(module_args.get("in"), dict):
+    for module_key, module_val in iter(modules.items()):
+        if isinstance(module_val.get("in"), dict):
             # source
-            print(" - " + module_name + " (source)")
+            print(" - " + module_key + " (source)")
 
-            if module_args["language"] == "python":
+            if module_val["language"] == "python":
                 parse_template = G_TEMPLATE_SOURCE_PARSER_PY
                 construct_template = G_TEMPLATE_CONSTRUCTOR_PY
                 destruct_template = G_TEMPLATE_DESTRUCTOR_PY
@@ -163,30 +163,30 @@ def generate(paths, config, confirmed):
                 extension = ".c"
 
             # generate source parser template
-            if "parser" in module_args and module_args["parser"]:
-                if module_args["parser"] is True:
-                    module_args["parser"] = module_name + "_parser"
+            if "parser" in module_val and module_val["parser"]:
+                if module_val["parser"] is True:
+                    module_val["parser"] = module_key + "_parser"
                 output_path = os.path.join(
-                    modules_path, module_args["parser"] + extension
+                    modules_path, module_val["parser"] + extension
                 )
                 if not os.path.exists(output_path):
-                    print("   - " + module_args["parser"] + " (parser)")
+                    print("   - " + module_val["parser"] + " (parser)")
                     do_jinja(
                         __find_in_path(paths["generators"], parse_template),
                         output_path,
                     )
 
             # generate source constructor template
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = module_name + "_constructor"
+            if "constructor" in module_val and module_val["constructor"]:
+                if module_val["constructor"] is True:
+                    module_val["constructor"] = module_key + "_constructor"
                 output_path = os.path.join(
                     modules_path,
-                    module_args["constructor"] + extension,
+                    module_val["constructor"] + extension,
                 )
                 if not os.path.exists(output_path):
                     print(
-                        "   - " + module_args["constructor"] + " (constructor)"
+                        "   - " + module_val["constructor"] + " (constructor)"
                     )
                     do_jinja(
                         __find_in_path(
@@ -196,26 +196,24 @@ def generate(paths, config, confirmed):
                     )
 
             # generate source destructor template
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = module_name + "_destructor"
+            if "destructor" in module_val and module_val["destructor"]:
+                if module_val["destructor"] is True:
+                    module_val["destructor"] = module_key + "_destructor"
                 output_path = os.path.join(
-                    modules_path, module_args["destructor"] + extension
+                    modules_path, module_val["destructor"] + extension
                 )
                 if not os.path.exists(output_path):
-                    print(
-                        "   - " + module_args["destructor"] + " (destructor)"
-                    )
+                    print("   - " + module_val["destructor"] + " (destructor)")
                     do_jinja(
                         __find_in_path(paths["generators"], destruct_template),
                         output_path,
                     )
 
-        elif isinstance(module_args.get("out"), dict):
+        elif isinstance(module_val.get("out"), dict):
             # sink
-            print(" - " + module_name + " (sink)")
+            print(" - " + module_key + " (sink)")
 
-            if module_args["language"] == "python":
+            if module_val["language"] == "python":
                 parse_template = G_TEMPLATE_SOURCE_PARSER_PY
                 construct_template = G_TEMPLATE_CONSTRUCTOR_PY
                 destruct_template = G_TEMPLATE_DESTRUCTOR_PY
@@ -226,29 +224,29 @@ def generate(paths, config, confirmed):
                 destruct_template = G_TEMPLATE_DESTRUCTOR_C
                 extension = ".c"
 
-            if "parser" in module_args and module_args["parser"]:
-                if module_args["parser"] is True:
-                    module_args["parser"] = module_name + "_parser"
+            if "parser" in module_val and module_val["parser"]:
+                if module_val["parser"] is True:
+                    module_val["parser"] = module_key + "_parser"
                 output_path = os.path.join(
-                    modules_path, module_args["parser"] + extension
+                    modules_path, module_val["parser"] + extension
                 )
                 if not os.path.exists(output_path):
-                    print("   - " + module_args["parser"] + " (parser)")
+                    print("   - " + module_val["parser"] + " (parser)")
                     do_jinja(
                         __find_in_path(paths["generators"], parse_template),
                         output_path,
                     )
 
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = module_name + "_constructor"
+            if "constructor" in module_val and module_val["constructor"]:
+                if module_val["constructor"] is True:
+                    module_val["constructor"] = module_key + "_constructor"
                 output_path = os.path.join(
                     modules_path,
-                    module_args["constructor"] + extension,
+                    module_val["constructor"] + extension,
                 )
                 if not os.path.exists(output_path):
                     print(
-                        "   - " + module_args["constructor"] + " (constructor)"
+                        "   - " + module_val["constructor"] + " (constructor)"
                     )
                     do_jinja(
                         __find_in_path(
@@ -257,16 +255,14 @@ def generate(paths, config, confirmed):
                         output_path,
                     )
 
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = module_name + "_destructor"
+            if "destructor" in module_val and module_val["destructor"]:
+                if module_val["destructor"] is True:
+                    module_val["destructor"] = module_key + "_destructor"
                 output_path = os.path.join(
-                    modules_path, module_args["destructor"] + extension
+                    modules_path, module_val["destructor"] + extension
                 )
                 if not os.path.exists(output_path):
-                    print(
-                        "   - " + module_args["destructor"] + " (destructor)"
-                    )
+                    print("   - " + module_val["destructor"] + " (destructor)")
                     do_jinja(
                         __find_in_path(paths["generators"], destruct_template),
                         output_path,
@@ -274,9 +270,9 @@ def generate(paths, config, confirmed):
 
         else:
             # module
-            print(f" - {module_name}")
+            print(f" - {module_key}")
 
-            if module_args["language"] == "python":
+            if module_val["language"] == "python":
                 code_template = G_TEMPLATE_MODULE_CODE_PY
                 construct_template = G_TEMPLATE_CONSTRUCTOR_PY
                 destruct_template = G_TEMPLATE_DESTRUCTOR_PY
@@ -287,26 +283,26 @@ def generate(paths, config, confirmed):
                 destruct_template = G_TEMPLATE_DESTRUCTOR_C
                 extension = ".c"
 
-            output_path = os.path.join(modules_path, module_name + ".py")
+            output_path = os.path.join(modules_path, module_key + ".py")
             if not os.path.exists(output_path):
                 do_jinja(
                     __find_in_path(paths["generators"], code_template),
                     output_path,
-                    name=module_name,
-                    in_sig=module_args.get("in"),
-                    out_sig=module_args.get("out"),
+                    name=module_key,
+                    in_sig=module_val.get("in"),
+                    out_sig=module_val.get("out"),
                 )
 
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = module_name + "_constructor"
+            if "constructor" in module_val and module_val["constructor"]:
+                if module_val["constructor"] is True:
+                    module_val["constructor"] = module_key + "_constructor"
                 output_path = os.path.join(
                     modules_path,
-                    module_args["constructor"] + extension,
+                    module_val["constructor"] + extension,
                 )
                 if not os.path.exists(output_path):
                     print(
-                        "   - " + module_args["constructor"] + " (constructor)"
+                        "   - " + module_val["constructor"] + " (constructor)"
                     )
                     do_jinja(
                         __find_in_path(
@@ -315,16 +311,14 @@ def generate(paths, config, confirmed):
                         output_path,
                     )
 
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = module_name + "_destructor"
+            if "destructor" in module_val and module_val["destructor"]:
+                if module_val["destructor"] is True:
+                    module_val["destructor"] = module_key + "_destructor"
                 output_path = os.path.join(
-                    modules_path, module_args["destructor"] + extension
+                    modules_path, module_val["destructor"] + extension
                 )
                 if not os.path.exists(output_path):
-                    print(
-                        "   - " + module_args["destructor"] + " (destructor)"
-                    )
+                    print("   - " + module_val["destructor"] + " (destructor)")
                     do_jinja(
                         __find_in_path(paths["generators"], destruct_template),
                         output_path,
@@ -435,14 +429,14 @@ def parse(paths, config, confirmed):
             # TODO top-level signals should potentially inherit from source
             signal_args["max_packets_per_tick"] = 1
 
-    for module_name, module_args in iter(modules.items()):
+    for module_key, module_val in iter(modules.items()):
         ext_sig = None
         if (
-            "in" in module_args
-            and isinstance(module_args["in"], dict)
-            and "name" in module_args["in"]
+            "in" in module_val
+            and isinstance(module_val["in"], dict)
+            and "name" in module_val["in"]
         ):  # source
-            ext_sig = module_args["in"]
+            ext_sig = module_val["in"]
 
             max_packets_per_tick = ext_sig["schema"].get(
                 "max_packets_per_tick"
@@ -454,11 +448,11 @@ def parse(paths, config, confirmed):
                 else:
                     ext_sig["schema"]["max_packets_per_tick"] = 1
         elif (
-            "out" in module_args
-            and isinstance(module_args["out"], dict)
-            and "name" in module_args["out"]
+            "out" in module_val
+            and isinstance(module_val["out"], dict)
+            and "name" in module_val["out"]
         ):  # sink
-            ext_sig = module_args["out"]
+            ext_sig = module_val["out"]
         else:  # module
             continue
         external_signals.append(ext_sig["name"])
@@ -486,64 +480,64 @@ def parse(paths, config, confirmed):
     assert len(all_names) == len(set(all_names))
 
     compile_for_line = False
-    for module_name, module_args in iter(modules.items()):
+    for module_key, module_val in iter(modules.items()):
 
         if (
-            "in" in module_args
-            and isinstance(module_args["in"], dict)
-            and module_args["in"]["name"] in external_signals
+            "in" in module_val
+            and isinstance(module_val["in"], dict)
+            and module_val["in"]["name"] in external_signals
         ):
             # source
-            source_names.append(module_name)
-            if module_args["in"].get("async") or False:
-                async_readers_dict[module_name] = f"{module_name}_async_reader"
-            for sig in module_args["out"]:
+            source_names.append(module_key)
+            if module_val["in"].get("async") or False:
+                async_readers_dict[module_key] = f"{module_key}_async_reader"
+            for sig in module_val["out"]:
                 source_outputs[sig] = 0
-            in_sig_name = module_args["in"]["name"]
+            in_sig_name = module_val["in"]["name"]
             assert "type" in signals[in_sig_name]["args"]
             in_signals[in_sig_name] = signals[in_sig_name]["args"]["type"]
 
             out_sig_schema_num = 0
             for sig, args in iter(
                 {
-                    x: signals[x] for x in (sigkeys & set(module_args["out"]))
+                    x: signals[x] for x in (sigkeys & set(module_val["out"]))
                 }.items()
             ):
                 # TODO, should max_packets_per_tick be copied over?
                 if "schema" in args:
                     out_sig_schema_num += 1
                 else:
-                    args["schema"] = signals[module_args["in"]["name"]][
+                    args["schema"] = signals[module_val["in"]["name"]][
                         "schema"
                     ]
             if out_sig_schema_num > 0:
                 assert out_sig_schema_num == len(list(out_signals))
 
         elif (
-            "out" in module_args
-            and isinstance(module_args["out"], dict)
-            and module_args["out"]["name"] in external_signals
+            "out" in module_val
+            and isinstance(module_val["out"], dict)
+            and module_val["out"]["name"] in external_signals
         ):
             # sink
-            sink_names.append(module_name)
-            if module_args["out"].get("async") or False:
-                async_writers_dict[module_name] = f"{module_name}_async_writer"
-            out_sig_name = module_args["out"]["name"]
+            sink_names.append(module_key)
+            if module_val["out"].get("async") or False:
+                async_writers_dict[module_key] = f"{module_key}_async_writer"
+            out_sig_name = module_val["out"]["name"]
             assert "type" in signals[out_sig_name]["args"]
             out_signals[out_sig_name] = signals[out_sig_name]["args"]["type"]
             if out_signals[out_sig_name] in ["line"]:
                 compile_for_line = True
         else:
             # module
-            if "in" not in module_args or not module_args["in"]:
-                module_args["in"] = []
-            if "out" not in module_args or not module_args["out"]:
-                module_args["out"] = []
-            if not isinstance(module_args["in"], list):
-                module_args["in"] = [module_args["in"]]
-            if not isinstance(module_args["out"], list):
-                module_args["out"] = [module_args["out"]]
-            module_names.append(module_name)
+            if "in" not in module_val or not module_val["in"]:
+                module_val["in"] = []
+            if "out" not in module_val or not module_val["out"]:
+                module_val["out"] = []
+            if not isinstance(module_val["in"], list):
+                module_val["in"] = [module_val["in"]]
+            if not isinstance(module_val["out"], list):
+                module_val["out"] = [module_val["out"]]
+            module_names.append(module_key)
 
     # create semaphore signal mapping w/ format {'sig_name': ptr_offset}
     for sig_name in internal_signals:
@@ -598,8 +592,8 @@ def parse(paths, config, confirmed):
     print("Modules: ")
     for name in all_names:
         # get module info
-        module_args = modules[name]
-        module_language = module_args["language"]  # language must be specified
+        module_val = modules[name]
+        module_language = module_val["language"]  # language must be specified
 
         # parse source
         if name in source_names:
@@ -615,14 +609,14 @@ def parse(paths, config, confirmed):
                 template = TEMPLATE_SOURCE_C
                 in_extensions = [".c.j2", ".c"]
                 out_extension = ".c"
-            in_signal = signals[module_args["in"]["name"]]
+            in_signal = signals[module_val["in"]["name"]]
             out_signals = {
-                x: signals[x] for x in (sigkeys & set(module_args["out"]))
+                x: signals[x] for x in (sigkeys & set(module_val["out"]))
             }
             out_sig_nums = {
                 x: internal_signals.index(x) for x in list(out_signals)
             }
-            has_parser = "parser" in module_args and module_args["parser"]
+            has_parser = "parser" in module_val and module_val["parser"]
             if not has_parser:
                 assert len(out_signals) == 1
 
@@ -648,11 +642,11 @@ def parse(paths, config, confirmed):
                 )
 
             sig_sems = []
-            for out_sig in module_args["out"]:
+            for out_sig in module_val["out"]:
                 sig_sems.append((out_sig, sig_sem_dict[out_sig]))
 
             out_sig_dependency_info = {}
-            for out_sig in module_args["out"]:
+            for out_sig in module_val["out"]:
                 for tmp_name in all_names:
                     mod = modules[tmp_name]
                     for in_sig in mod["in"]:
@@ -684,7 +678,7 @@ def parse(paths, config, confirmed):
                     if async_source
                     else None
                 ),
-                "in_sig_name": module_args["in"]["name"],
+                "in_sig_name": module_val["in"]["name"],
                 "in_signal": in_signal,
                 "out_signals": out_signals,
                 "out_signal_name": (
@@ -709,13 +703,13 @@ def parse(paths, config, confirmed):
 
             parser_code = ""
             if has_parser:
-                if module_args["parser"] is True:
-                    module_args["parser"] = name + "_parser"
+                if module_val["parser"] is True:
+                    module_val["parser"] = name + "_parser"
                 with open(
                     __find_in_path(
                         paths["modules"],
                         [
-                            f"{module_args['parser']}{ext}"
+                            f"{module_val['parser']}{ext}"
                             for ext in in_extensions
                         ],
                     ),
@@ -727,14 +721,14 @@ def parse(paths, config, confirmed):
                     parser_code = parser_code.render(**source_template_kwargs)
 
             construct_code = ""
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = name + "_constructor"
+            if "constructor" in module_val and module_val["constructor"]:
+                if module_val["constructor"] is True:
+                    module_val["constructor"] = name + "_constructor"
                 with open(
                     __find_in_path(
                         paths["modules"],
                         [
-                            f"{module_args['constructor']}{ext}"
+                            f"{module_val['constructor']}{ext}"
                             for ext in in_extensions
                         ],
                     ),
@@ -747,14 +741,14 @@ def parse(paths, config, confirmed):
                     )
 
             destruct_code = ""
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = name + "_destructor"
+            if "destructor" in module_val and module_val["destructor"]:
+                if module_val["destructor"] is True:
+                    module_val["destructor"] = name + "_destructor"
                 with open(
                     __find_in_path(
                         paths["modules"],
                         [
-                            f"{module_args['destructor']}{ext}"
+                            f"{module_val['destructor']}{ext}"
                             for ext in in_extensions
                         ],
                     ),
@@ -834,16 +828,16 @@ def parse(paths, config, confirmed):
                 in_extensions = [".c.j2", ".c"]
                 out_extension = ".c"
             in_signals = {}
-            if "in" in module_args:
+            if "in" in module_val:
                 in_signals = {
-                    x: signals[x] for x in (sigkeys & set(module_args["in"]))
+                    x: signals[x] for x in (sigkeys & set(module_val["in"]))
                 }
             in_sig_nums = {
                 x: internal_signals.index(x) for x in list(in_signals)
             }
             sink_in_sig_nums.extend(in_sig_nums.values())
-            out_signal = signals[module_args["out"]["name"]]
-            has_parser = "parser" in module_args and module_args["parser"]
+            out_signal = signals[module_val["out"]["name"]]
+            has_parser = "parser" in module_val and module_val["parser"]
 
             if not has_parser:
                 # TODO this validation should happen in the driver code
@@ -1019,7 +1013,7 @@ def parse(paths, config, confirmed):
                 "raw_text_sigs": raw_text_sigs,
                 "raw_num_sigs": raw_num_sigs,
                 "in_sig_nums": in_sig_nums,
-                "out_sig_name": module_args["out"]["name"],
+                "out_sig_name": module_val["out"]["name"],
                 "out_signal": out_signal,
                 "out_signal_size": out_signal["schema"]["data"]["size"]
                 if "schema" in out_signal
@@ -1040,13 +1034,13 @@ def parse(paths, config, confirmed):
 
             parser_code = ""
             if has_parser:
-                if module_args["parser"] is True:
-                    module_args["parser"] = name + "_parser"
+                if module_val["parser"] is True:
+                    module_val["parser"] = name + "_parser"
                 with open(
                     __find_in_path(
                         paths["modules"],
                         [
-                            f"{module_args['parser']}{ext}"
+                            f"{module_val['parser']}{ext}"
                             for ext in in_extensions
                         ],
                     ),
@@ -1058,14 +1052,14 @@ def parse(paths, config, confirmed):
                     parser_code = parser_code.render(**sink_template_kwargs)
 
             construct_code = ""
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = name + "_constructor"
+            if "constructor" in module_val and module_val["constructor"]:
+                if module_val["constructor"] is True:
+                    module_val["constructor"] = name + "_constructor"
                 with open(
                     __find_in_path(
                         paths["modules"],
                         [
-                            f"{module_args['constructor']}{ext}"
+                            f"{module_val['constructor']}{ext}"
                             for ext in in_extensions
                         ],
                     ),
@@ -1078,14 +1072,14 @@ def parse(paths, config, confirmed):
                     )
 
             destruct_code = ""
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = name + "_destructor"
+            if "destructor" in module_val and module_val["destructor"]:
+                if module_val["destructor"] is True:
+                    module_val["destructor"] = name + "_destructor"
                 with open(
                     __find_in_path(
                         paths["modules"],
                         [
-                            f"{module_args['destructor']}{ext}"
+                            f"{module_val['destructor']}{ext}"
                             for ext in in_extensions
                         ],
                     ),
@@ -1167,7 +1161,7 @@ def parse(paths, config, confirmed):
 
             # prepare module parameters
             out_sig_dependency_info = {}
-            for out_sig in module_args["out"]:
+            for out_sig in module_val["out"]:
                 for tmp_name in all_names:
                     mod = modules[tmp_name]
                     for in_sig in mod["in"]:
@@ -1185,7 +1179,7 @@ def parse(paths, config, confirmed):
             in_sig_sems = []
             default_sig_name = ""
             default_params = None
-            for in_sig in module_args["in"]:
+            for in_sig in module_val["in"]:
                 if (in_sig in external_signals) and (
                     signals[in_sig]["args"]["type"] == "default"
                 ):
@@ -1195,14 +1189,14 @@ def parse(paths, config, confirmed):
                 in_sig_sems.append((in_sig, sig_sem_dict[in_sig]))
 
             sig_sems = in_sig_sems.copy()
-            for out_sig in module_args["out"]:
+            for out_sig in module_val["out"]:
                 sig_sems.append((out_sig, sig_sem_dict[out_sig]))
 
             in_signals = {
-                x: signals[x] for x in (sigkeys & set(module_args["in"]))
+                x: signals[x] for x in (sigkeys & set(module_val["in"]))
             }
             out_signals = {
-                x: signals[x] for x in (sigkeys & set(module_args["out"]))
+                x: signals[x] for x in (sigkeys & set(module_val["out"]))
             }
             in_sig_types = {}
             for sig, args in iter(in_signals.items()):
@@ -1220,12 +1214,10 @@ def parse(paths, config, confirmed):
                 for x in (list(in_signals) + list(out_signals))
             }
 
-            module_args["numba"] = (
-                "numba" in module_args and module_args["numba"]
-            )
+            module_val["numba"] = "numba" in module_val and module_val["numba"]
             mod_func_inst = None
             func_inputs = None
-            if module_args["numba"]:
+            if module_val["numba"]:
                 # modify user code
 
                 # create funcs and inputs
@@ -1233,7 +1225,7 @@ def parse(paths, config, confirmed):
                 func_sig = "i8("
                 func_sig_types = []
                 mod_func_insts = []
-                for sig in module_args["in"] + module_args["out"]:
+                for sig in module_val["in"] + module_val["out"]:
                     dt = np.dtype(signals[sig]["dtype"])
                     dim_str = ",".join(
                         [":"] * (str(signals[sig]["shape"]).count(",") + 1)
@@ -1248,12 +1240,12 @@ def parse(paths, config, confirmed):
                     )
                 func_sig += ",".join(func_sig_types)
                 func_sig += ")"
-                func_inputs = ",".join(module_args["in"] + module_args["out"])
+                func_inputs = ",".join(module_val["in"] + module_val["out"])
                 mod_func_inst = ",".join(mod_func_insts)
 
             module_template_kwargs = {
                 "name": name,
-                "args": module_args,
+                "args": module_val,
                 "config": config,
                 "out_sig_dependency_info": out_sig_dependency_info,
                 "in_sig_sems": in_sig_sems,
@@ -1268,7 +1260,7 @@ def parse(paths, config, confirmed):
                 "in_sig_types": in_sig_types,
                 "out_sig_types": out_sig_types,
                 "buf_vars_len": BUF_VARS_LEN,
-                "numba": module_args["numba"],
+                "numba": module_val["numba"],
                 "numba_mod_name": "numba_" + name,
                 "numba_func_name": "numba_" + name,
                 "numba_func_inputs": func_inputs,
@@ -1295,13 +1287,13 @@ def parse(paths, config, confirmed):
                 user_code = user_code.render(**module_template_kwargs)
 
             construct_code = ""
-            if "constructor" in module_args and module_args["constructor"]:
-                if module_args["constructor"] is True:
-                    module_args["constructor"] = name + "_constructor"
+            if "constructor" in module_val and module_val["constructor"]:
+                if module_val["constructor"] is True:
+                    module_val["constructor"] = name + "_constructor"
                 file_path = __find_in_path(
                     paths["modules"],
                     [
-                        f"{module_args['constructor']}{ext}"
+                        f"{module_val['constructor']}{ext}"
                         for ext in in_extensions
                     ],
                 )
@@ -1318,13 +1310,13 @@ def parse(paths, config, confirmed):
                     )
 
             destruct_code = ""
-            if "destructor" in module_args and module_args["destructor"]:
-                if module_args["destructor"] is True:
-                    module_args["destructor"] = name + "_destructor"
+            if "destructor" in module_val and module_val["destructor"]:
+                if module_val["destructor"] is True:
+                    module_val["destructor"] = name + "_destructor"
                 file_path = __find_in_path(
                     paths["modules"],
                     [
-                        f"{module_args['destructor']}{ext}"
+                        f"{module_val['destructor']}{ext}"
                         for ext in in_extensions
                     ],
                 )
@@ -1349,7 +1341,7 @@ def parse(paths, config, confirmed):
                 }
             )
 
-            if module_args["numba"]:
+            if module_val["numba"]:
                 do_jinja(
                     __find_in_path(paths["templates"], TEMPLATE_NUMBA),
                     os.path.join(paths["output"], "numba_" + name + ".py"),
