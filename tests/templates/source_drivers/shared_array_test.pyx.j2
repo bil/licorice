@@ -7,8 +7,10 @@ import time
 
 # __DRIVER_CODE__ setup
 
+{% if async %}
 sleep_func = getattr(np.random, "{{in_signal['args']['func']}}")
 sleep_kwargs = {{in_signal['args']['kwargs']}}
+{% endif %}
 sig_name = "{{in_signal['args']['sig_name']}}"
 sa_sig = sa.attach(sig_name)
 sa_index = 0
@@ -19,7 +21,9 @@ sa_index = 0
   sa_index += 1
   if sa_index >= sa_sig.size:
     sa_index = 0
+{% if async %}
   sleep_duration = sleep_func(**sleep_kwargs)
   if sleep_duration < 0:
     sleep_duration = 0
   time.sleep(sleep_duration)
+{% endif %}

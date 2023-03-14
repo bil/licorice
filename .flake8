@@ -2,6 +2,6 @@
 extend-ignore = E203
 exclude =
     examples/*/*.lico/*
-    tests/module_code/
+    tests/module_code/*
 per-file-ignores =
     examples/*/*.py: F401,F821,E501,E999

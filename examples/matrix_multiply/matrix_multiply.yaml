@@ -9,7 +9,7 @@
 config:
   tick_len: 10000
   num_ticks: 30
-  init_buffer_ticks: 10
+  source_init_ticks: 10
 
 signals:
 

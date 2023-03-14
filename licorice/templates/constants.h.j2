@@ -82,22 +82,20 @@
 #define MAX_PATH_LEN 16
 
 /*
- * This is the number of ticks at the beginning of execution during which the
- * child processes do not run.
- * Don't touch.
- * Can be thought of as system latency. Default is 50 when a line source exists
- * given 20ms sound card buffer period.
+ * The number of ticks at the beginning of execution during which
+ * module and sink processes do not run. Defaults to 100.
  */
-#define INIT_BUFFER_TICKS {{init_buffer_ticks}}
+#define SOURCE_INIT_TICKS {{source_init_ticks}}
+
+/*
+ * The number of ticks after SOURCE_INIT_TICKS during which sink processes do
+ * not run, but module processes do. Defaults to 0.
+ */
+#define MODULE_INIT_TICKS {{module_init_ticks}}
 
 /*******************
 * Global constants *
 ********************/
-
-// Set by jinja2 templating
-// Number of non_source processes
-#define NUM_NON_SOURCES {{num_non_sources}}
-
 // Number of async reader processes
 #define NUM_ASYNC_READERS {{num_async_readers}}
 

@@ -63,7 +63,6 @@ cdef extern from "constants.h":
   enum: MAX_PATH_LEN
   enum: PAGESIZE
   const char *SMEM0_PATHNAME
-  enum: NUM_NON_SOURCES
   enum: NUM_SEM_SIGS
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
@@ -74,6 +73,7 @@ cdef extern from "constants.h":
   enum: BUF_VARS_OFFSET
   enum: ASYNC_READER_MUTEXES_OFFSET
   enum: SEM_NAME_LEN
+  enum: MODULE_INIT_TICKS
 
 {%- if async %}
 cdef extern from "<sys/types.h>":
@@ -411,7 +411,7 @@ while(True):
 
 {% for dep_name, dep_tuple in out_sig_dependency_info.items() %}
   {% for i in range(dep_tuple[0]) %}
-  if (pNumTicks[0] >= 0):
+  if (pNumTicks[0] >= (-1 * MODULE_INIT_TICKS)):
     sem_post(pSigSems[{{dep_tuple[1]}}])
   {%- endfor %}
 {%- endfor %}

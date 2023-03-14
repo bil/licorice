@@ -3,7 +3,7 @@
 config:
   tick_len: 100000
   # num_ticks: 1000
-  init_buffer_ticks: 10
+  source_init_ticks: 10
 
 signals:
   audio_signal_source:

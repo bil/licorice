@@ -44,7 +44,7 @@ Open the created file add the following:
     config:
       tick_len: 1000000  # tick length in microseconds (1s)
       num_ticks: 10  # number of ticks to run for
-      init_buffer_ticks: 1  # number of ticks that run before time t=0
+      source_init_ticks: 1  # number of source ticks run before time t=0
 
     modules:
       counter_simple:

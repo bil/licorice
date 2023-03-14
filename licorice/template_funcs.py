@@ -480,6 +480,7 @@ def parse(paths, config, confirmed):
     dependency_graph = {}
     in_signals = {}
     out_signals = {}
+    sink_in_sig_nums = []
 
     all_names = list(modules)
     assert len(all_names) == len(set(all_names))
@@ -569,7 +570,6 @@ def parse(paths, config, confirmed):
 
     async_reader_names = list(async_readers_dict.values())
     async_writer_names = list(async_writers_dict.values())
-    non_source_names = sink_names + module_names
     topo_children = list(map(list, list(toposort(dependency_graph))))
     topo_widths = list(
         map(len, topo_children)
@@ -841,6 +841,7 @@ def parse(paths, config, confirmed):
             in_sig_nums = {
                 x: internal_signals.index(x) for x in list(in_signals)
             }
+            sink_in_sig_nums.extend(in_sig_nums.values())
             out_signal = signals[module_args["out"]["name"]]
             has_parser = "parser" in module_args and module_args["parser"]
 
@@ -993,7 +994,7 @@ def parse(paths, config, confirmed):
             has_in_signal = len(list(in_signals)) == 1
             sink_template_kwargs = {
                 "name": name,  # TODO set name properly for async, etc.
-                "non_source_num": non_source_names.index(name),
+                "sink_num": sink_names.index(name),
                 "config": config,
                 "has_parser": has_parser,
                 "async": async_sink,
@@ -1257,7 +1258,6 @@ def parse(paths, config, confirmed):
                 "out_sig_dependency_info": out_sig_dependency_info,
                 "in_sig_sems": in_sig_sems,
                 "sig_sems": sig_sems,
-                "tick_sem_idx": non_source_names.index(name),
                 "in_signals": in_signals,
                 "out_signals": out_signals,
                 "sig_nums": sig_nums,
@@ -1265,7 +1265,6 @@ def parse(paths, config, confirmed):
                 "default_sig_name": default_sig_name,
                 "default_params": default_params,
                 "module_num": module_names.index(name),
-                "non_source_num": non_source_names.index(name),
                 "in_sig_types": in_sig_types,
                 "out_sig_types": out_sig_types,
                 "buf_vars_len": BUF_VARS_LEN,
@@ -1413,9 +1412,6 @@ def parse(paths, config, confirmed):
     parport_tick_addr = None
     if "config" in config and "parport_tick_addr" in config["config"]:
         parport_tick_addr = config["config"]["parport_tick_addr"]
-    non_source_module_check = list(
-        map(lambda x: int(x in module_names), non_source_names)
-    )
 
     do_jinja(
         __find_in_path(paths["templates"], TEMPLATE_TIMER),
@@ -1444,10 +1440,8 @@ def parse(paths, config, confirmed):
         source_out_sig_nums={
             x: internal_signals.index(x) for x in list(source_outputs)
         },
+        sink_in_sig_nums=sink_in_sig_nums,
         parport_tick_addr=parport_tick_addr,
-        non_source_module_check=non_source_module_check,
-        non_source_names=non_source_names,
-        num_non_sources=len(module_names) + len(sink_names),
         platform_system=platform_system,
     )
 
@@ -1459,9 +1453,10 @@ def parse(paths, config, confirmed):
         num_ticks=config["config"]["num_ticks"],
         tick_len_ns=(config["config"]["tick_len"] % 1000000) * 1000,
         tick_len_s=config["config"]["tick_len"] // 1000000,
-        init_buffer_ticks=((config["config"].get("init_buffer_ticks")) or 100),
+        source_init_ticks=((config["config"].get("source_init_ticks")) or 100),
+        module_init_ticks=((config["config"].get("module_init_ticks")) or 0),
         num_sem_sigs=num_sem_sigs,
-        num_non_sources=len(non_source_names),
+        num_sinks=len(sink_names),
         num_async_readers=len(async_reader_names),
         num_async_writers=len(async_writer_names),
         num_internal_sigs=len(internal_signals),

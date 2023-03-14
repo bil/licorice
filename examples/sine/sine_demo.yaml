@@ -3,7 +3,7 @@
 config:
   tick_len: 100000
   num_ticks: 10
-  init_buffer_ticks: 2 
+  source_init_ticks: 2
 
 signals:
   sine_wave:

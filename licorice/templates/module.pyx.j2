@@ -69,7 +69,6 @@ cdef extern from "constants.h":
   cdef const char *SMEM0_PATHNAME
   enum: PAGESIZE
   enum: LATENCY
-  enum: NUM_NON_SOURCES
   enum: NUM_SEM_SIGS
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
@@ -88,8 +87,8 @@ cdef public sigset_t exitMask
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
-cdef sem_t *pTickUpSem
-cdef sem_t *pTickDownSem
+cdef sem_t *pModUpSem
+cdef sem_t *pModDownSem
 cdef sem_t *pSigSems[NUM_SEM_SIGS]
 cdef char semNameBuf[SEM_NAME_LEN]
 cdef uint32_t *pBufVars
@@ -105,7 +104,7 @@ cdef uint32_t *{{sig}}BufVars
 {% block handlers %}
 
 cdef void handle_exit(int exitStatus):
-  global pmem, shm_size, pTickUpSem, pTickDownSem, pSigSems
+  global pmem, shm_size, pModUpSem, pModDownSem, pSigSems
   {{destruct_code}}
 {%- if platform_system == "Linux" %}
   sa_names = [sig.name for sig in sa.list()]
@@ -123,9 +122,9 @@ cdef void handle_exit(int exitStatus):
   munmap(pmem, shm_size)
   munlockall()
 
-  if (sem_close(pTickUpSem) == -1):
+  if (sem_close(pModUpSem) == -1):
     printf("Could not close source up semaphore. \n")
-  if (sem_close(pTickDownSem) == -1):
+  if (sem_close(pModDownSem) == -1):
     printf("Could not close source down semaphore. \n")
 {%- for sig_sem in sig_sems %}
   if (sem_close(pSigSems[{{sig_sem[1]}}]) == -1):
@@ -166,8 +165,8 @@ open_shared_mem(
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 
-pTickUpSem = sem_open("/tick_up_sem_{{non_source_num}}", 0)
-pTickDownSem = sem_open("/tick_down_sem_{{non_source_num}}", 0)
+pModUpSem = sem_open("/mod_up_sem_{{module_num}}", 0)
+pModDownSem = sem_open("/mod_down_sem_{{module_num}}", 0)
 {%- for sig_sem in sig_sems %}
 snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", {{sig_sem[1]}})
 pSigSems[{{sig_sem[1]}}] = sem_open(semNameBuf, 0)
@@ -276,7 +275,7 @@ kill(ppid,SIGUSR1)
 
 cdef int semVal
 while(True):
-  sem_wait(pTickUpSem)
+  sem_wait(pModUpSem)
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
   #printf("tick %lu, module {{name}} triggered at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {% for name, sem_num in in_sig_sems %}
@@ -328,13 +327,14 @@ while(True):
   {{dep_name}}BufVars[11] = 0  
   # printf("module 3 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
 
+  if pNumTicks[0] >= 0:
   {% for i in range(dep_tuple[0]) %}
-  sem_post(pSigSems[{{dep_tuple[1]}}])
+    sem_post(pSigSems[{{dep_tuple[1]}}])
   {%- endfor %}
 {%- endfor %}
 
   atomic_thread_fence(memory_order_seq_cst)
-  sem_post(pTickDownSem)
+  sem_post(pModDownSem)
   #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
   #printf("tick %lu, module {{name}} done at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 

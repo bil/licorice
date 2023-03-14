@@ -29,15 +29,10 @@ Keyword           Description
 tick_len          Realtime clock frequency in microseconds
 num_ticks         Number of ticks to run the model for. Defaults to -1
                   (indefinite)
-init_buffer_ticks Number of ticks to run sources before modules start
+source_init_ticks Number of ticks to run sources before modules start
+module_init_ticks Number of ticks to run sources and modules before
+                  sinks start
 ================= =============================================================
-
-..
-    TODO:
-
-    * source_init_ticks
-    * module_init_ticks
-    * sink_init_ticks
 
 
 Signals
