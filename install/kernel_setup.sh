@@ -67,7 +67,7 @@ zcat ${TMP_DIR}/patch-${KERNEL_VERSION}-${RT_PATCH}.patch.gz | patch -p1
 
 # copy kernel .config file from git
 # TODO download this from appropriate bucket given
-cp ${INSTALL_DIR}/.config ${KERNEL_DIR}/linux-${KERNEL_VERSION}/${CONFIG_FILENAME}
+cp ${INSTALL_DIR}/${CONFIG_FILENAME} ${KERNEL_DIR}/linux-${KERNEL_VERSION}/.config
 
 # manually edit config
 # make menuconfig

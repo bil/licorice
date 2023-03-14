@@ -175,7 +175,7 @@ compilation is strongly advised.</p>
 <p>The instructions for realtime kernel compilation here should be applied
 to a stock install of Ubuntu server 20.04 LTS.</p>
 <p>From the top-level LiCoRICE repository directory, run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">LICO_ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
 </pre></div>
 </div>
 <p>This script will take from one to five hours to complete, depending on
@@ -185,7 +185,7 @@ point (USB support is disabled in this realtime kernel), use a PS/2
 keyboard or ssh into the system.</p>
 <p>Note: if USB support is necessary (e.g., system requires realtime
 support for a USB peripheral), install the USB enabled kernel instead
-via <code class="docutils literal notranslate"><span class="pre">ENABLE_USB=1</span> <span class="pre">./install/kernel_setup.sh</span></code> instead. Enabling USB support will
+via <code class="docutils literal notranslate"><span class="pre">LICO_ENABLE_USB=1</span> <span class="pre">./install/kernel_setup.sh</span></code> instead. Enabling USB support will
 degrade system performance by a small amount, but may still fit within
 application tolerances. In general, a limited number of USB devices do
 not preclude consistently meeting 1ms ticks. Regardless, it is
@@ -195,7 +195,7 @@ important to always verify timings for a given system deployment.</p>
 <code class="docutils literal notranslate"><span class="pre">kernel_setup.sh</span></code> script as <code class="docutils literal notranslate"><span class="pre">KERNEL_RT_VERSION</span></code>. Feel free to
 change this to fit your needs. For example, on an Ubuntu 18.04
 system, you may wish to run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">UBUNTU_VERSION</span><span class="o">=</span><span class="m">18</span>.04 <span class="nv">KERNEL_RT_VERSION</span><span class="o">=</span><span class="m">4</span>.16.18-rt12 <span class="nv">ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">UBUNTU_VERSION</span><span class="o">=</span><span class="m">18</span>.04 <span class="nv">KERNEL_RT_VERSION</span><span class="o">=</span><span class="m">4</span>.16.18-rt12 <span class="nv">LICO_ENABLE_USB</span><span class="o">=</span><span class="m">0</span> ./install/kernel_setup.sh
 </pre></div>
 </div>
 </li>

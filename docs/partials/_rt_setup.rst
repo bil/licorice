@@ -22,7 +22,7 @@
 
     .. code-block:: bash
 
-        ENABLE_USB=0 ./install/kernel_setup.sh
+        LICO_ENABLE_USB=0 ./install/kernel_setup.sh
 
     This script will take from one to five hours to complete, depending on
     the speed and processor count of the system. Reboot to finish
@@ -32,7 +32,7 @@
 
     Note: if USB support is necessary (e.g., system requires realtime
     support for a USB peripheral), install the USB enabled kernel instead
-    via ``ENABLE_USB=1 ./install/kernel_setup.sh`` instead. Enabling USB support will
+    via ``LICO_ENABLE_USB=1 ./install/kernel_setup.sh`` instead. Enabling USB support will
     degrade system performance by a small amount, but may still fit within
     application tolerances. In general, a limited number of USB devices do
     not preclude consistently meeting 1ms ticks. Regardless, it is
@@ -45,6 +45,6 @@
 
     .. code-block:: bash
 
-        UBUNTU_VERSION=18.04 KERNEL_RT_VERSION=4.16.18-rt12 ENABLE_USB=0 ./install/kernel_setup.sh
+        UBUNTU_VERSION=18.04 KERNEL_RT_VERSION=4.16.18-rt12 LICO_ENABLE_USB=0 ./install/kernel_setup.sh
 
 
