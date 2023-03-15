@@ -291,7 +291,7 @@ void handle_exit(int exitStatus) {
 
 static void timer_cleanup(struct period_info *pinfo) {
   {%- if parport_tick_addr is not none %}
-    pinfo->outVal = 0b00000000;
+    pinfo->outVal = 0b10000000 & pinfo->outVal;
     if (ioctl(pinfo->parportfd, PPWDATA, &pinfo->outVal) == -1) {
       printf("parport ioctl PPWDATA failed.\n");
       running = 0;
@@ -375,16 +375,16 @@ static void check_children(struct period_info *pinfo) {
   else {
 {%- if parport_tick_addr is not none %}
     // flip bits and output to parallel port
-    if (ioctl(pinfo->parportfd, PPWDATA, &pinfo->outVal) == -1) {
-      printf("parport ioctl failed,\n");
-      running = 0;
-      return;
-    }
     if (pinfo->outVal == 0b00000001) {
       pinfo->outVal = 0b10000001;
     }
     else {
       pinfo->outVal = 0b00000001;
+    }
+    if (ioctl(pinfo->parportfd, PPWDATA, &pinfo->outVal) == -1) {
+      printf("parport ioctl failed,\n");
+      running = 0;
+      return;
     }
 {%- endif %}
 

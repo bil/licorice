@@ -11,6 +11,7 @@ SRC_FILE=${BASH_SOURCE[0]:-$0}
 UBUNTU_VERSION=${LICO_UBUNTU_VERSION:-20.04}
 KERNEL_RT_VERSION=${LICO_KERNEL_RT_VERSION:-5.4.230-rt80}
 ENABLE_USB=${LICO_ENABLE_USB:-1}
+MANUAL_CONFIG=${LICO_MANUAL_CONFIG:-0}
 KERNEL_VERSION_TEXT=$( cd "$( dirname "${SRC_FILE}" )" && git describe --tags )
 if [ $ENABLE_USB -eq 1 ]; then
     CONFIG_FILENAME=.config_usb
@@ -37,7 +38,6 @@ KERNEL_VERSION_2=$( echo ${KERNEL_VERSION} | cut -d. -f3 )
 export DEBIAN_FRONTEND=noninteractive
 export DEBIAN_PRIORITY=critical
 sudo -E apt-get -y update
-sudo -E apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" upgrade
 sudo -E apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" install libncurses5-dev build-essential libssl-dev dwarves libelf-dev flex bison openssl dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf bc
 sudo apt-get -y autoremove
 
@@ -71,6 +71,9 @@ cp ${INSTALL_DIR}/${CONFIG_FILENAME} ${KERNEL_DIR}/linux-${KERNEL_VERSION}/.conf
 
 # manually edit config
 # make menuconfig
+if [ $MANUAL_CONFIG -eq 1 ]; then
+    exit
+fi
 
 # build kernel
 cd ${KERNEL_DIR}/linux-${KERNEL_VERSION}
