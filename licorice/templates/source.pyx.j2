@@ -13,7 +13,7 @@ from posix.mman cimport munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL
 from posix.types cimport pid_t
 from posix.fcntl cimport O_RDWR, open, fcntl, O_CREAT, O_RDONLY, F_SETFL, O_NONBLOCK
 from posix.ioctl cimport ioctl
-from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
+from posix.time cimport clock_gettime, timespec
 
 # import Python libraries
 import numpy as np
@@ -70,6 +70,7 @@ cdef extern from "constants.h":
   enum: PRIORITY
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
+  enum: CLOCK_TIME_OFFSET
   enum: BUF_VARS_OFFSET
   enum: ASYNC_READER_MUTEXES_OFFSET
   enum: SEM_NAME_LEN
@@ -105,6 +106,9 @@ cdef int semVal;
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
+cdef uint64_t time_tick = <uint64_t>NULL
+cdef double time_system
+cdef timespec *pClockTime
 {% if is_main_process -%}
 cdef sem_t *pSourceUpSem
 cdef sem_t *pSourceDownSem
@@ -245,6 +249,7 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
+pClockTime = <timespec *>(pmem + CLOCK_TIME_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {% if is_main_process -%}
 pSourceUpSem = sem_open("/source_up_sem_{{source_num}}", 0)
@@ -339,6 +344,10 @@ while(True):
 {%- if is_main_process %}
   sem_wait(pSourceUpSem)
 {%- endif %}
+
+  time_system = pClockTime[0].tv_sec + pClockTime[0].tv_nsec / 1.0e9
+  if pNumTicks[0] >= 0:
+    time_tick = pNumTicks[0]
 
 {%- if is_reader %}
   {%- if not is_main_process %}

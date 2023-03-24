@@ -55,7 +55,7 @@ log_storage   Specifications for how to log the data (see examples)
 Modules
 -------------------------------------------------------------------------------
 
-Modules are the primary building blocks of licorice. Here we define the name of our module, the language it's in (python or C), what signals, if any, will be streaming in, and what signals, if any, will be streaming out. We also define whether this module will use a parser to read or write external signals, a constructor to prepare data or initialize processes, or a destructor to stop processes or clean data.
+Modules are the primary building blocks of LiCoRICE. Here we define the name of our module, the language it's in (Python or C), what signals, if any, will be streaming in, and what signals, if any, will be streaming out. We also define whether this module will use a parser to read or write external signals, a constructor to prepare data or initialize processes, or a destructor to stop processes or clean data.
 
 LiCoRICE will automatically detect whether a module is a source, sink, or
 internal module given the signals attributed to that module.

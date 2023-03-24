@@ -12,7 +12,7 @@ from posix.types cimport pid_t
 cimport posix.stat 
 from posix.fcntl cimport O_RDWR, O_CREAT, O_TRUNC
 from libcpp cimport bool
-from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec, nanosleep
+from posix.time cimport clock_gettime, timespec
 
 import sys, signal
 import SharedArray as sa
@@ -75,6 +75,7 @@ cdef extern from "constants.h":
   enum: BUF_VARS_LEN
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
+  enum: CLOCK_TIME_OFFSET
   enum: BUF_VARS_OFFSET
   enum: SEM_NAME_LEN
 
@@ -87,6 +88,9 @@ cdef public sigset_t exitMask
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
+cdef uint64_t time_tick = <uint64_t>NULL
+cdef double time_system
+cdef timespec *pClockTime
 cdef sem_t *pModUpSem
 cdef sem_t *pModDownSem
 cdef sem_t *pSigSems[NUM_SEM_SIGS]
@@ -163,6 +167,7 @@ open_shared_mem(
   &pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE
 )
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
+pClockTime = <timespec *>(pmem + CLOCK_TIME_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 
 pModUpSem = sem_open("/mod_up_sem_{{module_num}}", 0)
@@ -276,14 +281,14 @@ kill(ppid,SIGUSR1)
 cdef int semVal
 while(True):
   sem_wait(pModUpSem)
-  #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
-  #printf("tick %lu, module {{name}} triggered at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 {% for name, sem_num in in_sig_sems %}
   sem_wait(pSigSems[{{sem_num}}])
 {%- endfor %}
-  # time.sleep(0.001)
-#  clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
-#  printf("\ttick %lu, module {{name}} deps ready at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
+
+  time_system = pClockTime[0].tv_sec + pClockTime[0].tv_nsec / 1.0e9
+  if pNumTicks[0] >= 0:
+    time_tick = pNumTicks[0]
+
 {% for sig,args in in_signals.items() %}
   {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
@@ -335,7 +340,5 @@ while(True):
 
   atomic_thread_fence(memory_order_seq_cst)
   sem_post(pModDownSem)
-  #clock_gettime(CLOCK_MONOTONIC_RAW, &ts)
-  #printf("tick %lu, module {{name}} done at %f.\n", pNumTicks[0], ts.tv_nsec/1000000.)
 
 {% endblock %}

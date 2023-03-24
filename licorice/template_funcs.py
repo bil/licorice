@@ -970,6 +970,7 @@ def parse(paths, config, confirmed):
                         dt = np.dtype(args["dtype"])
                         args["dtype_short"] = dt.kind + str(dt.itemsize)
 
+                    # TODO this breaks the loop
                     else:  # log = False
                         in_signals.pop(sig)
                         in_sig_types.pop(sig)

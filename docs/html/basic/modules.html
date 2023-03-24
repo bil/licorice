@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Drivers &mdash; LiCoRICE  documentation</title>
+  <title>Writing Module Processes &mdash; LiCoRICE  documentation</title>
       <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -20,8 +20,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Parsers" href="parsers.html" />
-    <link rel="prev" title="Writing Module Processes" href="modules.html" /> 
+    <link rel="next" title="Drivers" href="drivers.html" />
+    <link rel="prev" title="Directory Structure" href="directory_structure.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -47,11 +47,11 @@
 <li class="toctree-l1"><a class="reference internal" href="../api/index.html">LiCoRICE API Reference</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="index.html">Basic Usage</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="directory_structure.html">Directory Structure</a></li>
-<li class="toctree-l2"><a class="reference internal" href="modules.html">Writing Module Processes</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">Drivers</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#sync-vs-async">Sync vs Async</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Writing Module Processes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#common-properties">Common Properties</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html">Drivers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="parsers.html">Parsers</a></li>
 </ul>
 </li>
@@ -74,9 +74,9 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home"></a></li>
           <li class="breadcrumb-item"><a href="index.html">Basic Usage</a></li>
-      <li class="breadcrumb-item active">Drivers</li>
+      <li class="breadcrumb-item active">Writing Module Processes</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/basic/drivers.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/basic/modules.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -84,13 +84,46 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="drivers">
-<h1>Drivers<a class="headerlink" href="#drivers" title="Permalink to this heading"></a></h1>
-<p>LiCoRICE uses the concept of drivers to interface with external systems. LiCoRICE includes drivers for a number of default inputs and outputs and gives users the ability to write custom drivers for additional I/O support. Code for default drivers can be found under the <code class="docutils literal notranslate"><span class="pre">licorice/templates/source_drivers</span></code> and
-<code class="docutils literal notranslate"><span class="pre">licorice/templates/sink_drivers</span></code> directories.</p>
-<section id="sync-vs-async">
-<h2>Sync vs Async<a class="headerlink" href="#sync-vs-async" title="Permalink to this heading"></a></h2>
-<p>By default, LiCoRICE input and output driver code is run synchronously inside the respective source or sink. Drivers may also be run asynchronously by specifying the <code class="docutils literal notranslate"><span class="pre">async:</span> <span class="pre">True</span></code> flag on that driver’s external signal. This creates two processes for the asynchronous sources or sink: one <em>async reader</em> or <em>async writer</em> which reads in or writes data and handles buffering; and another <em>realtime stamper</em> which defines tick boundaries in the data by updating buffer housekeeping variables according to the realtime clock.</p>
+  <section id="writing-module-processes">
+<h1>Writing Module Processes<a class="headerlink" href="#writing-module-processes" title="Permalink to this heading"></a></h1>
+<p>In LiCoRICE, modules represent user-defined computational blocks which take
+inputs, manipulate them, and set outputs. Users are responsible for defining
+the sections of a module in their model YAML config and then must create code
+snippet files implementing each section. The term <cite>module</cite> is overloaded here
+and encompasses sources, internal modules, and sinks. We will commonly refer
+to internal modules as just modules and specify <cite>module processes</cite> where
+ambiguous when referring to source, internal modules, and sinks.</p>
+<p>For a full syntactic description, please check out the
+<a class="reference internal" href="../api/yaml_config.html#yaml-configuration-reference"><span class="std std-ref">YAML Config Reference</span></a>.</p>
+<section id="common-properties">
+<h2>Common Properties<a class="headerlink" href="#common-properties" title="Permalink to this heading"></a></h2>
+<p>The scaffold surrounding a module exposes some variables that the user may take advantage of:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 10%" />
+<col style="width: 74%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>time_tick</p></td>
+<td><p>uint64_t</p></td>
+<td><p>The current system tick 0-indexed to when all module
+processes start running (set by timer at tick start)</p></td>
+</tr>
+<tr class="row-odd"><td><p>time_system</p></td>
+<td><p>double</p></td>
+<td><p>The current tick’s start time as measured by
+clock_gettime using CLOCK_MONOTONIC. Seconds with
+nanosecond resolution (set by timer at tick start)</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 </section>
 
@@ -98,8 +131,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modules.html" class="btn btn-neutral float-left" title="Writing Module Processes" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="parsers.html" class="btn btn-neutral float-right" title="Parsers" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="directory_structure.html" class="btn btn-neutral float-left" title="Directory Structure" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="drivers.html" class="btn btn-neutral float-right" title="Drivers" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

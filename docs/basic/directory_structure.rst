@@ -24,4 +24,4 @@ We recommend creating a directory structure to house your LiCoRICE models in the
      │  shared_module.py
      │  shared_module_constructor.py
 
-This is LiCoRICE's default behavior and may be overrided by setting the ``LICORICE_*_PATH`` and ``LICORICE_*_DIR`` :ref:`environment variables <api/env_vars:Environment Variables>`.
+This is LiCoRICE's default behavior and may be overridden by setting the ``LICORICE_*_PATH`` and ``LICORICE_*_DIR`` :ref:`environment variables <api/env_vars:Environment Variables>`.

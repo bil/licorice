@@ -13,7 +13,7 @@ from posix.fcntl cimport O_RDWR, O_WRONLY, O_CREAT, O_TRUNC, open
 from posix.types cimport pid_t
 from libc.errno cimport errno, EINTR, EPIPE
 from libc.string cimport memset, strcpy, strcat, strlen, memcpy
-from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec
+from posix.time cimport clock_gettime, timespec
 from libcpp cimport bool
 DEF SIG_BLOCK = 1
 
@@ -58,6 +58,7 @@ cdef extern from "constants.h":
   enum: BUF_VARS_LEN
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
+  enum: CLOCK_TIME_OFFSET
   enum: BUF_VARS_OFFSET
   enum: ASYNC_WRITER_MUTEXES_OFFSET
   enum: SEM_NAME_LEN
@@ -80,6 +81,9 @@ cdef char pathName[MAX_PATH_LEN]
 cdef size_t shmSize
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
+cdef uint64_t time_tick = <uint64_t>NULL
+cdef double time_system
+cdef timespec *pClockTime
 {% if is_main_process -%}
 cdef sem_t *pSinkUpSem
 cdef sem_t *pSinkDownSem
@@ -205,6 +209,7 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 shmSize = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shmSize, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
+pClockTime = <timespec *>(pmem + CLOCK_TIME_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {%- for sig, args in in_signals.items() %}
 {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
@@ -325,6 +330,10 @@ while(True):
   {%- for name, sem_num in in_sig_sems %}
   sem_wait(pSigSems[{{sem_num}}])
   {%- endfor %}
+
+  time_system = pClockTime[0].tv_sec + pClockTime[0].tv_nsec / 1.0e9
+  time_tick = pNumTicks[0]
+
   {% if async %}
   # async main process updates buffer flush end variable
   if ((pAsyncFlushIndexEnd[0] + 1) == pAsyncFlushIndexStrt[0]) or (

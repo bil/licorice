@@ -43,8 +43,6 @@
 #define NUM_SINKS {{num_sinks}}
 #define NUM_MODULES {{num_modules}}
 
-{% set test_start_time = ('test_start_time' in config['config'] and config['config']['test_start_time']) %}
-{% set test_tick_time = ('test_tick_time' in config['config'] and config['config']['test_tick_time']) %}
 // process IDs for each child numbered according to the index of the child's
 // name in moduleProcnames
 static pid_t ch_pids[NUM_MODULES] = {};
@@ -73,6 +71,7 @@ static size_t shm_size;
 static uint8_t *pmem;
 // global tick counter
 static int64_t *pNumTicks = NULL;
+static struct timespec *pClockTime;
 // per-process tick start and end semaphores for sources, modules, and sinks
 // timer signals trigger each process by upping these semaphores
 // timer checks if process finished tick by downing (trywait) these semaphores
@@ -98,19 +97,6 @@ static int sigchld_recv;
 static size_t ex_i, al_i, de_i, m_i;
 {%- if topo_height != 0 -%}
 static int m_j;
-{%- endif %}
-
-{%- if test_start_time %}
-static struct timespec startTimer;
-static time_t startStartSec;
-static long startStartNSec;
-{%- endif %}
-{%- if test_tick_time %}
-static struct timespec tickTimer;
-static time_t tickStartSec;
-static long tickStartNSec;
-static unsigned long long tickTimeSum = 0;
-static unsigned long numTicksMeasured = 0;
 {%- endif %}
 
 struct period_info {
@@ -159,11 +145,6 @@ static void timer_init(struct period_info *pinfo) {
 }
 
 void handle_exit(int exitStatus) {
-{%- if test_tick_time %}
-  printf("%llu time over %lu ticks\n", tickTimeSum, numTicksMeasured);
-  printf("%f ns\n", ((float)tickTimeSum) / numTicksMeasured);
-{%- endif %}
-
   printf("exiting...\n");
   if (NUM_ASYNC_READERS) {
     printf("Killing async readers...\n");
@@ -320,18 +301,12 @@ void set_sched_prior(int priority) {
 #endif
 
 static void check_children(struct period_info *pinfo) {
-{%- if test_tick_time %}
-  clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
-  printf("tick %li began at %f.\n", (*pNumTicks)+1, tickTimer.tv_nsec/1000000.);
-{% endif %}
-
-  // if ((sigalrm_recv > 1))
-  //   die("Timer missed a tick. (>1 unhandled sigalrms)");
-
-{%- if test_tick_time %}
-  tickStartNSec = tickTimer.tv_nsec;
-  tickStartSec = tickTimer.tv_sec;
-{%- endif %}
+  // record current system time (NTP-affected)
+  if (clock_gettime(CLOCK_MONOTONIC, pClockTime)) {
+      printf("clock_gettime failed,\n");
+      running = 0;
+      return;
+  }
 
   // increment SIGALRM counter
   (*pNumTicks)++;
@@ -426,16 +401,6 @@ static void check_children(struct period_info *pinfo) {
       sem_post(pSinkUpSems[al_i]);
     }
   }
-
-{%- if test_tick_time %}
-  clock_gettime(CLOCK_MONOTONIC_RAW, &tickTimer);
-  numTicksMeasured++;
-  tickTimeSum += ((tickTimer.tv_sec - tickStartSec) * 1000000000 + (tickTimer.tv_nsec - tickStartNSec));
-  if (numTicksMeasured >= 1000 * 60 * 60) {
-    running = 0
-    return;
-  }
-{%- endif %}
 }
 
 
@@ -535,12 +500,6 @@ int main(int argc, char* argv[]) {
   pthread_attr_t attr;
   pthread_t thread;
 
-{%- if test_start_time %}
-  clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
-  startStartSec = startTimer.tv_sec;
-  startStartNSec = startTimer.tv_nsec;
-{%- endif %}
-
   // set signal masks
   sigemptyset(&exitMask);
 
@@ -567,6 +526,7 @@ int main(int argc, char* argv[]) {
     PROT_READ | PROT_WRITE
   );
   pNumTicks = (int64_t *)(pmem + NUM_TICKS_OFFSET);
+  pClockTime = (struct timespec *)(pmem + CLOCK_TIME_OFFSET);
   pBufVars = (uint32_t *)(pmem + BUF_VARS_OFFSET);
   *pNumTicks = (-1 * (SOURCE_INIT_TICKS + MODULE_INIT_TICKS)) - 1;
 
@@ -815,12 +775,6 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     kill(so_pids[m_i], SIGUSR2);
   }
   printf("Sources signaled.\n");
-
-{%- if test_start_time %}
-  clock_gettime(CLOCK_MONOTONIC_RAW, &startTimer);
-  printf("Start Time: %ld \n", (startTimer.tv_sec - startStartSec) * 1000000000 + startTimer.tv_nsec - startStartNSec);
-  handle_exit(0);
-{% endif %}
 
   // set up timer
   printf("Starting timer thread...\n");

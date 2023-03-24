@@ -7,5 +7,6 @@ Basic Usage
    :caption: Contents:
 
    directory_structure.rst
+   modules.rst
    drivers.rst
    parsers.rst

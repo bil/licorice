@@ -1,3 +1,7 @@
+#include <pthread.h>
+#include <stdint.h>
+#include <time.h>
+
 #ifndef _CONSTANTS_
 #define _CONSTANTS_ 
 /************************************
@@ -176,16 +180,18 @@
 
 // Each section of shared memory's size is defined here:
 #define NUM_TICKS_SIZE sizeof(int64_t)
+#define CLOCK_TIME_SIZE sizeof(struct timespec)
 #define BUF_VARS_SIZE (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
 #define ASYNC_READER_MUTEXES_SIZE (sizeof(pthread_mutex_t) * NUM_ASYNC_READERS)
 
 // Each section of shared memory's byte off set is then calculatd
 #define NUM_TICKS_OFFSET 0
-#define BUF_VARS_OFFSET (NUM_TICKS_OFFSET + NUM_TICKS_SIZE)
+#define CLOCK_TIME_OFFSET (NUM_TICKS_OFFSET + NUM_TICKS_SIZE)
+#define BUF_VARS_OFFSET (CLOCK_TIME_OFFSET + CLOCK_TIME_SIZE)
 #define ASYNC_READER_MUTEXES_OFFSET (BUF_VARS_OFFSET + BUF_VARS_SIZE)
 
 // Results in a simple total size calculation
-#define SHM_SIZE (NUM_TICKS_SIZE + BUF_VARS_SIZE + ASYNC_READER_MUTEXES_SIZE)
+#define SHM_SIZE (NUM_TICKS_SIZE + CLOCK_TIME_SIZE + BUF_VARS_SIZE + ASYNC_READER_MUTEXES_SIZE)
 
 // Named sempahore name buffer length.
 #define SEM_NAME_LEN 32
