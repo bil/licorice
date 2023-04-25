@@ -25,6 +25,9 @@ licorice = "licorice.cli:main"
 packages = ["licorice"]
 include-package-data = true
 
+[tool.setuptools.dynamic]
+dependencies = {file = ["install/requirements.in"]}
+
 [tool.isort]
 profile = "black"
 multi_line_output = 3
