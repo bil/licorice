@@ -38,6 +38,7 @@ KERNEL_VERSION_2=$( echo ${KERNEL_VERSION} | cut -d. -f3 )
 export DEBIAN_FRONTEND=noninteractive
 export DEBIAN_PRIORITY=critical
 sudo -E apt-get -y update
+sudo -E apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" upgrade
 sudo -E apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" install libncurses5-dev build-essential libssl-dev dwarves libelf-dev flex bison openssl dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf bc
 sudo apt-get -y autoremove
 
@@ -65,14 +66,15 @@ tar -zxvf ${TMP_DIR}/linux-${KERNEL_VERSION}.tar.gz
 cd linux-${KERNEL_VERSION}
 zcat ${TMP_DIR}/patch-${KERNEL_VERSION}-${RT_PATCH}.patch.gz | patch -p1
 
-# copy kernel .config file from git
-# TODO download this from appropriate bucket given
-cp ${INSTALL_DIR}/${CONFIG_FILENAME} ${KERNEL_DIR}/linux-${KERNEL_VERSION}/.config
 
 # manually edit config
 # make menuconfig
 if [ $MANUAL_CONFIG -eq 1 ]; then
     exit
+else
+# copy kernel .config file from git
+# TODO download this from appropriate bucket given Ubuntu version
+cp ${INSTALL_DIR}/${CONFIG_FILENAME} ${KERNEL_DIR}/linux-${KERNEL_VERSION}/.config
 fi
 
 # build kernel
