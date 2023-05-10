@@ -8,8 +8,7 @@ eval "$(pyenv virtualenv-init -)"
 
 pyenv activate licorice
 
-pip install --upgrade pip setuptools
-pip install wheel pip-tools
+pip install --upgrade pip setuptools wheel pip-tools
 
 pip-compile "./requirements.in" --resolver=backtracking
 pip-compile "./requirements-dev.in" --resolver=backtracking

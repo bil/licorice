@@ -46,7 +46,7 @@ sudo apt-get -y autoremove
 cd $TMP_DIR
 #wget https://git.kernel.org/pub/scm/linux/kernel/git/rt/linux-stable-rt.git/snapshot/linux-stable-rt-5.4.209-rt77.tar.gz
 wget https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION_0}.x/linux-${KERNEL_VERSION}.tar.gz
-wget https://www.kernel.org/pub/linux/kernel/projects/rt/${KERNEL_VERSION_0}.${KERNEL_VERSION_1}/patch-${KERNEL_VERSION}-${RT_PATCH}.patch.gz
+wget https://www.kernel.org/pub/linux/kernel/projects/rt/${KERNEL_VERSION_0}.${KERNEL_VERSION_1}/older/patch-${KERNEL_VERSION}-${RT_PATCH}.patch.gz
 
 # to check signature
 #

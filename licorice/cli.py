@@ -14,7 +14,11 @@ from warnings import warn
 import yaml
 
 import licorice.template_funcs as template_funcs
-from licorice.utils import __find_in_path, __handle_completed_process, __dict_deep_update
+from licorice.utils import (
+    __dict_deep_update,
+    __find_in_path,
+    __handle_completed_process,
+)
 
 # LiCoRICE paths are of the form f"LICORICE_{path}_PATH"
 LICORICE_PATHS = ["WORKING", "TEMPLATE", "GENERATOR", "MODULE", "MODEL"]
@@ -227,7 +231,7 @@ def __parse_args(input_tuple=None):
     arg_parser.add_argument(
         "--config",
         type=str,
-        help="override model configuration. accepts JSON input"
+        help="override model configuration. accepts JSON input",
     )
 
     for lico_path in LICORICE_PATHS:

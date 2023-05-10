@@ -1,9 +1,14 @@
 #!/bin/bash
+set -ev
 
 # This script installs LiCoRICE system and Python dependencies.
 
 # pyenv-recommended python dependencies:
 # https://github.com/pyenv/pyenv/wiki#suggested-build-environment
+
+# By default, Python dependencies are not force reinstalled.
+# Set `LICO_FORCE_REINSTALL` to override this behavior
+FORCE_REINSTALL=${LICO_FORCE_REINSTALL:-0}
 
 # install platform-specific packages
 case $OSTYPE in
@@ -42,13 +47,23 @@ case $OSTYPE in
 esac
 
 # install pyenv
-curl https://pyenv.run | bash
-source "$(dirname "$0")/pyenv_config.sh"
+if [ ! "$(pyenv doctor)" ] ; then
+    curl https://pyenv.run | bash
+    source "$(dirname "$0")/pyenv_config.sh"
+fi
 
 # install python using pyenv, create a virtualenv, and install python deps
-PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -f
-pyenv uninstall -f licorice
-pyenv virtualenv -f 3.8.12 licorice
+if [ $FORCE_REINSTALL -eq 1 ]; then
+    PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -f
+    pyenv uninstall -f licorice
+    pyenv virtualenv -f 3.8.12 licorice
+else
+    PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.8.12 -s
+    if [ "$(pyenv version-name)" != "licorice" ]; then
+        pyenv virtualenv 3.8.12 licorice
+    fi
+
+fi
 "$(dirname "$0")/update-deps.sh"
 
 # install pre-commit hooks
