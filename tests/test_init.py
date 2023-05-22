@@ -58,7 +58,7 @@ init_ticks_model = {
         },
         "init_sink": {
             "language": "python",
-            "parser": True,
+            # "parser": True,
             "in": ["uint64_signal_out"],
             "out": {
                 "name": "shared_array_test_output",

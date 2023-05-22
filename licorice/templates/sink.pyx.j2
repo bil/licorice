@@ -378,9 +378,8 @@ while(True):
     {%- if has_parser %}
 
   {{parser_code}}
-    {%- endif %}
 
-    {%- if has_in_signal %}
+    {%- elif has_in_signal %}
 
   outBuf = outBufStrt + pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{in_signal_name}}StrtOffsetSamples
   outBufLen = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{in_signal_name}}Len
@@ -403,9 +402,8 @@ while(True):
     {%- if has_parser %}
 
   {{parser_code}}
-    {%- endif %}
 
-    {%- if has_in_signal %}
+    {%- elif has_in_signal %}
 
   outBuf = outBufStrt + {{in_signal_name}}BufVars[0]
   outBufLen = {{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0]

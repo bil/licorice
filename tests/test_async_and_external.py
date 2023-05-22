@@ -234,3 +234,61 @@ def test_async_combo(capfd):
         assert (sa_sig_out[i - 1] == 100) or (
             sa_sig_out[i] - sa_sig_out[i - 1] == 1
         )
+
+
+skip_ticks_model = {
+    "config": {
+        "tick_len": 10000,
+        "num_ticks": NUM_TICKS,
+    },
+    "signals": {
+        "count": {
+            "shape": 1,
+            "dtype": "int32",
+        },
+    },
+    "modules": {
+        "count_writer": {
+            "language": "python",
+            "constructor": True,
+            "out": ["count"]
+        },
+        "printer": {
+            "language": "python",
+            "parser": True,
+            "in": ["count"],
+            "out": {
+                "name": "console_out",
+                "async": True,
+                "args": {
+                    "type": "console",
+                },
+            },
+        },
+    },
+}
+
+
+def test_skip_ticks(capfd):
+    # run external driver model with LiCoRICE
+    licorice.go(
+        skip_ticks_model,
+        confirm=True,
+        working_path=f"{pytest.test_dir}/module_code",
+        template_path=f"{pytest.test_dir}/templates",
+    )
+
+    # check LiCoRICE stdout and stderr output
+    captured = capfd.readouterr()
+    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
+    assert captured.err == ""
+
+    # check output is sequential by 2
+    vals = [
+        int(val)
+        for val in re.findall(
+            r"console_out: (\d+)", captured.out
+        )
+    ]
+    for i in range(1, len(vals) - 1):
+        assert vals[i] - vals[i - 1] == 2
