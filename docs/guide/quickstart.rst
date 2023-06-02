@@ -18,11 +18,11 @@ This first hello world example will create a LiCoRICE model that outputs a messa
 Create a workspace
 -------------------------------------------------------------------------------
 
-In this example, we'll assume you're using ``~/licorice`` as your workspace.
+In this example, we'll assume you're using ``~/licorice_quickstart`` as your workspace.
 
 .. code-block:: bash
 
-    export LICORICE_WORKING_PATH=~/licorice
+    export LICORICE_WORKING_PATH=~/licorice_quickstart
     mkdir $LICORICE_WORKING_PATH
 
 The above sets the ``LICORICE_WORKING_PATH`` :ref:`environment variable <api/env_vars:environment variables>` and creates the directory. This tells LiCoRICE where to look for model and module files. Feel free to change the path to anything that's convenient on your system.
