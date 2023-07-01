@@ -210,6 +210,8 @@ def test_udp(capfd):
     proc.terminate()
 
     captured = capfd.readouterr()
+    print(captured.out)
+    print(captured.err)
     msgs = ["STAN", "FORD", "TREE", "MESS", "AGES"]
     for msg in msgs:
         assert msg in captured.out

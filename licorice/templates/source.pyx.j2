@@ -4,7 +4,7 @@ cimport numpy as np
 from libc.stdio cimport fprintf, printf, snprintf, stderr, stdout, fflush
 from libc.stdlib cimport exit, malloc, free, calloc, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
-from libc.signal cimport SIGINT, SIGUSR1, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
+from libc.signal cimport SIGINT, SIGUSR1, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2, SIGTERM
 from libc.string cimport memset, memcpy, strerror
 from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
@@ -40,7 +40,7 @@ cdef extern from "semaphore.h" nogil:
   int sem_wait(sem_t *)
   int sem_post(sem_t *)
   int sem_close(sem_t *sem)
-  int sem_getvalue(sem_t * sem, int * sval);
+  int sem_getvalue(sem_t * sem, int * sval)
 
 cdef extern from "stdatomic.h":
   enum memory_order:
@@ -60,14 +60,12 @@ cdef extern from "utilityFunctions.h":
   void make_realtime()
 
 cdef extern from "constants.h":
-  enum: MAX_PATH_LEN
   enum: PAGESIZE
   const char *SMEM0_PATHNAME
   enum: NUM_SEM_SIGS
   enum: NUM_INTERNAL_SIGS
   size_t ROUND_UP(int X, int Y)
   enum: BUF_VARS_LEN
-  enum: PRIORITY
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
   enum: CLOCK_TIME_OFFSET
@@ -98,10 +96,9 @@ cdef extern from "<pthread.h>" nogil:
 # cdef variables
 cdef pid_t pid, ppid
 cdef sigset_t exitMask
-cdef char pathName[MAX_PATH_LEN]
 cdef char *outbuf
 cdef int parse_idx
-cdef int semVal;
+cdef int semVal
 
 cdef size_t shm_size
 cdef uint8_t *pmem
@@ -240,7 +237,7 @@ pid = getpid()
 ppid = getppid()
 
 set_sighandler(SIGINT, &int_handler, &exitMask)
-set_sighandler(SIGUSR1, &exit_handler, &exitMask)
+set_sighandler(SIGTERM, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)
@@ -261,7 +258,7 @@ pSigSems[{{sig_sem[1]}}] = sem_open(semNameBuf, 0)
 {%- endif %}
 {%- if async %}
 pAsyncMutex = <pthread_mutex_t *>(pmem + ASYNC_READER_MUTEXES_OFFSET + sizeof(pthread_mutex_t) * {{async_reader_num}})
-  {%- if is_main_process %}
+  {%- if is_reader %}
 if(pthread_mutex_init(pAsyncMutex, NULL) != 0):
   die("Mutex could not be initialized.\n")
   {%- endif %}
@@ -273,6 +270,7 @@ if(pthread_mutex_init(pAsyncMutex, NULL) != 0):
 {{sig}}BufVars[5] = {{args["packet_size"]}}
 {{sig}}BufVars[6] = {{args["schema"]["max_packets_per_tick"] * args["packet_size"]}}
 {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
+{{sig}}BufVars[13] = 1
   {%- endif %}
 {%- endfor %}
 
@@ -336,7 +334,6 @@ inBufEnd = inBufStrt + {{out_signal_name}}BufVars[7]
 {%- if platform_system != "Darwin" %}
 make_realtime()
 {%- endif %}
-fflush(stdout)
 kill(ppid, SIGUSR2) # this source is initialized
 pause()
 
@@ -378,17 +375,17 @@ while(True):
   {{sig}}BufVars[6] = max({{sig}}BufVars[6], {{sig}}BufVars[9] - {{sig}}BufVars[8])
     {%- endif %}
   {{sig}}BufVars[2] += {{sig}}BufVars[5]
-  # print("2: ", {{sig}}BufVars[2], flush=True)
-  {{sig}}BufVars[10] += 1
+  {{sig}}BufVars[10] += {{sig}}BufVars[13]
   if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]) or ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
     {{sig}}BufVars[12] = {{sig}}BufVars[10]
   # Somehow when there is no active streaming data, this number just runs upwards
   {{sig}}BufVars[3] += {{sig}}BufVars[5]
-  {{sig}}BufVars[11] += 1
+  {{sig}}BufVars[11] += {{sig}}BufVars[13]
     {%- if async %}
-  # wrap buffer for async readers during setup. wrap is synchonous after setup meaning
-  # that async readers should not read more than `max_packets_per_tick` packets in a tick
+  # wrap buffer for async readers during setup. wrap is synchonous after setup
+  # meaning that async readers should not read more than
+  # `max_packets_per_tick` packets in a tick
   if (pNumTicks[0] < 0) and ({{sig}}BufVars[7] < ({{sig}}BufVars[2] + {{sig}}BufVars[6])):
     {{sig}}BufVars[2] = 0
     {{sig}}BufVars[10] = 0
@@ -403,15 +400,15 @@ while(True):
   pthread_mutex_lock(pAsyncMutex)
   {%- endif %}
   {%- for sig,args in (out_signals.items()) %}
-  {{sig}}BufVars[1] = {{sig}}BufVars[2];
-  {{sig}}BufVars[9] = {{sig}}BufVars[10];
-  {{sig}}BufVars[0] = {{sig}}BufVars[1] - {{sig}}BufVars[3];
-  {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11];
+  {{sig}}BufVars[1] = {{sig}}BufVars[2]
+  {{sig}}BufVars[9] = {{sig}}BufVars[10]
+  {{sig}}BufVars[0] = {{sig}}BufVars[1] - {{sig}}BufVars[3]
+  {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11]
   if (({{sig}}BufVars[7] < ({{sig}}BufVars[2]) + {{sig}}BufVars[6])):
-    {{sig}}BufVars[2] = 0;
-    {{sig}}BufVars[10] = 0;
-  {{sig}}BufVars[3] = 0;
-  {{sig}}BufVars[11] = 0;
+    {{sig}}BufVars[2] = 0
+    {{sig}}BufVars[10] = 0
+  {{sig}}BufVars[3] = 0
+  {{sig}}BufVars[11] = 0
   {%- endfor %}
   {%- if async %}
   pthread_mutex_unlock(pAsyncMutex)

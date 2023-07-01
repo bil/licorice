@@ -39,28 +39,60 @@
 
 
 #define TOPO_HEIGHT {{topo_height}}
+#define NUM_CHILD_PROCS {{num_child_procs}}
 #define NUM_SOURCES {{num_sources}}
 #define NUM_SINKS {{num_sinks}}
 #define NUM_MODULES {{num_modules}}
 
 // process IDs for each child numbered according to the index of the child's
-// name in moduleProcnames
-static pid_t ch_pids[NUM_MODULES] = {};
-static char moduleProcnames[NUM_MODULES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in module_names[:-1] %}"{{n}}", {% endfor %}"{{module_names[-1]}}"{{'}'}};
-static char sourceProcnames[NUM_SOURCES][MAX_MODULE_NAME_LEN] = {{'{'}}{% for s in source_names[:-1] %}"{{s}}", {% endfor %}"{{source_names[-1]}}"{{'}'}};
-static char sinkProcnames[NUM_SINKS][MAX_MODULE_NAME_LEN] = {{'{'}}{% for n in sink_names[:-1] %}"{{n}}", {% endfor %}"{{sink_names[-1]}}"{{'}'}};
-{%- if topo_height != 0 %}
-static int moduleTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths[:-1] %}{{l}}, {% endfor %}{{topo_widths[-1]}}{{'}'}};
-static int moduleTopoOrder[TOPO_HEIGHT][{{topo_max_width}}];
-{%- endif %}
+// name in childProcnames
+static pid_t ch_pids[NUM_CHILD_PROCS] = {};
+static char childProcnames[NUM_CHILD_PROCS][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in child_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
+static char sourceProcnames[NUM_SOURCES][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in source_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
+static char moduleProcnames[NUM_MODULES][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in module_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
+static char sinkProcnames[NUM_SINKS][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in sink_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
+static int runnerTopoLens[TOPO_HEIGHT] = {{'{'}}{% for l in topo_widths %}{{l}}{{ ", " if not loop.last else ""}}{% endfor %}{{'}'}};
+static int runnerTopoOrder[TOPO_HEIGHT][{{topo_max_width}}] = {
+{% for row in topo_order %}
+  { {% for item in row %}{{ item }}, {% endfor %}},
+{% endfor %}
+};
 
-// child process IDs
-static pid_t so_pids[NUM_SOURCES];
-static pid_t ar_pids[NUM_ASYNC_READERS];
-static pid_t si_pids[NUM_SINKS];
-static pid_t aw_pids[NUM_ASYNC_WRITERS];
-// numbered according to the index of the child's name in moduleProcnames
-static pid_t ch_pids[NUM_MODULES];
+#define FOREACH_CHILD_TYPE(CHILD_TYPE) \
+        CHILD_TYPE(async_reader)       \
+        CHILD_TYPE(source)             \
+        CHILD_TYPE(module)             \
+        CHILD_TYPE(sink)               \
+        CHILD_TYPE(async_writer)       \
+
+#define GENERATE_ENUM(ENUM) ENUM,
+#define GENERATE_STRING(STRING) #STRING,
+
+enum CHILD_TYPE {
+    FOREACH_CHILD_TYPE(GENERATE_ENUM)
+};
+
+static const char *CHILD_TYPES[] = {
+    FOREACH_CHILD_TYPE(GENERATE_STRING)
+};
+
+typedef struct {
+  char name[MAX_CHILD_NAME_LEN];
+  enum CHILD_TYPE type;
+  bool async;
+  int cpu_affinity;
+} ChildDict;
+
+ChildDict childDicts[] = {
+{% for child in child_dicts %}
+  {
+    .name = "{{ child["name"] }}",
+    .type = {{ child["type"] }},
+    .async = {{ "true" if child["async"] else "false" }},
+    .cpu_affinity = {{ child["cpu_affinity"] }},
+  },
+{% endfor %}
+};
 
 {%- if parport_tick_addr is not none %}
 int parportMode;
@@ -93,11 +125,8 @@ sigset_t exitMask;
 static int running = true;
 static int sigchld_recv;
 
-// static int num_cores = {{num_cores}};
-static size_t ex_i, al_i, de_i, m_i;
-{%- if topo_height != 0 -%}
-static int m_j;
-{%- endif %}
+static int num_cores = {{num_cores}};
+static size_t ex_i, al_i;
 
 struct period_info {
   struct timespec next_period;
@@ -141,74 +170,25 @@ static void timer_init(struct period_info *pinfo) {
   }
 {%- endif %}
 
+  printf("Timer thread started.\n");
+  fflush(stdout);
+
   clock_gettime(CLOCK_MONOTONIC, &(pinfo->next_period));
 }
 
 void handle_exit(int exitStatus) {
-  printf("exiting...\n");
-  if (NUM_ASYNC_READERS) {
-    printf("Killing async readers...\n");
-    fflush(stdout);
-  }
-  for (ex_i = 0; ex_i < NUM_ASYNC_READERS; ex_i++) {
-    if (ar_pids[ex_i] != -1) {
-      printf("Killing async reader: %d\n", ar_pids[ex_i]);
+  int childStatus;
+  for (int i = 0; i < NUM_CHILD_PROCS; i++) {
+    if (ch_pids[i] != -1) {
+      printf("Killing %s %s with pid: %d\n", CHILD_TYPES[childDicts[i].type], childDicts[i].name, ch_pids[i]);
       fflush(stdout);
-      kill(ar_pids[ex_i], SIGINT);
-      kill(ar_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while(waitpid(ar_pids[ex_i], 0, WNOHANG) > 0){
-        printf("waiting for pid: %d\n", ar_pids[ex_i]);
-        fflush(stdout);
+      if (childDicts[i].async) {
+        kill(ch_pids[i], SIGINT);
       }
-    }
-  }
-  if (NUM_ASYNC_WRITERS) {
-    printf("Killing async writers...\n");
-    fflush(stdout);
-  }
-  for (ex_i = 0; ex_i < NUM_ASYNC_WRITERS; ex_i++) {
-    if (aw_pids[ex_i] != -1) {
-      printf("Killing async writer: %d\n", aw_pids[ex_i]);
+      kill(ch_pids[i], SIGTERM);
+      waitpid(ch_pids[i], &childStatus, 0);
+      printf("%s exited with status: %d\n", childDicts[i].name, childStatus);
       fflush(stdout);
-      kill(aw_pids[ex_i], SIGINT);
-      kill(aw_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while(waitpid(aw_pids[ex_i], 0, WNOHANG) > 0){
-        printf("waiting for pid: %d\n", aw_pids[ex_i]);
-        fflush(stdout);
-      }
-    }
-  }
-  if (NUM_SINKS) {
-    printf("Killing sinks...\n");
-  }
-  for (ex_i = 0; ex_i < NUM_SINKS; ex_i++) {
-    if (si_pids[ex_i] && si_pids[ex_i] != -1) {
-      printf("Killing sink: %d\n", si_pids[ex_i]);
-      kill(si_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while (waitpid(si_pids[ex_i], 0, WNOHANG) > 0);
-    }
-  }
-  if (NUM_MODULES) {
-    printf("Killing modules...\n");
-  }
-  for (ex_i = 0; ex_i < NUM_MODULES; ex_i++) {
-    if (ch_pids[ex_i] && ch_pids[ex_i] != -1) {
-      printf("Killing module: %d\n", ch_pids[ex_i]);
-      kill(ch_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while (waitpid(ch_pids[ex_i], 0, WNOHANG) > 0);
-    }
-  }
-  if (NUM_SOURCES) {
-    printf("Killing sources...\n");
-  }
-  for (ex_i = 0; ex_i < NUM_SOURCES; ex_i++) {
-    if (so_pids[ex_i] && so_pids[ex_i] != -1) {
-      printf("Killing source: %d\n", so_pids[ex_i]);
-      kill(so_pids[ex_i], SIGUSR1); // children already receive SIGUSR1
-      while(waitpid(so_pids[ex_i], 0, WNOHANG) > 0){
-        printf("waiting for pid: %d\n", so_pids[ex_i]);
-        fflush(stdout);
-      }
     }
   }
 
@@ -429,27 +409,18 @@ void dead_child() {
   --sigchld_recv;
   int saved_errno = errno;
   int dead_pid;
+  printf("I have lost a child :( \n");
+
   while ((dead_pid = waitpid((pid_t)(-1), 0, WNOHANG)) == 0);
   printf("dead pid: %d \n", dead_pid);
-  for (de_i = 0; de_i < NUM_SINKS; de_i++) {
-    if (si_pids[de_i] == dead_pid) {
-      si_pids[de_i] = -1;
-    }
-  }
-  for (de_i = 0; de_i < NUM_MODULES; de_i++) {
-    if (ch_pids[de_i] == dead_pid) {
-      ch_pids[de_i] = -1;
-    }
-  }
-  for (de_i = 0; de_i < NUM_SOURCES; de_i++) {
-    if (so_pids[de_i] == dead_pid) {
-      so_pids[de_i] = -1;
+  for (int i = 0; i < NUM_CHILD_PROCS; i++) {
+    if (ch_pids[i] == dead_pid) {
+      ch_pids[i] = -1;
     }
   }
 
   errno = saved_errno;
 
-  printf("I have lost a child :( \n");
   running = 0;
   return;
 }
@@ -475,7 +446,6 @@ void *timer_task(void *data) {
 
   timer_init(&pinfo);
 
-
   while (running) {
     check_children(&pinfo);
     wait_rest_of_period(&pinfo);
@@ -490,15 +460,73 @@ void *timer_task(void *data) {
   return NULL;
 }
 
+int run_child_process(char *procName, ChildDict *child) {
+  int ch_pid;
+  int cpu_affinity = child->cpu_affinity;
+  int priority = TIMER_PRIORITY - 1;
+
+  // fork and exec child process
+  if ((ch_pid = fork()) == -1) {
+    die("fork failed \n");
+  }
+  if (ch_pid == 0) { // only runs for child
+#ifndef __APPLE__
+    // create CPU affinity mask for runner
+    cpu_set_t cpu_affinity_mask;
+    CPU_ZERO(&cpu_affinity_mask);
+    printf("%s\n", procName+2);
+    for (int i = 0; i < num_cores; i++) {
+      if ((1 << i) & cpu_affinity) {
+        printf("%d\n", i);
+        CPU_SET(i, &cpu_affinity_mask);
+      }
+    }
+    fflush(stdout);
+
+    if (sched_setaffinity(0, sizeof(cpu_affinity_mask), &cpu_affinity_mask)) {
+      perror("sched_setaffinity failed: \n");
+      exit(EXIT_FAILURE);
+    }
+     /* Check the actual affinity mask assigned to the thread. */
+    sched_getaffinity(0, sizeof(cpu_affinity_mask), &cpu_affinity_mask);
+    printf("%s CPU affinity:\n", procName+2);
+    for (int i = 0; i < num_cores; i++) {
+      if (CPU_ISSET(i, &cpu_affinity_mask)) {
+        printf("  CPU %d\n", i);
+        fflush(stdout);
+      }
+    }
+
+    setpriority(PRIO_PROCESS, 0, -19);
+    if (child->async) {
+      priority -= 1;
+    }
+    set_sched_prior(priority);
+#else
+    // TODO implement Darwin CPU affinity
+    // TODO implement Darwin priority
+#endif
+    char* argv[2] = {procName, NULL};
+
+    // execute source process
+    // signal handlers and mmap are not preserved on exec
+    execvp(argv[0],argv);
+    printf("%s: child exec error. %s\n", procName, strerror(errno));
+    exit(EXIT_FAILURE);
+    //in case execvp fails
+  }
+  return ch_pid;
+}
 
 /*
  * Timer parent main
  */
 int main(int argc, char* argv[]) {
-
   struct sched_param param;
   pthread_attr_t attr;
   pthread_t thread;
+
+  char childExecName[MAX_CHILD_NAME_LEN + 2];
 
   // set signal masks
   sigemptyset(&exitMask);
@@ -513,9 +541,10 @@ int main(int argc, char* argv[]) {
   set_sighandler(SIGCHLD, &chld_handler, NULL);
   printf("Handlers installed.\n");
 
+  printf("Timer parent pid: %d\n", getpid());
+
   // create shared memory and map it
   printf("Mapping memory...\n");
-
   // TODO pmem offsets should be constants, or store in struct
   shm_size = ROUND_UP(SHM_SIZE, PAGESIZE);
   open_shared_mem(
@@ -531,254 +560,87 @@ int main(int argc, char* argv[]) {
   *pNumTicks = (-1 * (SOURCE_INIT_TICKS + MODULE_INIT_TICKS)) - 1;
 
   // initialize source semaphores
-  for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem_%lu", m_i);
-    pSourceUpSems[m_i] = create_semaphore(semNameBuf, 0);
+  for (int i = 0; i < NUM_SOURCES; i++) {
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem_%lu", i);
+    pSourceUpSems[i] = create_semaphore(semNameBuf, 0);
 
-    snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem_%lu", m_i);
-    pSourceDownSems[m_i] = create_semaphore(semNameBuf, 1);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem_%lu", i);
+    pSourceDownSems[i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize module semaphores
-  for (m_i = 0; m_i < NUM_MODULES; m_i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_up_sem_%lu", m_i);
-    pModUpSems[m_i] = create_semaphore(semNameBuf, 0);
+  for (int i = 0; i < NUM_MODULES; i++) {
+    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_up_sem_%lu", i);
+    pModUpSems[i] = create_semaphore(semNameBuf, 0);
 
-    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_down_sem_%lu", m_i);
-    pModDownSems[m_i] = create_semaphore(semNameBuf, 1);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_down_sem_%lu", i);
+    pModDownSems[i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize sink semaphores
-  for (m_i = 0; m_i < NUM_SINKS; m_i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_up_sem_%lu", m_i);
-    pSinkUpSems[m_i] = create_semaphore(semNameBuf, 0);
+  for (int i = 0; i < NUM_SINKS; i++) {
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_up_sem_%lu", i);
+    pSinkUpSems[i] = create_semaphore(semNameBuf, 0);
 
-    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_down_sem_%lu", m_i);
-    pSinkDownSems[m_i] = create_semaphore(semNameBuf, 1);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_down_sem_%lu", i);
+    pSinkDownSems[i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize signal semaphores
-  for (m_i = 0; m_i < NUM_SEM_SIGS; m_i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", m_i);
-    pSigSems[m_i] = create_semaphore(semNameBuf, 0);
+  for (int i = 0; i < NUM_SEM_SIGS; i++) {
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", i);
+    pSigSems[i] = create_semaphore(semNameBuf, 0);
   }
 
   printf("Memory mapped.\nForking children...\n");
 
-{% for name in source_names -%} // TODO write this loop in C
-  // fork and exec source process
-  if ((so_pids[{{loop.index0}}] = fork()) == -1) {
-    die("fork failed \n");
-  }
-  if (so_pids[{{loop.index0}}] == 0) { // only runs for source process
-#ifndef __APPLE__
-    cpu_set_t mask;
-    // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
-    //   CPU_SET(i, &mask);
-    // }
-    CPU_ZERO(&mask);
-    CPU_SET(NETWORK_CPU, &mask);
-    sched_setaffinity(0, sizeof(mask), &mask);
-    setpriority(PRIO_PROCESS, 0, -19);
-    set_sched_prior(PRIORITY-1);
-#else
-    // TODO implement Darwin CPU affinity
-    // TODO implement Darwin priority
-#endif
-    char* argv[2] = {"./{{name}}", NULL};
+  for (int i = 0; i < TOPO_HEIGHT; i++) {
+    for (int j = 0; j < runnerTopoLens[i]; j++) {
+      // create runner executable name
+      int child_num = runnerTopoOrder[i][j];
+      sprintf(childExecName, "./%s", childProcnames[child_num]);
 
-    // execute source process
-    // signal handlers and mmap are not preserved on exec
-    execvp(argv[0],argv);
-    printf("source exec error. %s \n", strerror(errno));
-    exit(1);
-    //in case execvp fails
-  }
-  pause();
-{%- endfor %}
-  printf("Sources ready.\n");
-{%- for name in source_names %}
-  printf("{{name}}: %d\n", so_pids[{{loop.index0}}]);
-{%- endfor %}
+      ch_pids[child_num] = run_child_process(
+        childExecName, &childDicts[child_num]
+      );
 
 
-{% for name in async_reader_names -%} // TODO write this loop in C
-  // fork and exec reader process
-  if ((ar_pids[{{loop.index0}}] = fork()) == -1) {
-    die("fork failed \n");
-  }
-  if (ar_pids[{{loop.index0}}] == 0) { // only runs for reader process
-    printf("Source: {{name}}\n");
-#ifndef __APPLE__
-    // TODO implement CPU affinity
-    // cpu_set_t mask;
-    // CPU_ZERO(&mask);
-    // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
-    //   CPU_SET(i, &mask);
-    // }
-    // sched_setaffinity(0, sizeof(mask), &mask);
-    setpriority(PRIO_PROCESS, 0, -18);
-    set_sched_prior(PRIORITY - 2);
-#else
-    // TODO implement Darwin CPU affinity
-    // TODO implement Darwin priority
-#endif
-    char* argv[2] = {"./{{name}}", NULL};
-
-    // execute reader process
-    // signal handlers and mmap are not preserved on exec
-    execvp(argv[0],argv);
-    printf("async reader exec error. %s \n", strerror(errno));
-    exit(1);
-    //in case execvp fails
-  }
-  pause();
-{%- endfor %}
-{%- if num_async_readers > 0 %}
-  printf("Async readers ready.\n");
-{%- endif %}
-{%- for name in async_reader_names %}
-  printf("{{name}}: %d\n", ar_pids[{{loop.index0}}]);
-{%- endfor %}
-
-
-{% if num_modules != 0 %}
-  // fork and exec child processes
-{%- for i in range(0, topo_height) %}
-{%- for j in range(0, topo_widths[i]) %}
-  moduleTopoOrder[{{i}}][{{j}}] = {{topo_order[i][j]}};
-{%- endfor %}
-{%- endfor %}
-
-  for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
-    for (m_j = 0; m_j < moduleTopoLens[m_i]; m_j++) {
-      int childNum = moduleTopoOrder[m_i][m_j];
-      if ((ch_pids[childNum] = fork()) == -1) {
-        die("fork failed\n");
-      }
-      if (ch_pids[childNum] == 0) {  // only runs for child processes
-#ifndef __APPLE__
-        //cpu_set_t mask;
-        //CPU_ZERO(&mask);
-        //CPU_SET(m_j + CPU_OFFSET, &mask);
-        //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-        setpriority(PRIO_PROCESS, 0, -19);
-        set_sched_prior(PRIORITY-1);
-#else
-        // TODO implement Darwin CPU affinity
-        // TODO implement Darwin priority
-#endif
-        char procBuf[64];
-        sprintf(procBuf, "./%s", moduleProcnames[childNum]);
-        char* argv[2] = {procBuf, NULL};
-
-        // execute child process
-        // signal handlers and mmap are not preserved on exec
-        execvp(argv[0],argv);
-        printf("child exec error. %s \n", strerror(errno));
-        exit(1);
-        //in case execvp fails
-      }
       pause();
+
+      if (sigchld_recv) {
+        dead_child();
+        die("%s unable to start up.\n", childProcnames[child_num]);
+      }
+
+      printf("%s up.\n", childProcnames[child_num]);
+      fflush(stdout);
     }
   }
-  printf("Internal modules ready.\n");
+  printf("Runners (sources, modules, and sinks) ready.\n");
 
-for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
-  printf("%s: %d\n", moduleProcnames[m_i], ch_pids[m_i]);
-}
-{%- endif %}
-
-{% for name in sink_names -%}  // TODO write this loop in C
-  // fork and exec data logger process
-  if ((si_pids[{{loop.index0}}] = fork()) == -1) {
-    die("fork failed \n");
+  for (int i = 0; i < TOPO_HEIGHT; i++) {
+    printf("%s: %d\n", childProcnames[i], ch_pids[i]);
   }
-  if (si_pids[{{loop.index0}}] == 0) { // only runs for logger process
-#ifndef __APPLE__
-    // cpu_set_t mask;
-    // for (int i = 1; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
-    //   CPU_SET(i, &mask);
-    // }
-    //CPU_ZERO(&mask);
-    //CPU_SET(LOGGER_CPU, &mask);
-    //sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    setpriority(PRIO_PROCESS, 0, -2);
-    set_sched_prior(PRIORITY-1);
-#else
-    // TODO implement Darwin CPU affinity
-    // TODO implement Darwin priority
-#endif
-    char* argv[2] = {"./{{name}}", NULL};
 
-    // execute sink process
-    // signal handlers and mmap are not preserved on exec
-    execvp(argv[0],argv);
-    printf("sink exec error. %s \n", strerror(errno));
-    exit(1);
-    //in case execvp fails
-  }
-  pause();
-{%- endfor %}
-  printf("Sinks ready.\n");
-{% for name in sink_names -%}
-  printf("{{name}}: %d\n", si_pids[{{loop.index0}}]);
-{% endfor %}
-
-{% for name in async_writer_names -%} // TODO write this loop in C
-  // fork and exec reader process
-  if ((aw_pids[{{loop.index0}}] = fork()) == -1) {
-    die("fork failed \n");
-  }
-  if (aw_pids[{{loop.index0}}] == 0) { // only runs for async writer process
-    printf("Async writer: {{name}}\n");
-#ifndef __APPLE__
-    // TODO implement CPU affinity
-    // cpu_set_t mask;
-    // CPU_ZERO(&mask);
-    // for (int i = 2; i < num_cores - 1; i++) { // leave one core for system (core num_cores-1)
-    //   CPU_SET(i, &mask);
-    // }
-    // sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-    setpriority(PRIO_PROCESS, 0, -18);
-    set_sched_prior(PRIORITY - 2);
-#else
-    // TODO implement Darwin CPU affinity
-    // TODO implement Darwin priority
-#endif
-    char* argv[2] = {"./{{name}}", NULL};
-
-    // execute async writer process
-    // signal handlers and mmap are not preserved on exec
-    execvp(argv[0],argv);
-    printf("async writer exec error. %s \n", strerror(errno));
-    exit(1);
-    //in case execvp fails
-  }
-  pause();
-{%- endfor %}
-{%- if num_async_writers > 0 %}
-  printf("Async writers ready.\n");
-{%- endif %}
-{%- for name in async_writer_names %}
-  printf("{{name}}: %d\n", aw_pids[{{loop.index0}}]);
-{%- endfor %}
 
 {%- if platform_system != "Darwin" %}
   // make_realtime();
 {%- endif %}
 
-  for (m_i = 0; m_i < NUM_ASYNC_READERS; m_i++) {
-    kill(ar_pids[m_i], SIGUSR2);
+  for (int i = 0; i < NUM_CHILD_PROCS; i++) {
+    if (childDicts[i].type == async_reader) {
+      printf("async reader child pid: %d\n", ch_pids[i]);
+      fflush(stdout);
+      kill(ch_pids[i], SIGUSR2);
+    }
+    else if (childDicts[i].type == source) {
+      kill(ch_pids[i], SIGUSR2);
+    }
   }
-  for (m_i = 0; m_i < NUM_SOURCES; m_i++) {
-    kill(so_pids[m_i], SIGUSR2);
-  }
-  printf("Sources signaled.\n");
+
+  printf("Sources signaled to start reading data.\n");
 
   // set up timer
-  printf("Starting timer thread...\n");
-  fflush(stdout);
 
   /* Initialize pthread attributes (default values) */
   if (pthread_attr_init(&attr)) {
@@ -796,7 +658,7 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
     die("pthread setschedpolicy failed\n");
   }
 
-  param.sched_priority = PRIORITY;
+  param.sched_priority = TIMER_PRIORITY;
   if (pthread_attr_setschedparam(&attr, &param)) {
     die("pthread setschedparam failed\n");
   }
@@ -808,28 +670,37 @@ for (m_i = 0; m_i < TOPO_HEIGHT; m_i++) {
   /* Set affinity mask to include CPUs 1. */
   // TODO expose this as config var
 #ifndef __APPLE__
-  cpu_set_t cpuset;
-  CPU_ZERO(&cpuset);
-  CPU_SET(1, &cpuset);
+  cpu_set_t timer_cpu_affinity;
+  CPU_ZERO(&timer_cpu_affinity);
+  for (int i = 0; i < num_cores; i++) {
+    if ((1 << i) & TIMER_MASK) {
+      CPU_SET(i, &timer_cpu_affinity);
+    }
+  }
 
-  if (pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset)) {
+  if (pthread_attr_setaffinity_np(
+    &attr, sizeof(timer_cpu_affinity), &timer_cpu_affinity)
+  ) {
     die("pthread setaffinity_np failed\n");
   }
 #endif
 
-  //  /* Check the actual affinity mask assigned to the thread. */
-  // if (pthread_attr_getaffinity_np(&attr, sizeof(cpuset), &cpuset)) {
-  //   die("pthread getaffinity_np failed\n");
-  // }
+   /* Check the actual affinity mask assigned to the thread. */
+  if (pthread_attr_getaffinity_np
+    (&attr, sizeof(timer_cpu_affinity), &timer_cpu_affinity)
+  ) {
+    die("pthread getaffinity_np failed\n");
+  }
+  printf("Timer CPU affinity:\n");
+  for (int i = 0; i < num_cores; i++) {
+    if (CPU_ISSET(i, &timer_cpu_affinity)) {
+      printf("  CPU %d\n", i);
+      fflush(stdout);
+    }
+  }
 
-  // printf("Set returned by pthread_getaffinity_np() contained:\n");
-  // for (int j = 0; j < 4; j++) {
-  //   if (CPU_ISSET(j, &cpuset)) {
-  //     printf("    CPU %d\n", j);
-  //     fflush(stdout);
-  //   }
-  // }
-
+  printf("Starting timer thread...\n");
+  fflush(stdout);
   if (pthread_create(&thread, &attr, timer_task, NULL)) {
     perror("Error: ");
     die("create pthread failed\n");

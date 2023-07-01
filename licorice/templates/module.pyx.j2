@@ -3,7 +3,7 @@
 from libc.stdlib cimport atoi, exit
 from libc.stdio cimport printf, snprintf, fflush, stdout
 from libc.string cimport strcpy, memset, memcpy
-from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT
+from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGTERM
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport getppid, pause, close, getpid
@@ -63,7 +63,6 @@ cimport cython
 
 cdef extern from "constants.h":
   enum: NUM_PAGES_IN_GB
-  enum: MAX_PATH_LEN
   enum: NUM_CHILDREN
   enum: BYTES_IN_GB
   cdef const char *SMEM0_PATHNAME
@@ -81,7 +80,6 @@ cdef extern from "constants.h":
 
 cdef pid_t pid
 cdef pid_t ppid
-cdef char pathName[MAX_PATH_LEN]
 cdef public sigset_t exitMask
 
 # shared memory vars
@@ -116,6 +114,8 @@ cdef void handle_exit(int exitStatus):
   if b"{{sig}}" in sa_names:
     sa.delete("shm://{{sig}}")
   else:
+    print(sa_names, flush=True)
+    print(sa.list(), flush=True)
     printf("Could not delete shared array {{sig}}.\n")
   {%- endfor %}
 {%- else %}
@@ -142,6 +142,7 @@ cdef void int_handler(int signum):
 
 cdef void exit_handler(int signum):
   printf("EXIT HANDLER for {{name}}\n")
+  fflush(stdout)
   handle_exit(0)
 
 cdef void mem_error_handler(int signum):
@@ -215,23 +216,23 @@ out_sigs = {}
   {%- if platform_system == "Linux"  %}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
-  die("numpy signal {{sig}} already created")
-else:
-  out_sigs["{{sig}}"] = create_shared_array(
-    "shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}}
-  )
-  # make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
-  out_sigs["{{sig}}"].base.mlock()
-  {{sig}}Raw = out_sigs["{{sig}}"]
-  {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
-    {%- if args["max_packets_per_tick"] == 1 %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-    {%- else %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-    {%- endif %}
-  {{sig}}BufVars[5] = {{args["packet_size"]}}
-  {{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
-  {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
+  print("recreated shared array {{sig}}.\n", flush=True)
+
+out_sigs["{{sig}}"] = create_shared_array(
+  "shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}}
+)
+# make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
+out_sigs["{{sig}}"].base.mlock()
+{{sig}}Raw = out_sigs["{{sig}}"]
+{{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+  {%- if args["max_packets_per_tick"] == 1 %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  {%- else %}
+{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {%- endif %}
+{{sig}}BufVars[5] = {{args["packet_size"]}}
+{{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
+{{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
   {%- else %}
 out_sigs["{{sig}}"] = create_shared_array(
   "shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}}
@@ -255,7 +256,7 @@ out_sigs["{{sig}}"].base.mlock()
 sigfillset(&exitMask)
 # handle signals
 set_sighandler(SIGINT, &int_handler, &exitMask)
-set_sighandler(SIGUSR1, &exit_handler, &exitMask)
+set_sighandler(SIGTERM, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &mem_error_handler, &exitMask)
 set_sighandler(SIGSEGV, &mem_error_handler, &exitMask)
 

@@ -5,7 +5,7 @@ from libc.stdio cimport printf, stdout, fflush, remove
 from libc.stdio cimport printf, snprintf, stdout, fflush, remove
 from libc.stdlib cimport exit, malloc, free, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
-from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2
+from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2, SIGTERM
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
 from posix.unistd cimport getppid, pause, close, getpid, write
 from posix.mman cimport munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall, shm_unlink
@@ -46,7 +46,6 @@ cdef extern from "semaphore.h" nogil:
 
 cdef extern from "constants.h":
   enum: NUM_CHANNELS
-  enum: MAX_PATH_LEN
   enum: NUM_CHILDREN
   enum: PAGESIZE
   enum: SMEM0_HEADER_LEN
@@ -76,7 +75,6 @@ cdef extern from "<pthread.h>" nogil:
 # cdef variables
 cdef pid_t pid, ppid
 cdef sigset_t exitMask
-cdef char pathName[MAX_PATH_LEN]
 
 cdef size_t shmSize
 cdef uint8_t *pmem
@@ -200,7 +198,7 @@ pid = getpid()
 ppid = getppid()
 
 set_sighandler(SIGINT, &int_handler, &exitMask)
-set_sighandler(SIGUSR1, &exit_handler, &exitMask)
+set_sighandler(SIGTERM, &exit_handler, &exitMask)
 set_sighandler(SIGBUS, &bus_handler, &exitMask)
 set_sighandler(SIGSEGV, &segv_handler, &exitMask)
 set_sighandler(SIGUSR2, &usr2_handler, NULL)

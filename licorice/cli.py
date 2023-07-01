@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shlex
+import signal
 import subprocess
 from distutils.sysconfig import get_python_lib
 from functools import lru_cache
@@ -184,18 +185,23 @@ def __load_and_validate_model(**kwargs):
 
 
 def __execute_iterable_output(cmd, **kwargs):
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        shell=False,
-        bufsize=1,
-        **kwargs,
-    )
-    for stdout_line in iter(process.stdout.readline, ""):
-        yield stdout_line
-    process.stdout.close()
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            shell=False,
+            bufsize=1,
+            **kwargs,
+        )
+        for stdout_line in iter(process.stdout.readline, ""):
+            yield stdout_line
+        process.stdout.close()
+    except KeyboardInterrupt:
+        process.send_signal(signal.SIGINT)
+        for stdout_line in iter(process.stdout.readline, ""):
+            yield stdout_line
     return_code = process.wait()
     if return_code:
         raise subprocess.CalledProcessError(return_code, cmd)
@@ -472,7 +478,9 @@ def __run_model(**kwargs):
     os_env = os.environ.copy()
     os_env["PYTHONPATH"] = get_python_lib()
     if kwargs["rt"]:
-        run_cmd = "nice -n -20 ./timer"
+        # TODO rt models must set up cpuset themselves.
+        # integrate this into LiCoRICE
+        run_cmd = "cset shield --exec nice -- -n -20 ./timer"
     else:
         run_cmd = "./timer"
     for line in __execute_iterable_output(

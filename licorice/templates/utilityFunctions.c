@@ -43,16 +43,14 @@ void make_realtime() {
 /*
  * run the function specified by exit_handler and print the given error message
  */
-void die(char *errorStr) {
-// void die(const char *format, ...) {  
+void die(char *errorStr, ...) {
   sigprocmask(SIG_BLOCK, &exitMask, NULL);
-/* can try to allow for printf-like argument as input
+  // allows for printf-like argument as input
   va_list argptr;
-  va_start(argptr, format);
-  vfprintf(stderr, format, argptr);
+  va_start(argptr, errorStr);
+  vfprintf(stderr, errorStr, argptr);
   va_end(argptr);
-*/  
-  perror(errorStr);
+  // perror(errorStr);
   exit_handler(1);
 }
 

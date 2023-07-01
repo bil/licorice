@@ -70,20 +70,26 @@
 #define DB_INDEX_PAD_LENGTH 4
 
 /*
- * Maximum number of characters for a module name
+ * Maximum number of characters for a child process name.
+ * Extra padding is for async procNames.
  */
-#define MAX_MODULE_NAME_LEN 64
+#define MAX_CHILD_NAME_LEN (115 + 13)
 
 /***************************************
 * Advanced user configurable constants *
 ***************************************/
 
 /*
- * Max size of file pathname for child process execution.  The timer
- * parent runs proceses containing a max of MAX_PATH_LEN characters,
- * including the null terminator.
+ * CPU bitmask indicating which cores are available for LiCoRICE to run on.
+ * Defaults to all cores (e.g., 0xff for 8 cores).
  */
-#define MAX_PATH_LEN 16
+#define CPU_MASK {{cpu_mask}}
+
+/*
+ * CPU bitmask indicating which cores are available for the timer parent to
+ * run on.
+ */
+#define TIMER_MASK {{timer_mask}}
 
 /*
  * The number of ticks at the beginning of execution during which
@@ -123,7 +129,7 @@
 
 // Process priority (1 (low) to 99 (high))
 // Don't set to 99, or else process cannot be killed
-#define PRIORITY 95
+#define TIMER_PRIORITY 95
 
 // Used to prefault the stack
 #define MAX_SAFE_STACK (8*1024*1024)
@@ -168,7 +174,7 @@
   10: next data nd index
   11: num packets received this tick (nd index)
   12: nd 0 axis end offset
-  13: none
+  13: packet size (tick view)
   14: none
   15: none
 */

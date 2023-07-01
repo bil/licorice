@@ -125,6 +125,18 @@ files and are broken up into the following sections:</p>
 <td><p>Number of ticks to run the model for. Defaults to -1
 (indefinite)</p></td>
 </tr>
+<tr class="row-even"><td><p>sys_mask</p></td>
+<td><p>CPU bitmask indicating which cores are available for
+system processes to run on. Defaults to CPU0 (e.g., 0x1) in
+realtime mode and all cores (e.g., 0xff for 8 cores) or no
+action in non-realtime mode.</p></td>
+</tr>
+<tr class="row-odd"><td><p>lico_mask</p></td>
+<td><p>CPU bitmask indicating which cores are available for
+LiCoRICE to run on. Defaults to all cores besides the system
+core in realtime mode (e.g., 0xfe for 8 cores) and all cores
+in non-realtime mode.</p></td>
+</tr>
 <tr class="row-even"><td><p>source_init_ticks</p></td>
 <td><p>Number of ticks to run sources before modules start</p></td>
 </tr>

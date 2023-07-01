@@ -22,6 +22,7 @@ modules:
         type: udp      # the type of souce this is
         port: 51002         # port number to read from (bind to)
         interface: localhost # interface name
+        timeout_s: 2
       schema:               # define the structure of the data read
         data:
           dtype: uint8      # data type quantization

@@ -61,7 +61,7 @@ def test_async_reader(capfd):
     sa_sig_name = async_reader_model["modules"]["shared_array_in"]["in"][
         "args"
     ]["sig_name"]
-    sa_sig = create_shared_array(sa_sig_name, 100, np.uint64)
+    sa_sig = create_shared_array(f"shm://{sa_sig_name}", 100, np.uint64)
     for i in range(sa_sig.size):
         sa_sig[i] = i + 1
 
@@ -80,6 +80,8 @@ def test_async_reader(capfd):
 
     # check LiCoRICE stdout and stderr output
     captured = capfd.readouterr()
+    print(captured.out, flush=True)
+    print(captured.err, flush=True)
     assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
     assert captured.err == ""
 
@@ -157,6 +159,8 @@ def test_async_writer(capfd):
 
     # check LiCoRICE stdout and stderr output
     captured = capfd.readouterr()
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
     assert captured.err == ""
 

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #define __GNU_SOURCE
 
@@ -22,7 +23,7 @@ void make_realtime();
 /*
  * run the function specified by exit_handler and print the given error message
  */
-void die(char *errorStr);
+void die(char *errorStr, ...);
 
 /* 
  * create a signal handler that handles signal signum and runs the function *psh

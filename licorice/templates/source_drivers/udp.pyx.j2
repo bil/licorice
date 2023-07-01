@@ -52,6 +52,10 @@ cdef extern from "<sys/time.h>":
     time_t tv_sec
     suseconds_t tv_usec
 
+# TODO add EWOULDBLOCK. not working on Darwin
+# cdef extern from "<errno.h>":
+#   enum: EWOULDBLOCK
+
 # __DRIVER_CODE__ variables
 
 cdef sockaddr_storage src_addr
@@ -103,7 +107,7 @@ if (rp == NULL): # No address succeeded
     die("Could not bind")
 
 
-tv.tv_sec = 60
+tv.tv_sec = {{in_signal["args"]["timeout_s"] or 60}}
 tv.tv_usec = 0
 if (setsockopt(sfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0):
     die("Could not set socket timeout.")
@@ -115,8 +119,10 @@ sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 # __DRIVER_CODE__ read
 
   recvLen = recvfrom(sfd, <void *>inBuf, packetSize, 0, <sockaddr *> &src_addr, &src_addr_len)
+  if (recvLen == -1 and (errno == EAGAIN)):# or errno == EWOULDBLOCK)):
+    die("recvfrom timeout.\n")
   if (recvLen == -1 and errno != EINTR):
-    die("NETWORK ERROR: recvfrom()\n")
+    die("recvfrom error.\n")
   if (recvLen == -1):
     die("Read error.\n")
 

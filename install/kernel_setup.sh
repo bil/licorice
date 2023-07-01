@@ -13,10 +13,12 @@ KERNEL_RT_VERSION=${LICO_KERNEL_RT_VERSION:-5.4.230-rt80}
 ENABLE_USB=${LICO_ENABLE_USB:-1}
 MANUAL_CONFIG=${LICO_MANUAL_CONFIG:-0}
 KERNEL_VERSION_TEXT=$( cd "$( dirname "${SRC_FILE}" )" && git describe --tags )
-if [ $ENABLE_USB -eq 1 ]; then
-    CONFIG_FILENAME=.config_usb
+if [ $LICO_KCONFIG_FILENAME ]; then
+    KCONFIG_FILENAME=$LICO_KCONFIG_FILENAME
+elif [ $ENABLE_USB -eq 1 ]; then
+    KCONFIG_FILENAME=.config_usb
 else
-    CONFIG_FILENAME=.config
+    KCONFIG_FILENAME=.config
     KERNEL_VERSION_TEXT="${KERNEL_VERSION_TEXT}-no-usb"
 fi
 
@@ -74,7 +76,7 @@ if [ $MANUAL_CONFIG -eq 1 ]; then
 else
 # copy kernel .config file from git
 # TODO download this from appropriate bucket given Ubuntu version
-cp ${INSTALL_DIR}/${CONFIG_FILENAME} ${KERNEL_DIR}/linux-${KERNEL_VERSION}/.config
+cp ${INSTALL_DIR}/${KCONFIG_FILENAME} ${KERNEL_DIR}/linux-${KERNEL_VERSION}/.config
 fi
 
 # build kernel

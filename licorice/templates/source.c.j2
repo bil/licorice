@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
   fflush(stdout);
   kill(ppid, SIGUSR2); // TODO these kills should probably be semaphores
   pause();
-  kill(ppid, SIGUSR2);
+  // kill(ppid, SIGUSR2);
 
   while(true) {
     // recv_len = zmq_recv(dish, buf, {{max_buf_size}}, 0)

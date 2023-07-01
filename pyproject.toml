@@ -15,7 +15,7 @@ authors = [
 classifiers = [
   "Programming Language :: Python :: 3"
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.8"
 dynamic = ["dependencies"]
 
 [project.scripts]
@@ -31,10 +31,10 @@ dependencies = {file = ["install/requirements.in"]}
 [tool.isort]
 profile = "black"
 multi_line_output = 3
-py_version = 36
+py_version = 38
 skip_glob = "*.lico/*"
 
 [tool.black]
 line-length = 79
-target-version = ["py36", "py37", "py38", "py39", "py310"]
+target-version = ["py38", "py39", "py310", "py311"]
 force-exclude = "/(examples/*|tests/*)/"

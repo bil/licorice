@@ -12,9 +12,9 @@ from sysconfig import get_paths
 
 import jinja2
 import numpy as np
-import psutil
 from toposort import toposort
 
+from licorice.cpu_affinity import determine_cpu_affinity
 from licorice.utils import __find_in_path, __handle_completed_process
 
 # available path constants
@@ -93,6 +93,42 @@ def fix_dtype_msgpack(dtype):
     return dtype
 
 
+# create signal dependency graph and topological order variables
+def create_dependency_info(modules, names):
+    dep_info = {}
+    dep_info["graph"] = {}
+    for idx, name in enumerate(names):
+        args = modules.get(name)
+        deps = set()
+        if not args:
+            if "async_writer" in name:
+                deps = deps.union(
+                    {names.index(name[: -1 - len("async_writer")])}
+                )
+        elif type(args.get("in")) is list:
+            for in_sig in args["in"]:
+                for dep_idx, dep_name in enumerate(names):
+                    dep_args = modules.get(dep_name)
+                    if not dep_args:
+                        continue
+                    for out_sig in dep_args["out"]:
+                        if in_sig == out_sig:
+                            deps = deps.union({dep_idx})
+        else:
+            if (async_reader_name := f"{name}_async_reader") in names:
+                deps = deps.union({names.index(async_reader_name)})
+
+        dep_info["graph"][idx] = deps
+
+    dep_info["topo"] = list(map(list, list(toposort(dep_info["graph"]))))
+    dep_info["widths"] = list(map(len, dep_info["topo"]))
+    dep_info["height"] = len(dep_info["topo"])
+    dep_info["max_width"] = (
+        0 if len(dep_info["widths"]) == 0 else max(dep_info["widths"])
+    )
+    return dep_info
+
+
 # load, setup, and write template
 def do_jinja(template_path, out_path, **data):
     template = jinja2.Template(open(template_path, "r").read())
@@ -142,6 +178,7 @@ def generate(paths, config, confirmed):
 
     print("Generated modules:")
 
+    # TODO rename to runners
     modules = {}
     if "modules" in config and config["modules"]:
         modules = config["modules"]
@@ -465,19 +502,19 @@ def parse(paths, config, confirmed):
     sig_sem_dict = {}
     num_sem_sigs = 0
 
+    child_dicts = []  # list of dicts to be converted to structs in timer
     module_names = []  # list of module names
     source_names = []  # list of source names
     async_readers_dict = {}  # dict of source: async_readers
     sink_names = []  # list of sink names
     async_writers_dict = {}  # dict of sink: async_writers
     source_outputs = {}
-    dependency_graph = {}
     in_signals = {}
     out_signals = {}
     sink_in_sig_nums = []
 
-    all_names = list(modules)
-    assert len(all_names) == len(set(all_names))
+    runner_names = list(modules)
+    assert len(runner_names) == len(set(runner_names))
 
     compile_for_line = False
     for module_key, module_val in iter(modules.items()):
@@ -546,39 +583,63 @@ def parse(paths, config, confirmed):
             sem_location += 1
     num_sem_sigs = len(sig_sem_dict)
 
-    # create signal dependency graph
-    for idx, name in enumerate(module_names):
-        args = modules[name]
-        deps = set()
-        for in_sig in args["in"]:
-            for dep_idx, dep_name in enumerate(module_names):
-                dep_args = modules[dep_name]
-                for out_sig in dep_args["out"]:
-                    if in_sig == out_sig:
-                        deps = deps.union({dep_idx})
-        dependency_graph[idx] = deps
-
-    ################################################
-    assert set(all_names) == set(source_names + module_names + sink_names)
-    ################################################
+    # TODO make this part of parser validation
+    assert set(runner_names) == set(source_names + module_names + sink_names)
+    m_info = {}  # model info
+    m_info["num_sources"] = len(source_names)
+    m_info["num_modules"] = len(module_names)
+    m_info["num_sinks"] = len(sink_names)
+    m_info["num_runners"] = len(runner_names)
 
     async_reader_names = list(async_readers_dict.values())
     async_writer_names = list(async_writers_dict.values())
-    topo_children = list(map(list, list(toposort(dependency_graph))))
-    topo_widths = list(
-        map(len, topo_children)
-    )  # TODO, maybe give warning if too many children on one core? Replaces
-    # MAX_NUM_ROUNDS assertion
-    topo_height = len(topo_children)
-    topo_max_width = 0 if len(topo_widths) == 0 else max(topo_widths)
-    num_cores_used = 1 + len(source_names) + topo_max_width + len(sink_names)
-    num_cores_avail = psutil.cpu_count()
+    num_async_readers = len(async_reader_names)
+    num_async_writers = len(async_writer_names)
+    # num_async_procs = num_async_readers + num_async_writers
 
-    if num_cores_used > num_cores_avail:
-        warnings.warn(
-            "WARNING: Computer running LiCoRICE may not have sufficient cores "
-            "to execute this model successfully."
+    child_names = async_reader_names + runner_names + async_writer_names
+
+    for i, name in enumerate(child_names):
+        is_async = False
+        if name in source_names:
+            child_type = "source"
+        elif name in async_reader_names:
+            child_type = "async_reader"
+            is_async = True
+        elif name in module_names:
+            child_type = "module"
+        elif name in sink_names:
+            child_type = "sink"
+        elif name in async_writer_names:
+            child_type = "async_writer"
+            is_async = True
+        child_dicts.append(
+            {"name": name, "type": child_type, "async": is_async}
         )
+
+    # determine dependency directed acyclic graphs, perform a topological
+    # sort, and determine the size of the topology
+
+    # all children including async
+    child_dep_info = create_dependency_info(modules, child_names)
+
+    # sources sinks and modules (runners)
+    runner_dep_info = create_dependency_info(modules, runner_names)
+
+    # only modules
+    module_dep_info = create_dependency_info(modules, module_names)
+
+    affinity_info = determine_cpu_affinity(
+        m_info,
+        config,
+        modules,
+        module_names,
+        child_dicts,
+        runner_dep_info,
+        module_dep_info,
+    )
+
+    print(f'LiCoRICE will run on {affinity_info["num_cores_used"]} core(s).')
 
     # print("system input and output signals")
     print("Inputs: ")
@@ -590,7 +651,7 @@ def parse(paths, config, confirmed):
 
     # parse sources, sinks and modules
     print("Modules: ")
-    for name in all_names:
+    for name in runner_names:
         # get module info
         module_val = modules[name]
         module_language = module_val["language"]  # language must be specified
@@ -647,7 +708,7 @@ def parse(paths, config, confirmed):
 
             out_sig_dependency_info = {}
             for out_sig in module_val["out"]:
-                for tmp_name in all_names:
+                for tmp_name in runner_names:
                     mod = modules[tmp_name]
                     for in_sig in mod["in"]:
                         if in_sig == out_sig:
@@ -1163,7 +1224,7 @@ def parse(paths, config, confirmed):
             # prepare module parameters
             out_sig_dependency_info = {}
             for out_sig in module_val["out"]:
-                for tmp_name in all_names:
+                for tmp_name in runner_names:
                     mod = modules[tmp_name]
                     for in_sig in mod["in"]:
                         if in_sig == out_sig:
@@ -1410,22 +1471,25 @@ def parse(paths, config, confirmed):
         __find_in_path(paths["templates"], TEMPLATE_TIMER),
         os.path.join(paths["output"], OUTPUT_TIMER),
         config=config,
-        topo_order=topo_children,
-        topo_widths=topo_widths,
-        topo_height=topo_height,
-        num_cores=num_cores_avail,
-        topo_max_width=topo_max_width,
+        topo_order=child_dep_info["topo"],
+        topo_widths=child_dep_info["widths"],
+        topo_height=child_dep_info["height"],
+        num_cores=affinity_info["num_cores"],
+        topo_max_width=child_dep_info["max_width"],
+        child_dicts=child_dicts,
         # child names and lengths
+        num_child_procs=len(child_names),
+        child_names=child_names,
         source_names=source_names,
-        num_sources=len(source_names),
+        num_sources=m_info["num_sources"],
         async_reader_names=async_reader_names,
-        num_async_readers=len(async_reader_names),
+        num_async_readers=num_async_readers,
         module_names=module_names,
-        num_modules=len(module_names),
+        num_modules=m_info["num_modules"],
         sink_names=sink_names,
-        num_sinks=len(sink_names),
+        num_sinks=m_info["num_sinks"],
         async_writer_names=async_writer_names,
-        num_async_writers=len(async_writer_names),
+        num_async_writers=num_async_writers,
         internal_signals={
             x: signals[x] for x in (sigkeys & set(internal_signals))
         },
@@ -1446,12 +1510,14 @@ def parse(paths, config, confirmed):
         num_ticks=config["config"]["num_ticks"],
         tick_len_ns=(config["config"]["tick_len"] % 1000000) * 1000,
         tick_len_s=config["config"]["tick_len"] // 1000000,
+        cpu_mask=affinity_info["cpu_mask"],
+        timer_mask=affinity_info["timer_mask"],
         source_init_ticks=((config["config"].get("source_init_ticks")) or 100),
         module_init_ticks=((config["config"].get("module_init_ticks")) or 0),
         num_sem_sigs=num_sem_sigs,
-        num_sinks=len(sink_names),
-        num_async_readers=len(async_reader_names),
-        num_async_writers=len(async_writer_names),
+        num_sinks=m_info["num_sinks"],
+        num_async_readers=num_async_readers,
+        num_async_writers=num_async_writers,
         num_internal_sigs=len(internal_signals),
         num_source_sigs=len(list(source_outputs)),
         buf_vars_len=BUF_VARS_LEN,
