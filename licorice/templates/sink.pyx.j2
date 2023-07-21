@@ -113,6 +113,10 @@ ctypedef struct asyncBufTickInfo:
   uint32_t {{sig}}Len  # buffered {{sig}}Len values
 {%- endfor %}
 
+{% for sig,dtype in sig_types.items() %}
+cdef uint32_t {{sig}}asyncStrtOffsetSamples
+{% endfor %}
+
 cdef uint32_t asyncStrtOffset
 cdef uint32_t asyncEndOffset
 cdef uint32_t *pAsyncFlushIndexStrt
@@ -140,6 +144,7 @@ shouldExit = False
 
 cdef void handle_exit(int exitStatus):
   global retVal, tid, radio, context, s, shmSize, pmem, pSinkUpSem, pSinkDownSem, pSigSems
+  print("SINK HANDLE_EXIT\n", flush=True)
 
 {%- if is_writer %}
 
@@ -366,6 +371,7 @@ while(True):
     {% for sig, args in in_signals.items() %}
   asyncStrtOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffset
   asyncEndOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}EndOffset
+  {{sig}}asyncStrtOffsetSamples = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffsetSamples
   if asyncEndOffset - asyncStrtOffset == 1:
     {{sig}} = {{sig}}Raw[asyncStrtOffset]
   else:

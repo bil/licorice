@@ -207,6 +207,7 @@ cdef void handle_exit(int exitStatus):
 
 
 cdef void int_handler(int signum):
+  # print("SOURCE INT HANDLER\n", flush=True)
   pass
 
 cdef void exit_handler(int signum):
@@ -357,6 +358,11 @@ while(True):
   {%- endif %}
 
 {{ driver_code["read"] }}
+
+  {% if not is_main_process %}
+  if (shouldExit):
+    handle_exit(0)
+  {%- endif %}
 
   {%- if has_parser %}
     {%- for sig, args in out_signals.items() %}

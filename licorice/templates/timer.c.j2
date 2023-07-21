@@ -46,7 +46,7 @@
 
 // process IDs for each child numbered according to the index of the child's
 // name in childProcnames
-static pid_t ch_pids[NUM_CHILD_PROCS] = {};
+static pid_t ch_pids[NUM_CHILD_PROCS] = {-1};
 static char childProcnames[NUM_CHILD_PROCS][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in child_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
 static char sourceProcnames[NUM_SOURCES][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in source_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
 static char moduleProcnames[NUM_MODULES][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in module_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
@@ -178,7 +178,7 @@ static void timer_init(struct period_info *pinfo) {
 
 void handle_exit(int exitStatus) {
   int childStatus;
-  for (int i = 0; i < NUM_CHILD_PROCS; i++) {
+  for (int i = NUM_CHILD_PROCS - 1; i >= 0; i--) {
     if (ch_pids[i] != -1) {
       printf("Killing %s %s with pid: %d\n", CHILD_TYPES[childDicts[i].type], childDicts[i].name, ch_pids[i]);
       fflush(stdout);
@@ -683,7 +683,6 @@ int main(int argc, char* argv[]) {
   ) {
     die("pthread setaffinity_np failed\n");
   }
-#endif
 
    /* Check the actual affinity mask assigned to the thread. */
   if (pthread_attr_getaffinity_np
@@ -698,6 +697,7 @@ int main(int argc, char* argv[]) {
       fflush(stdout);
     }
   }
+#endif
 
   printf("Starting timer thread...\n");
   fflush(stdout);

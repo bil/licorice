@@ -513,6 +513,8 @@ def parse(paths, config, confirmed):
     out_signals = {}
     sink_in_sig_nums = []
 
+    # TODO should order of runner names be in topological order?
+    # For example, forces correct teardown order in timer
     runner_names = list(modules)
     assert len(runner_names) == len(set(runner_names))
 
@@ -982,10 +984,13 @@ def parse(paths, config, confirmed):
                                 if args["shape"] == 1:
                                     raw_num_sigs.append(sig)
                                 else:  # vector
-                                    raw_vec_sigs[sig] = args["packet_size"]
-                                    raw_vec_sigs["total"] += (
-                                        args["packet_size"] - 1
-                                    )  # only count *extra* columns
+                                    if out_signal.get("async"):  # TODO revisit
+                                        msgpack_sigs.append(sig)
+                                    else:
+                                        raw_vec_sigs[sig] = args["packet_size"]
+                                        raw_vec_sigs["total"] += (
+                                            args["packet_size"] - 1
+                                        )  # only count *extra* columns
                             else:  # shape is matrix
                                 msgpack_sigs.append(sig)
 

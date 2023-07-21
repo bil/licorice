@@ -127,7 +127,7 @@ cdef void * retVal
 ctypedef struct signalsTickData:
 {%- for sig,dtype in sig_types.items() %}
   {%- if sig in source_outputs %}
-  {{dtype}} {{sig}}[{{in_signals[sig]['schema']['data']['size'] * 2}}]
+  {{dtype}} {{sig}}[{{in_signals[sig]["packet_size"] * in_signals[sig]["schema"]["max_packets_per_tick"]}}]
   uint32_t {{sig}}NumSamplesRecvd
   {%- else %}
   {{dtype}} {{sig}}[{{in_signals[sig]['packet_size']}}]
@@ -137,7 +137,7 @@ cdef signalsTickData *pSignalsStructCur
 cdef signalsTickData *pSignalsStructStart
 cdef signalsTickData *pSignalsStructEnd
 # tick buffers to enable batching
-cdef signalsTickData *signalsBufStrt
+cdef signalsTickData *signalsBufStrt = NULL
 cdef signalsTickData *signalsBufEnd
 # size of intermediary logging buffer in blocks of signalMsData 
 cdef int signalsBufSize
@@ -148,6 +148,7 @@ cdef sqlite3_stmt *contStmt
 cdef sqlite3_stmt *signalsStmt
 cdef SQLTable databaseArray[NUM_TABLES]
 cdef SQLTableElement signalsTableArr[{{in_signals|length}} + {{raw_vec_sigs['total']}}]
+initialized = False
 
 # sqlite variables
 cdef int eNewHalt
@@ -174,10 +175,10 @@ cdef void* bufferSignals():
   # TODO this logic should have some validation
   # in the case of max_packets_per_tick != 1, must be saved as a blob or be in its own table
   {%- if sig in source_outputs %}
-  memcpy(pSignalsStructCur.{{sig}}, <uint8_t *>{{sig}}.__array_interface__["data"][0], {{sig}}Len * sizeof({{dtype}}))
-  {%- else %}
+  memcpy(pSignalsStructCur.{{sig}}, <uint8_t *><long>{{sig}}Raw.ravel()[{{sig}}asyncStrtOffsetSamples:{{sig}}asyncStrtOffsetSamples+1].__array_interface__["data"][0], <int>({{sig}}Len * sizeof({{dtype}})))
+  pSignalsStructCur.{{sig}}NumSamplesRecvd = {{sig}}Len
+ {%- else %}
   memcpy(pSignalsStructCur.{{sig}}, <uint8_t *><long>({{sig}}.__array_interface__["data"][0]), {{sig}}Len * sizeof({{dtype}}))
-  # pSignalsStructCur.{{sig}}NumSamplesRecvd = {{sig}}Len
   {%- endif %}
   {%- endfor %}
 
@@ -189,7 +190,7 @@ cdef void* bufferSignals():
     pSignalsStructCur = signalsBufStrt
 
 
-cdef bool flushToDisk(bool newDB=False) nogil:
+cdef void flushToDisk(bool newDB=False) nogil:
   global zErrMsg, db, newDB, db_index, num_extra_cols, exitMask, signalsQuery, signalsStmt, signalsBufStrt, signalsBufEnd, ticks_written, \
          {% for sig in msgpack_sigs %} mpSignals{{sig|capitalize}}Buf, {% endfor %} \
          pSignalsStructStart, pSignalsStructEnd, pSignalsStructCur
@@ -206,8 +207,11 @@ cdef bool flushToDisk(bool newDB=False) nogil:
   ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
   if (ret != SQLITE_OK):
     # print sql error msg
+    printf("%s\n", zErrMsg)
     sqlite3_free(zErrMsg)
-    die("SQL error")
+    printf("SQL begin transaction error\n")
+    fflush(stdout)
+    return
 
   while (pSignalsStructStart != pSignalsStructEnd):
     sql_prepare(db, signalsQuery, -1, &signalsStmt, NULL)
@@ -228,8 +232,9 @@ cdef bool flushToDisk(bool newDB=False) nogil:
     {%- endif %}
       msgpack_pack_{{args['dtype_msgpack']}}(&mpSignals{{sig|capitalize}}Pk, pSignalsStructStart.{{sig}}[i])
     sql_bind_blob(signalsStmt, {{loop.index}} + num_extra_cols, mpSignals{{sig|capitalize}}Buf.data, mpSignals{{sig|capitalize}}Buf.size, SQLITE_STATIC)
-  
+
   {%- elif sig in raw_vec_sigs %}
+    fflush(stdout)
     # vector signal
     for i in range({{raw_vec_sigs[sig]}}):
       if "int" in '{{args['dtype']}}':
@@ -276,7 +281,9 @@ cdef bool flushToDisk(bool newDB=False) nogil:
   if (ret != SQLITE_OK):
     # print sql error msg
     sqlite3_free(zErrMsg)
-    die("SQL error")
+    printf("SQL end transaction error\n")
+    fflush(stdout)
+    return
 
   sqlite3async_run()
 
@@ -329,7 +336,6 @@ signalsBufStrt = <signalsTickData *>malloc(signalsBufSizeBytes)
 signalsBufEnd = signalsBufStrt + signalsBufSize
 pSignalsStructCur = signalsBufStrt
 pSignalsStructStart = signalsBufStrt
-
 openDatabase(&db, "{{ out_signal['args']['save_file'] }}", db_index, currDbName)
 sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
 
@@ -408,6 +414,8 @@ for i in range({{args['packet_size']}}):
 {%- endif %}
 {%- endfor %}
 
+initialized = True
+
 
 # __DRIVER_CODE__ write
 
@@ -421,7 +429,7 @@ for i in range({{args['packet_size']}}):
   # after SQL_LOGGER_FLUSH ticks, flush buffered data to DB
   # TODO this has to be a different var since numTicks is not accurate for async
   tick_count += 1
-  if (tick_count % SQL_LOGGER_FLUSH == 0):
+  if (tick_count % SQL_LOGGER_FLUSH == 0) or shouldExit:
     pSignalsStructEnd = pSignalsStructStart + SQL_LOGGER_FLUSH
     flushToDisk()
 
@@ -429,13 +437,20 @@ for i in range({{args['packet_size']}}):
 
 
 # __DRIVER_CODE__ exit_handler
-  global signalsBufStrt, tick_count, pNumTicks, pSignalsStructStart, pSignalsStructEnd # TODO add msgpack Buf vars
+  global signalsBufStrt, tick_count, pNumTicks, pSignalsStructStart, pSignalsStructEnd, initialized # TODO add msgpack Buf vars
 
   # perform final flush of buffered data
-  pSignalsStructEnd = pSignalsStructCur
-  flushToDisk()
+  if initialized:
+    pSignalsStructEnd = pSignalsStructCur
+    printf("exit flush\n")
+    fflush(stdout)
+    start_time = time.time()
+    flushToDisk()
+    end_time = time.time()
+    print(f"time: {end_time-start_time}", flush=True)
 
-  free(signalsBufStrt)
+  if signalsBufStrt != NULL:
+    free(signalsBufStrt)
 
   # destroy msgpack signals
 {% for sig in msgpack_sigs %}
