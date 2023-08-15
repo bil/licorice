@@ -240,10 +240,11 @@ def test_async_combo(capfd):
         )
 
 
-skip_ticks_model = {
+skip_ticks_latency_model = {
     "config": {
         "tick_len": 10000,
         "num_ticks": NUM_TICKS,
+        "module_init_ticks": 1,
     },
     "signals": {
         "count": {
@@ -273,10 +274,19 @@ skip_ticks_model = {
 }
 
 
-def test_skip_ticks(capfd):
+@pytest.mark.parametrize(
+    "skip_ticks, latency",
+    [(1, 0), (0, 1)],
+)
+def test_skip_ticks_and_latency(skip_ticks, latency, capfd):
+    skip_ticks_latency_model["modules"]["printer"]["out"]["args"][
+        "skip_ticks"
+    ] = skip_ticks
+    skip_ticks_latency_model["signals"]["count"]["latency"] = latency
+
     # run external driver model with LiCoRICE
     licorice.go(
-        skip_ticks_model,
+        skip_ticks_latency_model,
         confirm=True,
         working_path=f"{pytest.test_dir}/module_code",
         template_path=f"{pytest.test_dir}/templates",
@@ -284,6 +294,8 @@ def test_skip_ticks(capfd):
 
     # check LiCoRICE stdout and stderr output
     captured = capfd.readouterr()
+    print(captured.out)
+    print(captured.err)
     assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
     assert captured.err == ""
 
@@ -291,8 +303,9 @@ def test_skip_ticks(capfd):
     vals = [
         int(val)
         for val in re.findall(
-            r"console_out: (\d+)", captured.out
+            r"console_out: (-?\d+)", captured.out
         )
     ]
+    assert vals[0] == -1 * latency
     for i in range(1, len(vals) - 1):
-        assert vals[i] - vals[i - 1] == 2
+        assert vals[i] - vals[i - 1] == skip_ticks + 1

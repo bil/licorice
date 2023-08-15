@@ -179,7 +179,7 @@ static void timer_init(struct period_info *pinfo) {
 void handle_exit(int exitStatus) {
   int childStatus;
   for (int i = NUM_CHILD_PROCS - 1; i >= 0; i--) {
-    if (ch_pids[i] != -1) {
+    if (ch_pids[i] != -1 && ch_pids[i] != 0) {
       printf("Killing %s %s with pid: %d\n", CHILD_TYPES[childDicts[i].type], childDicts[i].name, ch_pids[i]);
       fflush(stdout);
       if (childDicts[i].async) {

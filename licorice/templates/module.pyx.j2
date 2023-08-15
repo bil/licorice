@@ -96,6 +96,7 @@ cdef char semNameBuf[SEM_NAME_LEN]
 cdef uint32_t *pBufVars
 {%- for sig, dtype in out_sig_types.items() %}
 cdef uint32_t *{{sig}}BufVars
+cdef uint32_t {{sig}}Latency
 {% endfor %}
 {%- for sig, dtype in in_sig_types.items() %}
 cdef uint32_t *{{sig}}BufVars
@@ -217,7 +218,7 @@ out_sigs = {}
 if any([b'{{sig}}' == x[0] for x in created_mem]):
   sa.delete("shm://{{sig}}")
   print("recreated shared array {{sig}}.\n", flush=True)
-
+  {%- endif %}
 out_sigs["{{sig}}"] = create_shared_array(
   "shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}}
 )
@@ -225,6 +226,9 @@ out_sigs["{{sig}}"] = create_shared_array(
 out_sigs["{{sig}}"].base.mlock()
 {{sig}}Raw = out_sigs["{{sig}}"]
 {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+{{sig}}Latency =  {{args["latency"]}}
+{{sig}}BufVars[2] = 0
+{{sig}}BufVars[10] = {{sig}}Latency
   {%- if args["max_packets_per_tick"] == 1 %}
 {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
   {%- else %}
@@ -233,23 +237,7 @@ out_sigs["{{sig}}"].base.mlock()
 {{sig}}BufVars[5] = {{args["packet_size"]}}
 {{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
 {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
-  {%- else %}
-out_sigs["{{sig}}"] = create_shared_array(
-  "shm://{{sig}}", {{args['sig_shape']}}, dtype=np.{{args['dtype']}}
-)
-# make sure SharedArray==2.0.4 -> try to transfer to 3.0.0
-out_sigs["{{sig}}"].base.mlock()
-{{sig}}Raw = out_sigs["{{sig}}"]
-{{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
-    {%- if args["max_packets_per_tick"] == 1 %}
-{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
-    {%- else %}
-{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-    {%- endif %}
-{{sig}}BufVars[5] = {{args["packet_size"]}}
-{{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
-{{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
-  {%- endif %}
+{{sig}}BufVars[13] = 1
 {% endfor %}
 
 # set signal mask
@@ -308,9 +296,8 @@ while(True):
 {%- endif %}
 
 {% for dep_name, dep_tuple in out_sig_dependency_info.items() %}
-  # printf("module 1 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
   {{dep_name}}BufVars[2] += {{dep_name}}BufVars[5]
-  {{dep_name}}BufVars[10] += 1
+  {{dep_name}}BufVars[10] += {{dep_name}}BufVars[13]
   if ({{dep_name}}BufVars[7] <= ({{dep_name}}BufVars[2] + {{dep_name}}BufVars[6])):
     {{dep_name}}BufVars[4] = {{dep_name}}BufVars[2]
     {{dep_name}}BufVars[12] = {{dep_name}}BufVars[10]
@@ -319,11 +306,10 @@ while(True):
     {{dep_name}}BufVars[12] = {{dep_name}}BufVars[10]
   {{dep_name}}BufVars[3] += {{dep_name}}BufVars[5]
   {{dep_name}}BufVars[11] += 1
-  # printf("module 2 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
 
   # update bufVars
   {{dep_name}}BufVars[1] = {{dep_name}}BufVars[2]
-  {{dep_name}}BufVars[9] = {{dep_name}}BufVars[10]
+  {{dep_name}}BufVars[9] = {{dep_name}}BufVars[10] - {{dep_name}}Latency
   {{dep_name}}BufVars[0] = {{dep_name}}BufVars[1] - {{dep_name}}BufVars[3]
   {{dep_name}}BufVars[8] = {{dep_name}}BufVars[9] - {{dep_name}}BufVars[11]
   if ({{dep_name}}BufVars[7] < ({{dep_name}}BufVars[2] + {{dep_name}}BufVars[6])):
@@ -331,7 +317,6 @@ while(True):
     {{dep_name}}BufVars[10] = 0
   {{dep_name}}BufVars[3] = 0
   {{dep_name}}BufVars[11] = 0  
-  # printf("module 3 : %u %u %u %u %u %u %u %u  \n", {{dep_name}}BufVars[0], {{dep_name}}BufVars[1], {{dep_name}}BufVars[2], {{dep_name}}BufVars[3], {{dep_name}}BufVars[4], {{dep_name}}BufVars[5], {{dep_name}}BufVars[6], {{dep_name}}BufVars[7])
 
   if pNumTicks[0] >= 0:
   {% for i in range(dep_tuple[0]) %}

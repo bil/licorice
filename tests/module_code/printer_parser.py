@@ -1,4 +1,5 @@
-if pNumTicks[0] % 2 == 0:
+if pNumTicks[0] % ({{out_signal["args"]["skip_ticks"]}} + 1) == 0:
+    print(countRaw[countBufVars[0]:countBufVars[1]], flush=True)
     outBuf[0] = count[:]
     outBufLen = 1
 else:

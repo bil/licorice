@@ -129,6 +129,7 @@ cdef unsigned long numDropped = 0
 cdef int i
 {%- for sig, dtype in (sig_types.items()) %} # declare signal BufVars pointers (to point into pBufVars)
 cdef uint32_t *{{sig}}BufVars
+cdef uint32_t {{sig}}Latency
   {%- if is_reader and has_parser %}
 cdef {{dtype}} *{{sig}}StrtPtr
 cdef {{dtype}} *{{sig}}EndPtr
@@ -268,6 +269,9 @@ if(pthread_mutex_init(pAsyncMutex, NULL) != 0):
 {% for sig,args in (out_signals.items()) %}
 {{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
   {%- if is_main_process %}
+{{sig}}Latency =  {{args["latency"]}}
+{{sig}}BufVars[2] = 0
+{{sig}}BufVars[10] = {{sig}}Latency
 {{sig}}BufVars[5] = {{args["packet_size"]}}
 {{sig}}BufVars[6] = {{args["schema"]["max_packets_per_tick"] * args["packet_size"]}}
 {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
@@ -407,7 +411,7 @@ while(True):
   {%- endif %}
   {%- for sig,args in (out_signals.items()) %}
   {{sig}}BufVars[1] = {{sig}}BufVars[2]
-  {{sig}}BufVars[9] = {{sig}}BufVars[10]
+  {{sig}}BufVars[9] = {{sig}}BufVars[10] - {{sig}}Latency
   {{sig}}BufVars[0] = {{sig}}BufVars[1] - {{sig}}BufVars[3]
   {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11]
   if (({{sig}}BufVars[7] < ({{sig}}BufVars[2]) + {{sig}}BufVars[6])):

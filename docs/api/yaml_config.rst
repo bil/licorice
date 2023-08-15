@@ -55,6 +55,7 @@ Keyword       Description
 shape         The shape of the numpy signal as a tuple (single tick)
 dtype         The dtype of the numpy signal
 history       Number of ticks of data to store in memory
+latency       Fixed latency to introduce to ndarray indexing.
 log           Whether or not to log the signal
 log_storage   Specifications for how to log the data (see examples)
 ============= ===============================================================

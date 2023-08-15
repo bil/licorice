@@ -466,6 +466,9 @@ def parse(paths, config, confirmed):
             # TODO top-level signals should potentially inherit from source
             signal_args["max_packets_per_tick"] = 1
 
+        if "latency" not in signal_args:
+            signal_args["latency"] = 0
+
     for module_key, module_val in iter(modules.items()):
         ext_sig = None
         if (
