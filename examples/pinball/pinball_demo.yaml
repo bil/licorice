@@ -19,8 +19,8 @@ signals:
   joystick_axis:
     shape: 2
     dtype: double
-    log: false
-    log_storage:
+    log:
+      enable: false
       type: vector
       suffixes:
         - x
@@ -33,8 +33,8 @@ signals:
   pos_cursor:
     shape: 2
     dtype: double
-    log: true
-    log_storage:
+    log:
+      enable: true
       type: vector
       suffixes:
         - x
@@ -43,8 +43,8 @@ signals:
   pos_target:
     shape: 2
     dtype: double
-    log: true
-    log_storage:
+    log:
+      enable: true
       type: vector
       suffixes:
         - x

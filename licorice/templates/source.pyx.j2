@@ -146,6 +146,7 @@ cdef {{in_dtype}} *inBuf
 # python variables
 # declare output signals
 out_sigs = {}
+sigs = {}
 {%- if not has_parser %} # output packing is handled by parser code
 out_sig = None
 {%- endif %}
@@ -273,7 +274,7 @@ if(pthread_mutex_init(pAsyncMutex, NULL) != 0):
 {{sig}}BufVars[2] = 0
 {{sig}}BufVars[10] = {{sig}}Latency
 {{sig}}BufVars[5] = {{args["packet_size"]}}
-{{sig}}BufVars[6] = {{args["schema"]["max_packets_per_tick"] * args["packet_size"]}}
+{{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
 {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
 {{sig}}BufVars[13] = 1
   {%- endif %}
@@ -297,7 +298,8 @@ out_sigs["{{sig}}"] = create_shared_array(
 
     {%- if has_parser %}
 {{sig}}Raw = out_sigs["{{sig}}"]
-{{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]
+sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
+{{sig}} = sigs["{{sig}}"]
 {{sig}}StrtPtr = <{{sig_types[sig]}} *><long>{{sig}}Raw.__array_interface__["data"][0]
 {{sig}}EndPtr = {{sig}}StrtPtr + len(out_sigs["{{sig}}"])
     {%- else %}
@@ -370,7 +372,8 @@ while(True):
 
   {%- if has_parser %}
     {%- for sig, args in out_signals.items() %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[10]]
+  sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
+  {{sig}} = sigs["{{sig}}"]
     {%- endfor %}
 
   # use user parser
@@ -382,14 +385,21 @@ while(True):
     {%- if async %}
   pthread_mutex_lock(pAsyncMutex)
 
-  {{sig}}BufVars[6] = max({{sig}}BufVars[6], {{sig}}BufVars[9] - {{sig}}BufVars[8])
+  if (({{sig}}BufVars[9] - {{sig}}BufVars[8]) > {{sig}}BufVars[6]):
+    printf("6: %ld, 8: %ld, 9: %ld\n", {{sig}}BufVars[6], {{sig}}BufVars[8], {{sig}}BufVars[9])
+    printf(
+      "Warning: more data recieved on tick %lld than accounted for.\n",
+      pNumTicks[0]
+    )
+    fflush(stdout)
+    # TODO implement dynamic buffer allocation
+    # {{sig}}BufVars[6] = {{sig}}BufVars[9] - {{sig}}BufVars[8]
     {%- endif %}
   {{sig}}BufVars[2] += {{sig}}BufVars[5]
   {{sig}}BufVars[10] += {{sig}}BufVars[13]
   if ({{sig}}BufVars[7] <= {{sig}}BufVars[2] + {{sig}}BufVars[6]) or ({{sig}}BufVars[2] > {{sig}}BufVars[4]):
     {{sig}}BufVars[4] = {{sig}}BufVars[2]
     {{sig}}BufVars[12] = {{sig}}BufVars[10]
-  # Somehow when there is no active streaming data, this number just runs upwards
   {{sig}}BufVars[3] += {{sig}}BufVars[5]
   {{sig}}BufVars[11] += {{sig}}BufVars[13]
     {%- if async %}

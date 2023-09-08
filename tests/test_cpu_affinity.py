@@ -11,6 +11,7 @@ import SharedArray as sa
 
 import licorice
 from licorice.templates.module_utils import create_shared_array
+from tests.utils import validate_model_output
 
 small_model = {
     "config": {
@@ -31,10 +32,10 @@ small_model = {
                 "args": {
                     "type": "shared_array_test",
                     "sig_name": "test_sa_in",
-                    "func": "normal",
+                    "func": "uniform",
                     "kwargs": {
-                        "loc": 0.001,
-                        "scale": 0.00025,
+                        "low": 0.005,
+                        "high": 0.01,
                     },
                 },
                 "schema": {
@@ -330,12 +331,9 @@ def test_core_assignment(
         template_path=f"{pytest.test_dir}/templates"
     )
 
-    captured = capfd.readouterr()
-    captured_out = captured.out
-    captured_err = captured.err
-    print(captured_out)
-    print(captured_err)
-    assert captured_err == ""
+    captured_out, captured_err = validate_model_output(
+        capfd, None, validate_stdout=False
+    )
 
     # run LiCoRICE
     try:
@@ -384,13 +382,11 @@ def test_core_assignment(
     sa.delete("shm://test_sa_in")
     sa.delete("shm://test_sa_out")
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    captured_out += captured.out
-    captured_err += captured.err
-    print(captured_out)
-    print(captured_err)
+    out, err = validate_model_output(
+        capfd, None, validate_stdout=False
+    )
+    captured_out += out
+    captured_err += err
 
     assert f"LiCoRICE will run on {lico_cores} core(s)." in captured_out
-    assert captured_err == ""
     assert proc_affinities == affinity_map

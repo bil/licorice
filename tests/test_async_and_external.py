@@ -8,6 +8,7 @@ import SharedArray as sa
 
 import licorice
 from licorice.templates.module_utils import create_shared_array
+from tests.utils import validate_model_output
 
 NUM_TICKS = 100
 
@@ -31,10 +32,10 @@ async_reader_model = {
                 "args": {
                     "type": "shared_array_test",
                     "sig_name": "test_sa_in",
-                    "func": "normal",
+                    "func": "uniform",
                     "kwargs": {
-                        "loc": 0.001,
-                        "scale": 0.00025,
+                        "low": 0.005,
+                        "high": 0.01,
                     },
                 },
                 "schema": {
@@ -78,18 +79,13 @@ def test_async_reader(capfd):
 
     sa.delete(sa_sig_name)
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    print(captured.out, flush=True)
-    print(captured.err, flush=True)
-    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
-    assert captured.err == ""
+    captured_out, captured_err = validate_model_output(capfd, NUM_TICKS)
 
     # check output is sequential
     vals = [
         int(val)
         for val in re.findall(
-            r"shared_array_print_output: (\d+)", captured.out
+            r"shared_array_print_output: (\d+)", captured_out
         )
     ]
     for i in range(1, len(vals)):
@@ -157,12 +153,7 @@ def test_async_writer(capfd):
     sa_sig = sa_sig.copy()
     sa.delete(sa_sig_name)
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
-    assert captured.err == ""
+    validate_model_output(capfd, NUM_TICKS)
 
     # check output is sequential starting at 1
     assert sa_sig[0] == 1
@@ -228,10 +219,7 @@ def test_async_combo(capfd):
     sa.delete(sa_sig_in_name)
     sa.delete(sa_sig_out_name)
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
-    assert captured.err == ""
+    validate_model_output(capfd, NUM_TICKS)
 
     # check output is sequential
     for i in range(1, len(sa_sig_out)):
@@ -292,18 +280,13 @@ def test_skip_ticks_and_latency(skip_ticks, latency, capfd):
         template_path=f"{pytest.test_dir}/templates",
     )
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
-    assert captured.err == ""
+    captured_out, captured_err = validate_model_output(capfd, NUM_TICKS)
 
     # check output is sequential by 2
     vals = [
         int(val)
         for val in re.findall(
-            r"console_out: (-?\d+)", captured.out
+            r"console_out: (-?\d+)", captured_out
         )
     ]
     assert vals[0] == -1 * latency

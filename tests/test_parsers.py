@@ -3,6 +3,7 @@ import warnings
 import pytest
 
 import licorice
+from tests.utils import validate_model_output
 
 NUM_TICKS = 1000
 PARPORT_ADDR = 0
@@ -76,7 +77,4 @@ def test_sink_parser(capfd):
         working_path=f"{pytest.test_dir}/module_code",
     )
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
-    assert captured.err == ""
+    validate_model_output(capfd, NUM_TICKS)

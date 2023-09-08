@@ -408,8 +408,7 @@ Finally make sure to add all our new signals:
   pos_cursor:
     shape: 2
     dtype: double
-    log: true
-    log_storage:
+    log:
       type: vector
       suffixes:
         - x
@@ -419,7 +418,7 @@ Finally make sure to add all our new signals:
     shape: 2
     dtype: double
     log: true
-    log_storage:
+    log:
       type: vector
       suffixes:
         - x

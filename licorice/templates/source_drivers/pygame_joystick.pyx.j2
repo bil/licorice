@@ -11,9 +11,6 @@ os.environ["SDL_VIDEODRIVER"] = "{{config["config"]["sdl_driver"]}}"
 
 
 # __DRIVER_CODE__ setup
-{% for sig,args in (out_signals.items()) %}
-{{sig}}BufVars[6] = {{args['schema']['max_packets_per_tick'] * args['packet_size']}}
-{%- endfor %}
 
 pygame.display.init()
 pygame.joystick.init()
@@ -35,7 +32,6 @@ sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
     (<uint8_t*>inBuf)[128 + i] = pygame_joystick.get_button(i)
 
 {%- if async %}
-
   sleep(sleep_duration)
 {%- endif %}
 

@@ -466,6 +466,12 @@ def parse(paths, config, confirmed):
             # TODO top-level signals should potentially inherit from source
             signal_args["max_packets_per_tick"] = 1
 
+        signal_args["buf_size_bytes"] = (
+            signal_args["max_packets_per_tick"]
+            * signal_args["packet_size"]
+            * signal_args["bytes"]
+        )
+
         if "latency" not in signal_args:
             signal_args["latency"] = 0
 
@@ -736,6 +742,7 @@ def parse(paths, config, confirmed):
                 "name": name,
                 "source_num": source_names.index(name),
                 "config": config,
+                "source_args": module_val,
                 "has_parser": has_parser,
                 "async": async_source,
                 "async_reader_name": async_reader_name,
@@ -942,16 +949,10 @@ def parse(paths, config, confirmed):
 
             # if logger, group signals in different data structs depending on
             # storage type
+            tick_view_sigs = {}
+            signal_view_sigs = {}  # signals to be logged in their own tables
             msgpack_sigs = []  # signals to be wrapped in msgpack
-            raw_vec_sigs = {}  # map signal to number of columns it will use
-            raw_vec_sigs[
-                "total"
-            ] = 0  # keep track of total number of extra signal columns in db
-            raw_text_sigs = (
-                {}
-            )  # int vector signals to be stored as text in SQL
-            # map signal to number of bytes in one element of data
-            raw_num_sigs = []  # single number signals
+            extra_cols = 0
 
             if out_signal["args"]["type"] == "disk":
                 # TODO this validation and logic should be moved to driver
@@ -960,89 +961,108 @@ def parse(paths, config, confirmed):
 
                 # TODO figure out buffer sizing
                 schema_size = 0
+                for sig in in_signals:
+                    args = in_signals[sig]
 
-                for sig, args in iter(in_signals.items()):
-
-                    # determine whether signal should be logged or not
-                    log = False  # if no logging specified
-                    if ("log" in args and args["log"] is True) or (
-                        "log_storage" in args
-                        and (
-                            "enable" not in args["log_storage"]
-                            or args["log_storage"]["enable"] is True
+                    # format and validate `log` keyword args
+                    log = args.get("log")
+                    if isinstance(log, bool):
+                        if log:
+                            args["log"] = {
+                                "enable": True,
+                                "type": "auto",
+                                "view": "tick",
+                                "numCols": 1,
+                            }
+                        else:
+                            continue
+                    elif isinstance(log, dict):
+                        if log.get("enable", True):
+                            if "type" not in log:
+                                log["type"] = "auto"
+                            if "view" not in log:
+                                log["view"] = "tick"
+                            log["numCols"] = 1
+                            log["enable"] = True
+                        else:
+                            continue
+                    else:
+                        raise ValueError(
+                            "`log` keyword must have type bool or dict"
                         )
-                    ):
-                        log = True
+                    log = args["log"]
+                    if log["view"] == "tick":
+                        in_signals[sig] = args
+                        tick_view_sigs[sig] = args
+                    elif log["view"] == "signal":
+                        log["timestamps"] = 1
+                        in_signals[sig] = args
+                        signal_view_sigs[sig] = args
+                    else:
+                        raise ValueError(
+                            "log view must be 'tick' or 'signal' if specified"
+                        )
 
-                    if log is True:
-                        schema_size += args["buf_tot_numel"] * args["bytes"]
+                    schema_size += args["buf_tot_numel"] * args["bytes"]
 
-                        # automatically determinae  optimal signal storage type
-                        if "log_storage" not in args or (
-                            args["log_storage"]["type"] == "auto"
-                        ):
-                            if (type(args["shape"]) == int) or (
-                                len(args["shape"]) == 1
-                            ):  # if 1D signal
-                                if args["shape"] == 1:
-                                    raw_num_sigs.append(sig)
-                                else:  # vector
-                                    if out_signal.get("async"):  # TODO revisit
-                                        msgpack_sigs.append(sig)
-                                    else:
-                                        raw_vec_sigs[sig] = args["packet_size"]
-                                        raw_vec_sigs["total"] += (
-                                            args["packet_size"] - 1
-                                        )  # only count *extra* columns
-                            else:  # shape is matrix
-                                msgpack_sigs.append(sig)
-
-                        # assign specified storage
-                        elif ("enable" not in args["log_storage"]) or (
-                            args["log_storage"]["enable"] is True
-                        ):
-                            if args["log_storage"]["type"] == "msgpack":
-                                msgpack_sigs.append(sig)
-                            elif (type(args["shape"]) == int) or (
-                                len(args["shape"]) == 1
-                            ):  # if 1D signal
-                                if args["log_storage"]["type"] == "vector":
-                                    raw_vec_sigs[sig] = args["packet_size"]
-                                    raw_vec_sigs["total"] += (
+                    # automatically determine  optimal signal storage type
+                    if log["type"] == "auto":
+                        if (type(args["shape"]) == int) or (
+                            len(args["shape"]) == 1
+                        ):  # if 1D signal
+                            if args["shape"] == 1:
+                                in_signals[sig]["log"]["type"] = "scalar"
+                            else:  # vector
+                                if out_signal.get("async"):  # TODO revisit
+                                    in_signals[sig]["log"]["type"] = "msgpack"
+                                    msgpack_sigs.append(sig)
+                                else:
+                                    extra_cols += (
                                         args["packet_size"] - 1
                                     )  # only count *extra* columns
-                                elif args["log_storage"]["type"] == "text":
-                                    # determine number of bytes in one signal
-                                    # element
-                                    shape = str(args["shape"])
-                                    if "16" in shape:
-                                        numBytes = 2
-                                    elif "32" in shape:
-                                        numBytes = 4
-                                    elif "64" in shape:
-                                        numBytes = 8
-                                    else:  # int8
-                                        numBytes = 1
-                                    raw_text_sigs[sig] = numBytes
-                                elif args["log_storage"]["type"] == "raw":
-                                    raw_num_sigs.append(sig)
-                            else:  # not 1D array, store as msgpack
-                                print(
-                                    f"Signal shape for {sig} unsupported. "
-                                    "Signal must be 1-dimensional array to be "
-                                    f"stored as {args['log_storage']}."
-                                )
-                                print(sig + " will be wrapped in msgpack.")
-                                msgpack_sigs.append(sig)
+                        else:  # shape is matrix
+                            in_signals[sig]["log"]["type"] = "msgpack"
+                            msgpack_sigs.append(sig)
 
-                        # store abbreviated dtype for use in colName
-                        dt = np.dtype(args["dtype"])
-                        args["dtype_short"] = dt.kind + str(dt.itemsize)
+                    # assign specified storage
+                    elif (type(args["shape"]) == int) or (
+                        len(args["shape"]) == 1
+                    ):  # if 1D signal
+                        if log["type"] == "vector":
+                            in_signals[sig]["log"]["numCols"] = args[
+                                "packet_size"
+                            ]
+                            extra_cols += (
+                                args["packet_size"] - 1
+                            )  # only count *extra* columns
+                        elif log["type"] == "text":
+                            # determine number of bytes in one signal
+                            # element
+                            shape = str(args["shape"])
+                            if "16" in shape:
+                                numBytes = 2
+                            elif "32" in shape:
+                                numBytes = 4
+                            elif "64" in shape:
+                                numBytes = 8
+                            else:  # int8
+                                numBytes = 1
+                            in_signals[sig]["log"]["numBytes"] = numBytes
+                    elif log["type"] == "msgpack":
+                        msgpack_sigs.append(sig)
+                    else:  # store as msgpack
+                        print(
+                            f"Signal shape for {sig} unsupported. "
+                            "Signal must be 1-dimensional array to be "
+                            f"stored as {log['storage']}."
+                        )
+                        print(sig + " will be wrapped in msgpack.")
+                        in_signals[sig]["log"]["type"] = "msgpack"
+                        msgpack_sigs.append(sig)
 
-                    # TODO this breaks the loop
-                    else:  # log = False
-                        in_signals.pop(sig)
-                        in_sig_types.pop(sig)
+                    # store abbreviated dtype for use in colName
+                    dt = np.dtype(args["dtype"])
+                    args["dtype_short"] = dt.kind + str(dt.itemsize)
 
                 out_signal["schema"] = {
                     "data": {
@@ -1050,6 +1070,10 @@ def parse(paths, config, confirmed):
                         "dtype": "uint8",
                     }
                 }
+
+            logger_num_tables = len(signal_view_sigs)
+            if any(tick_view_sigs):
+                logger_num_tables += 1
 
             driver_template_name = f'{out_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
@@ -1069,6 +1093,9 @@ def parse(paths, config, confirmed):
                     else None
                 ),
                 "in_signals": in_signals,
+                # TODO use OrderedDict w/ jinja:
+                # https://stackoverflow.com/questions/33742530/how-can-i-print-a-jinja-dict-in-a-deterministic-order
+                "in_sig_keys": list(in_signals),
                 "has_in_signal": has_in_signal,
                 "in_signal_name": (
                     list(in_signals)[0] if has_in_signal else None
@@ -1078,10 +1105,6 @@ def parse(paths, config, confirmed):
                     if has_in_signal
                     else None
                 ),
-                "msgpack_sigs": msgpack_sigs,
-                "raw_vec_sigs": raw_vec_sigs,
-                "raw_text_sigs": raw_text_sigs,
-                "raw_num_sigs": raw_num_sigs,
                 "in_sig_nums": in_sig_nums,
                 "out_sig_name": module_val["out"]["name"],
                 "out_signal": out_signal,
@@ -1090,7 +1113,7 @@ def parse(paths, config, confirmed):
                 else 1,
                 "num_sem_sigs": num_sem_sigs,
                 "in_sig_sems": in_sig_sems,
-                "sig_types": in_sig_types,
+                "sig_types": in_sig_types,  # TODO remove
                 "out_dtype": out_dtype,
                 "buf_vars_len": BUF_VARS_LEN,
                 "source_outputs": list(source_outputs),
@@ -1100,6 +1123,12 @@ def parse(paths, config, confirmed):
                 "async_buf_len": None
                 if (not async_sink)
                 else min([x["history"] for x in in_signals.values()]),
+                # logger-specific:
+                "tick_view_extra_cols": extra_cols,
+                "tick_view_sigs": tick_view_sigs,
+                "signal_view_sigs": signal_view_sigs,
+                "msgpack_sigs": msgpack_sigs,
+                "logger_num_tables": logger_num_tables,
             }
 
             parser_code = ""

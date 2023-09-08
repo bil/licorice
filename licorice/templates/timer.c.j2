@@ -561,34 +561,34 @@ int main(int argc, char* argv[]) {
 
   // initialize source semaphores
   for (int i = 0; i < NUM_SOURCES; i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem_%lu", i);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_up_sem_%d", i);
     pSourceUpSems[i] = create_semaphore(semNameBuf, 0);
 
-    snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem_%lu", i);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/source_down_sem_%d", i);
     pSourceDownSems[i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize module semaphores
   for (int i = 0; i < NUM_MODULES; i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_up_sem_%lu", i);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_up_sem_%d", i);
     pModUpSems[i] = create_semaphore(semNameBuf, 0);
 
-    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_down_sem_%lu", i);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/mod_down_sem_%d", i);
     pModDownSems[i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize sink semaphores
   for (int i = 0; i < NUM_SINKS; i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_up_sem_%lu", i);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_up_sem_%d", i);
     pSinkUpSems[i] = create_semaphore(semNameBuf, 0);
 
-    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_down_sem_%lu", i);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sink_down_sem_%d", i);
     pSinkDownSems[i] = create_semaphore(semNameBuf, 1);
   }
 
   // initialize signal semaphores
   for (int i = 0; i < NUM_SEM_SIGS; i++) {
-    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%lu", i);
+    snprintf(semNameBuf, SEM_NAME_LEN, "/sig_sem_%d", i);
     pSigSems[i] = create_semaphore(semNameBuf, 0);
   }
 

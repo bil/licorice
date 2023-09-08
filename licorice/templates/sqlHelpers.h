@@ -17,7 +17,6 @@
 #define QUESTION "?"
 // constants for buffering data
 // number of seconds to buffer
-#define NUM_BUF_S 20
 #define NUM_MS_IN_S 1000
 #define SQL_TEXT_FIELD_LEN 64
 
@@ -31,6 +30,6 @@ void sql_step(sqlite3_stmt *stmt);
 void sql_finalize(sqlite3_stmt *stmt);
 
 void openDatabase(sqlite3 **db, char *startName, int db_index, char* newNameLocation);
-void createTables(sqlite3 *db, SQLTable* databaseArr);
+void createTables(sqlite3 *db, SQLTable* databaseArr, int numTables);
 
 #endif

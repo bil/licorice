@@ -69,7 +69,7 @@ void sql_exec(sqlite3 *db, const char* sql, int (*callback)(void*,int,char**,cha
 void sql_prepare(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail) {
   prc = sqlite3_prepare_v2(db, zSql, nByte, ppStmt, pzTail);
   if (prc != SQLITE_OK) {
-    die("sqlite3_prepare_v2 failed\n");
+    die("sqlite3_prepare_v2 failed: %d\n", prc);
   }
 }
 
@@ -77,14 +77,14 @@ void sql_step(sqlite3_stmt *stmt) {
   prc = sqlite3_step(stmt);
   if (prc != SQLITE_DONE) {
     printf("failed with %d\n", prc);
-    die("sqlite3_step failed \n");
+    die("sqlite3_step failed: %d\n", prc);
   }
 }
 
 void sql_finalize(sqlite3_stmt *stmt) {
   prc = sqlite3_finalize(stmt);
   if (prc != SQLITE_OK) {
-    die("sqlite3_finalize failed \n");
+    die("sqlite3_finalize failed: %d \n", prc);
   }
 }
 
@@ -93,7 +93,11 @@ static char db_index_str[DB_INDEX_PAD_LENGTH];
 static int rc;
 static int tempVal = 0;
 static char tempBuf[16];
-void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLocation) {
+static int flags;
+static char *zErrMsg = NULL;
+void openDatabase(
+  sqlite3 **db, char* startName, int db_index, char* newNameLocation
+) {
   if(strlen(startName) > 48 - DB_INDEX_PAD_LENGTH) { // was > 48, but now need to leave room for db index
     sprintf(buf, "Name %s too long.\n", startName);
     die(buf);
@@ -107,7 +111,8 @@ void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLoca
   }
   strcat(buf, db_index_str);
   strcat(buf,".db");
-  rc = sqlite3_open_v2(buf, db, SQLITE_OPEN_READWRITE, NULL);
+  flags = SQLITE_OPEN_READWRITE; // | SQLITE_OPEN_MEMORY;
+  rc = sqlite3_open_v2(buf, db, flags, NULL);
   while(!rc) {
     tempVal++;
     sqlite3_close(*db);
@@ -120,7 +125,7 @@ void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLoca
     sprintf(tempBuf,"(%d)",tempVal);
     strcat(buf, tempBuf);
     strcat(buf,".db");
-    rc = sqlite3_open_v2(buf, db, SQLITE_OPEN_READWRITE, NULL);
+    rc = sqlite3_open_v2(buf, db, flags, NULL);
   }
   sqlite3_open(buf, db);
   strcpy(newNameLocation,buf);
@@ -130,21 +135,23 @@ void openDatabase(sqlite3 **db, char* startName, int db_index, char* newNameLoca
 
 static char* cmd;
 static int i,j;
-static char *zErrMsg = NULL;
-void createTables(sqlite3 *db, SQLTable* databaseArr) {
-  for(i = 0; i < NUM_TABLES; i++) {
-    size_t len = strlen(CREATE_TABLE_STR) + strlen(databaseArr[i].tableName) +  strlen(OPEN_BRACE) + strlen(CLOSE_BRACE_SEMI);
+void createTables(sqlite3 *db, SQLTable* databaseArr, int numTables) {
+  for(i = 0; i < numTables; i++) {
+    size_t queryLen = (
+      strlen(CREATE_TABLE_STR) + strlen(databaseArr[i].tableName) +
+      strlen(OPEN_BRACE) + strlen(CLOSE_BRACE_SEMI)
+    );
     for (j = 0; j < databaseArr[i].numCol; j++) {
-      len += strlen(databaseArr[i].columns[j].colName);
-      len += strlen(SPACE);
-      len += strlen(databaseArr[i].columns[j].SQLtype);
-      len += strlen(COMMA);
-      len += strlen(SPACE);
+      queryLen += strlen(databaseArr[i].columns[j].colName);
+      queryLen += strlen(SPACE);
+      queryLen += strlen(databaseArr[i].columns[j].SQLtype);
+      queryLen += strlen(COMMA);
+      queryLen += strlen(SPACE);
     }
-    len -= strlen(COMMA);
-    len -= strlen(SPACE);
+    queryLen -= strlen(COMMA);
+    queryLen -= strlen(SPACE);
     //+1 for null terminator
-    cmd = (char*) malloc(len + 1);
+    cmd = (char*) malloc(queryLen + 1);
     strcpy(cmd, CREATE_TABLE_STR);
     strcat(cmd, databaseArr[i].tableName);
     strcat(cmd, OPEN_BRACE);
@@ -159,12 +166,12 @@ void createTables(sqlite3 *db, SQLTable* databaseArr) {
     } 
     strcat(cmd, CLOSE_BRACE_SEMI);
     rc = sqlite3_exec(db, cmd, NULL, NULL, &zErrMsg);
-      if (rc != SQLITE_OK) {
-        printf("%s", zErrMsg);
-        fflush(stdout);
-        sqlite3_free(zErrMsg);
-        die("SQL exec error");
-      }
-    free(cmd);
+    if (rc != SQLITE_OK) {
+      printf("%s\n", zErrMsg);
+      fflush(stdout);
+      sqlite3_free(zErrMsg);
+      die("SQL exec error\n");
+    }
+    fflush(stdout);
   }
 }

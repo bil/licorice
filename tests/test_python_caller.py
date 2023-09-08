@@ -1,6 +1,7 @@
 import pytest
 
 import licorice
+from tests.utils import validate_model_output
 
 
 def test_parse_matrix_multiply(capsys):
@@ -9,10 +10,11 @@ def test_parse_matrix_multiply(capsys):
         confirm=True,
         working_path=f"{pytest.examples_dir}/matrix_multiply",
     )
-    captured = capsys.readouterr()
-    # TODO snapshottest
-    assert "Parsing" in captured.out
-    assert captured.err == ""
+
+    captured_out, captured_err = validate_model_output(
+        capsys, None, validate_stdout=False
+    )
+    assert "Parsing" in captured_out
 
 
 def test_compile_matrix_multiply(capsys):
@@ -21,10 +23,11 @@ def test_compile_matrix_multiply(capsys):
         confirm=True,
         working_path=f"{pytest.examples_dir}/matrix_multiply",
     )
-    captured = capsys.readouterr()
-    # TODO snapshottest
-    assert "gcc" in captured.out
-    assert captured.err == ""
+
+    captured_out, captured_err = validate_model_output(
+        capsys, None, validate_stdout=False
+    )
+    assert "gcc" in captured_out
 
 
 def test_run_matrix_multiply(capsys):
@@ -33,7 +36,5 @@ def test_run_matrix_multiply(capsys):
         confirm=True,
         working_path=f"{pytest.examples_dir}/matrix_multiply",
     )
-    captured = capsys.readouterr()
-    # TODO snapshottest
-    assert "LiCoRICE ran for 30 ticks." in captured.out
-    assert captured.err == ""
+
+    validate_model_output(capsys, 30)

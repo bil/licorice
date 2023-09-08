@@ -104,8 +104,11 @@ cdef size_t outBufLen
 {%- endif %}
 
 {% if async %}
+cdef int64_t tick_num
+
 # track start and end vars (BufVars[8] and [9]) for each tick to flush
 ctypedef struct asyncBufTickInfo:
+  int64_t tickNum
 {%- for sig,dtype in sig_types.items() %}
   uint32_t {{sig}}StrtOffsetSamples  # buffered {{sig}}BufVars[0] values
   uint32_t {{sig}}StrtOffset  # buffered {{sig}}BufVars[8] values
@@ -113,9 +116,7 @@ ctypedef struct asyncBufTickInfo:
   uint32_t {{sig}}Len  # buffered {{sig}}Len values
 {%- endfor %}
 
-{% for sig,dtype in sig_types.items() %}
-cdef uint32_t {{sig}}asyncStrtOffsetSamples
-{% endfor %}
+cdef uint32_t asyncStrtOffsetSamples[{{sig_types|length}}]
 
 cdef uint32_t asyncStrtOffset
 cdef uint32_t asyncEndOffset
@@ -130,12 +131,15 @@ ASYNC_BUF_LEN = {{async_buf_len}}
 # python variables
 lastVal = 1
 in_sigs = {}
+sigs = {}
+sig_lens = {}
 {%- if has_in_signal == 1 %}
 in_sig = None
 {%- endif %}
 {%- if not is_main_process %}
 shouldExit = False
 {%- endif %}
+in_sig_keys = {{in_sig_keys}}
 
 {%- if is_writer %}
 # driver variables
@@ -144,7 +148,6 @@ shouldExit = False
 
 cdef void handle_exit(int exitStatus):
   global retVal, tid, radio, context, s, shmSize, pmem, pSinkUpSem, pSinkDownSem, pSigSems
-  print("SINK HANDLE_EXIT\n", flush=True)
 
 {%- if is_writer %}
 
@@ -184,12 +187,30 @@ cdef void exit_handler(int signum):
 {%- endif %}
 
 cdef void bus_handler(int signum):
+  global shouldExit
   printf("Bus Error\n")
+  fflush(stdout)
+  if shouldExit:
+    exit(1)
+{%- if is_main_process %}
   handle_exit(1)
+{%- else %}
+  shouldExit = True
+{%- endif %}
+
 
 cdef void segv_handler(int signum):
+  global shouldExit
   printf("Seg Fault\n")
+  fflush(stdout)
+  if shouldExit:
+    exit(1)
+{%- if is_main_process %}
   handle_exit(1)
+{%- else %}
+  shouldExit = True
+{%- endif %}
+
 
 cdef void usr2_handler(int signum):
   pass
@@ -229,7 +250,7 @@ pSigSems[{{sem_num}}] = sem_open(semNameBuf, 0)
 {%- if async %}
 # put buffer flush tracking variables in shared memory between
 asyncShmSize = ROUND_UP(sizeof(asyncBufTickInfo) * ASYNC_BUF_LEN, PAGESIZE)
-{% if is_main_process %}
+  {% if is_main_process %}
 open_shared_mem(
   &pAsyncMem,
   "/async_mem_{{name}}",
@@ -237,7 +258,7 @@ open_shared_mem(
   O_TRUNC | O_CREAT | O_RDWR,
   PROT_READ | PROT_WRITE
 )
-{% else %}
+  {% else %}
 open_shared_mem(
   &pAsyncMem,
   "/async_mem_{{name}}",
@@ -245,7 +266,7 @@ open_shared_mem(
   O_RDWR,
   PROT_READ | PROT_WRITE
 )
-{% endif %}
+  {% endif %}
 pAsyncFlushIndexStrt = <uint32_t *>pAsyncMem
 pAsyncFlushIndexEnd = <uint32_t *>(pAsyncMem + sizeof(uint32_t))
 pAsyncBufInfo = <asyncBufTickInfo *>(pAsyncMem + 2 * sizeof(uint32_t))
@@ -262,9 +283,11 @@ if any([b'{{sig}}' == x[0] for x in created_mem]):
   in_sigs['{{sig}}'] = sa.attach("shm://{{sig}}")
   {{sig}}Raw = in_sigs['{{sig}}']
     {%- if args["max_packets_per_tick"] == 1 %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+  sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]]
+  {{sig}} = sigs["{{sig}}"]
     {%- else %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {{sig}} = sigs["{{sig}}"]
     {%- endif %}
 else:
   die("numpy signal not created\n")
@@ -281,9 +304,11 @@ in_sig = in_sigs["{{sig}}"]
 in_sigs["{{sig}}"] = sa.attach("shm://{{sig}}")
 {{sig}}Raw = in_sigs["{{sig}}"]
     {%- if args["max_packets_per_tick"] == 1 %}
-{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]]
+{{sig}} = sigs["{{sig}}"]
     {%- else %}
-{{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+{{sig}} = sigs["{{sig}}"]
     {%- endif %}
     {% if out_signal["args"]["type"] != "vis_pygame" %}
 {{sig}}StrtPtr = <{{args["ctype"]}} *><long>in_sigs["{{sig}}"].__array_interface__["data"][0]
@@ -320,7 +345,6 @@ outBufLen = outBufEnd - outBufStrt
 {{construct_code}}
 {%- endif %}
 
-
 {%- if platform_system != "Darwin" %}
 make_realtime()
 {%- endif %}
@@ -344,6 +368,7 @@ while(True):
     (pAsyncFlushIndexStrt[0] == 0)
   ):
     die("Async buffer overrun. Consider increasing signal history sizes.")
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].tickNum = pNumTicks[0]
   {% for sig,args in in_signals.items() %}
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffsetSamples = {{sig}}BufVars[0]
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffset = {{sig}}BufVars[8]
@@ -369,14 +394,19 @@ while(True):
     continue
 
     {% for sig, args in in_signals.items() %}
+  s_i = in_sig_keys.index("{{sig}}")
+  tick_num = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].tickNum
   asyncStrtOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffset
   asyncEndOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}EndOffset
-  {{sig}}asyncStrtOffsetSamples = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffsetSamples
+  asyncStrtOffsetSamples[s_i] = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffsetSamples
   if asyncEndOffset - asyncStrtOffset == 1:
-    {{sig}} = {{sig}}Raw[asyncStrtOffset]
+    sigs["{{sig}}"] = {{sig}}Raw[asyncStrtOffset]
+    {{sig}} = sigs["{{sig}}"]
   else:
-    {{sig}} = {{sig}}Raw[asyncStrtOffset:asyncEndOffset]
-  {{sig}}Len =  pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}Len
+    sigs["{{sig}}"] = {{sig}}Raw[asyncStrtOffset:asyncEndOffset]
+    {{sig}} = sigs["{{sig}}"]
+  sig_lens["{{sig}}"] = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}Len
+  {{sig}}Len =  sig_lens["{{sig}}"]
     {% endfor %}
 
     {%- if has_parser %}
@@ -397,10 +427,13 @@ while(True):
   # perform parsing for each packet
     {% for sig, args in in_signals.items() %}
   if {{sig}}BufVars[9] - {{sig}}BufVars[8] == 1:
-    {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
+    sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]]
+    {{sig}} = sigs["{{sig}}"]
   else:
-    {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-  {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+    sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+    {{sig}} = sigs["{{sig}}"]
+  sig_lens["{{sig}}}"] = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+  {{sig}}Len = sig_lens["{{sig}}}"]
     {% endfor %}
 
     {%- if has_parser %}

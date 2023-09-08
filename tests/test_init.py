@@ -4,6 +4,7 @@ import SharedArray as sa
 
 import licorice
 from licorice.templates.module_utils import create_shared_array
+from tests.utils import validate_model_output
 
 NUM_TICKS = 10
 SRC_INIT_TICKS = 10
@@ -113,11 +114,7 @@ def test_init_ticks(capfd):
     sa.delete(sa_sig_name_mod)
     sa.delete(sa_sig_name_snk)
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    print(captured.out)
-    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
-    assert captured.err == ""
+    validate_model_output(capfd, NUM_TICKS)
 
     # asert source output is sequential for all ticks
     for i in range(1, TOTAL_TICKS):

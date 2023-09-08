@@ -4,6 +4,7 @@ import subprocess
 import pytest
 
 import licorice
+from tests.utils import validate_model_output
 
 NUM_TICKS = 10
 
@@ -56,11 +57,7 @@ def test_clock_time(capfd):
     except subprocess.CalledProcessError:
         pass
 
-    # check LiCoRICE stdout and stderr output
-    captured = capfd.readouterr()
-    print(captured.out)
-    assert f"LiCoRICE ran for {NUM_TICKS} ticks." in captured.out
-    assert captured.err == ""
+    validate_model_output(capfd, NUM_TICKS)
 
     # read values written to sqlite database
     conn = sqlite3.connect(

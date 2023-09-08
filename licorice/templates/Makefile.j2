@@ -36,15 +36,15 @@ timer: timer.c utilityFunctions.c {% if darwin %}darwin_compat/clock_nanosleep.c
 {%- endfor -%}
 
 {% for sink in sink_names %}
-{{sink}}:  {{sink}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} #networkUtilities.c
+{{sink}}:  {{sink}}.pyx utilityFunctions.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} #networkUtilities.c
 	cython --embed -3 -o {{sink}}.c {{sink}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} -o {{sink}} $(CYLDFLAGS)
+	$(CC) $(CYFLAGS) -Wno-cpp {{sink}}.c utilityFunctions.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} -o {{sink}} $(CYLDFLAGS)
 {% endfor -%}
 
 {% for async_writer in async_writer_names %}
-{{async_writer}}:  {{async_writer}}.pyx utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} #networkUtilities.c
+{{async_writer}}:  {{async_writer}}.pyx utilityFunctions.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} #networkUtilities.c
 	cython --embed -3 -o {{async_writer}}.c {{async_writer}}.pyx
-	$(CC) $(CYFLAGS) -Wno-cpp {{async_writer}}.c utilityFunctions.c sqlite3async.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} -o {{async_writer}} $(CYLDFLAGS)
+	$(CC) $(CYFLAGS) -Wno-cpp {{async_writer}}.c utilityFunctions.c sqlHelpers.c {% if line %}lineUtilities.c{% endif %} -o {{async_writer}} $(CYLDFLAGS)
 {% endfor -%}
 
 {% for child in module_names -%}

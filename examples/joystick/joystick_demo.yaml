@@ -31,6 +31,7 @@ modules:
       args:
         type: pygame_joystick
       schema:
+        max_packets_per_tick: 2
         data:
           # TODO support this syntax
           # dtype: "(2,)f8, (6,)u1"

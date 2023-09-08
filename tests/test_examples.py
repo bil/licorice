@@ -9,6 +9,8 @@ import pygame
 import pytest
 from udp import udp_server_recv
 
+from tests.utils import validate_model_output
+
 
 def num_parports():
     num_ports = 0
@@ -38,12 +40,8 @@ def test_jitter(capfd):
         f"""--config '{{"config":{{"num_ticks":{num_ticks}}}}}'""",
         shell=True,
     )
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
-    assert captured.err == ""
+
+    validate_model_output(capfd, num_ticks)
 
     try:
         mean, std_dev, min_val, max_val = udp_server_recv(3333, timeout=1.)
@@ -73,12 +71,8 @@ def test_parallel_toggle(capfd):
         f"""--config '{{"config":{{"num_ticks":{num_ticks}}}}}'""",
         shell=True,
     )
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
-    assert captured.err == ""
+
+    validate_model_output(capfd, num_ticks)
 
 
 def test_matrix_multiply(capfd):
@@ -88,12 +82,8 @@ def test_matrix_multiply(capfd):
         f"""--config '{{"config":{{"num_ticks":{num_ticks}}}}}'""",
         shell=True
     )
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
-    assert captured.err == ""
+
+    validate_model_output(capfd, num_ticks)
 
 
 def test_logger(capfd, snapshot):
@@ -104,13 +94,9 @@ def test_logger(capfd, snapshot):
         f"""--config '{{"config":{{"num_ticks":{num_ticks}}}}}'""",
         shell=True
     )
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
-    # TODO address UserWarning for no parser. Move validation into drivers
-    # assert captured.err == ""
+
+    # # TODO address UserWarning for no parser. Move validation into drivers
+    validate_model_output(capfd, num_ticks, validate_stderr=False)
 
     conn = sqlite3.connect(
         f"{pytest.examples_dir}/logger/logger_demo.lico/out/data_0000.db"
@@ -135,12 +121,11 @@ def test_logger(capfd, snapshot):
     not has_joystick(), reason="No joystick connected."
 )
 def test_joystick(capfd):
+    num_ticks = 21
     os.environ["SDL_VIDEODRIVER"] = "dummy"
     subprocess.call(f"{pytest.examples_dir}/joystick/run.sh", shell=True)
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    assert "LiCoRICE ran for 21 ticks." in captured.out
-    assert captured.err == ""
+
+    validate_model_output(capfd, num_ticks)
 
 
 def test_pygame(capfd):
@@ -151,12 +136,8 @@ def test_pygame(capfd):
         f"""--config '{{"config":{{"num_ticks":{num_ticks}}}}}'""",
         shell=True
     )
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
-    assert captured.err == ""
+
+    validate_model_output(capfd, num_ticks)
 
 
 @pytest.mark.skipif(
@@ -170,12 +151,9 @@ def test_cursor_track(capfd):
         f"""--config '{{"config":{{"num_ticks":{num_ticks}}}}}'""",
         shell=True
     )
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
-    assert captured.err == ""
+
+    # TODO address UserWarning for no parser. Move validation into drivers
+    validate_model_output(capfd, num_ticks, validate_stderr=False)
 
 
 @pytest.mark.skipif(
@@ -189,13 +167,9 @@ def test_pinball(capfd):
         f"""--config '{{"config":{{"num_ticks":{num_ticks}}}}}'""",
         shell=True
     )
-    captured = capfd.readouterr()
-    # TODO snapshottest/syrupy
-    print(captured.out)
-    print(captured.err)
-    assert f"LiCoRICE ran for {num_ticks} ticks." in captured.out
+
     # TODO address UserWarning for no parser. Move validation into drivers
-    # assert captured.err == ""
+    validate_model_output(capfd, num_ticks, validate_stderr=False)
 
 
 def test_udp(capfd):
