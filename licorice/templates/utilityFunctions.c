@@ -118,6 +118,7 @@ sem_t *create_semaphore(const char *pName, int value) {
     printf(
       "Warning: semaphore name %s exists: %s \n", pName, strerror(errno)
     );
+    fflush(stdout);
 
     if ((sem = sem_open(pName, O_CREAT, 0600, value)) == SEM_FAILED) {
       die("Error: could not open semaphore\n");

@@ -300,6 +300,7 @@ cdef void* prepareTable(
 #all the memcpys happen here now
 cdef void* bufferSignals():
   global signalViewBufStrt, signalViewBufEnd, pSigDataCur, pSigDataStart, tickViewBufStrt, tickViewBufEnd, pTickDataCur, sig_lens, sigs, source_outputs
+
   # for each tick buffered, copy each signal from buffer into pTickDataCur
   for i, sig in enumerate(tick_view_keys):
     # s_i = in_sig_keys.index(sig)
@@ -307,7 +308,6 @@ cdef void* bufferSignals():
     # TODO this logic should have some validation
     # in the case of max_packets_per_tick != 1, must be saved as a blob or be
     # in its own table
-
     memcpy(
       pTickDataCur.sigs[i],
       <void *><long>sigs[sig].__array_interface__["data"][0],
@@ -467,18 +467,22 @@ cdef void flushToDisk(bool newDB=False):
 
   # create new database if time limit reached
   if (newDB):
-    ticks_written = 0
     db_index += 1
     openDatabase(
       &db, "{{ out_signal['args']['save_file']}}", db_index, currDbName
     )
-    sqlite3_exec(db, "PRAGMA journal_mode = MEMORY;", NULL, NULL, &zErrMsg)
+    ret = sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
+    if (ret != SQLITE_OK):
+      printf("%s\n", zErrMsg[0])
+      sqlite3_free(zErrMsg)
+      printf("SQL pragma error\n")
+      fflush(stdout)
+      return
     createTables(db, databaseArray, {{logger_num_tables}})
 
   ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
   if (ret != SQLITE_OK):
-    # print sql error msg
-    printf("%s\n", zErrMsg)
+    printf("%s\n", zErrMsg[0])
     sqlite3_free(zErrMsg)
     printf("SQL begin transaction error: %d\n", ret)
     fflush(stdout)
@@ -516,13 +520,16 @@ cdef void flushToDisk(bool newDB=False):
       pSigDataStart = signalViewBufStrt
 
     ticks_written += 1
-    if (ticks_written % NEW_DB_NUM_TICKS == 0):
+    if (
+      (ticks_written % NEW_DB_NUM_TICKS == 0) and
+      (ticks_written < {{ config["config"]["num_ticks"] }})
+    ):
       complete = False
       break
 
   ret = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &zErrMsg)
   if (ret != SQLITE_OK):
-    # print sql error msg
+    printf("%s\n", zErrMsg[0])
     sqlite3_free(zErrMsg)
     printf("SQL end transaction error\n")
     fflush(stdout)
@@ -553,7 +560,7 @@ createQuery(&signalViewQueries[{{loop.index0}}], "{{sig}}", {{args["log"]["numCo
 
 # tick-view signals buffer
 # TODO this should be signal size
-tickViewBufSize = 2 * SQL_LOGGER_FLUSH * NUM_MS_IN_S
+tickViewBufSize = 2 * SQL_LOGGER_FLUSH
 tickViewBufSizeBytes = sizeof(tickViewData) * tickViewBufSize
 tickViewBufStrt = <tickViewData *>malloc(tickViewBufSizeBytes)
 tickViewBufEnd = tickViewBufStrt + tickViewBufSize
@@ -566,12 +573,12 @@ for i, sig in enumerate(tick_view_keys):
     sig_buf_size_bytes * tickViewBufSize
   )
   for j in range(1, tickViewBufSize):
-    tickViewBufStrt[j].sigs[i] = tickViewBufStrt[0].sigs[i] + <int>(
+    tickViewBufStrt[j].sigs[i] = tickViewBufStrt[0].sigs[i] + <uint64_t>(
       j * sig_buf_size_bytes
     )
 
 # per-signal buffers
-signalViewBufSize = 2 * SQL_LOGGER_FLUSH * NUM_MS_IN_S
+signalViewBufSize = 2 * SQL_LOGGER_FLUSH
 signalViewBufSizeBytes = sizeof(signalViewData) * signalViewBufSize
 signalViewBufStrt = <signalViewData *>malloc(signalViewBufSizeBytes)
 signalViewBufEnd = signalViewBufStrt + signalViewBufSize
@@ -599,10 +606,10 @@ for i, sig in enumerate(signal_view_keys):
 openDatabase(&db, "{{ out_signal['args']['save_file'] }}", db_index, currDbName)
 rc = sqlite3_exec(db, "PRAGMA journal_mode = MEMORY;", NULL, NULL, &zErrMsg)
 if (rc != SQLITE_OK):
-  printf("%s\n", zErrMsg)
+  printf("%s\n", zErrMsg[0])
   fflush(stdout)
   sqlite3_free(zErrMsg)
-  die("SQL exec error\n")
+  die("SQL pragma error\n")
 
 {% if tick_view_sigs|length != 0 %}
 prepareTable(
@@ -691,10 +698,11 @@ initialized = True
   # after SQL_LOGGER_FLUSH ticks, flush buffered data to DB
   # TODO this has to be a different var since numTicks is not accurate for async
   tick_count += 1
-  if (tick_count % SQL_LOGGER_FLUSH == 0) or shouldExit:
-    pTickDataEnd = pTickDataStart + SQL_LOGGER_FLUSH
-    pSigDataEnd = pSigDataStart + SQL_LOGGER_FLUSH
+  if (tick_count % SQL_LOGGER_FLUSH == 0):
+    pTickDataEnd = pTickDataCur
+    pSigDataEnd = pSigDataCur
     flushToDisk()
+
 
 {%- endif %}
 
@@ -739,4 +747,3 @@ initialized = True
   if (rc != SQLITE_OK):
     printf("SQL close error\n")
     fflush(stdout)
-

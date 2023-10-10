@@ -148,6 +148,7 @@ in_sig_keys = {{in_sig_keys}}
 
 cdef void handle_exit(int exitStatus):
   global retVal, tid, radio, context, s, shmSize, pmem, pSinkUpSem, pSinkDownSem, pSigSems
+  printf("EXIT HANDLER for {{name}}\n")
 
 {%- if is_writer %}
 
@@ -270,8 +271,10 @@ open_shared_mem(
 pAsyncFlushIndexStrt = <uint32_t *>pAsyncMem
 pAsyncFlushIndexEnd = <uint32_t *>(pAsyncMem + sizeof(uint32_t))
 pAsyncBufInfo = <asyncBufTickInfo *>(pAsyncMem + 2 * sizeof(uint32_t))
+  {%- if is_main_process %}
 pAsyncFlushIndexStrt[0] = 0
 pAsyncFlushIndexEnd[0] = 0
+  {%- endif %}
 {%- endif %}
 
 {% if is_writer -%}
@@ -386,8 +389,11 @@ while(True):
   {% if async -%} # async buffering and parser logic
 
   # async writer udpates buffer flush start variable
+  # print("ASYNC: ", pAsyncFlushIndexStrt[0], pAsyncFlushIndexEnd[0], flush=True)
+  # printf("%lu\n", pAsyncBufInfo[pAsyncFlushIndexStrt[0]].cerebus_timestampsStrtOffset)
+  # fflush(stdout)
   if pAsyncFlushIndexStrt[0] == pAsyncFlushIndexEnd[0]:
-    if (shouldExit) and (pAsyncFlushIndexStrt[0] == pAsyncFlushIndexEnd[0]):
+    if shouldExit:
       handle_exit(0)
     # wait for half a tick if there is no data
     time.sleep({{config["config"]["tick_len"]}} / (2. * 1e6))
@@ -408,7 +414,6 @@ while(True):
   sig_lens["{{sig}}"] = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}Len
   {{sig}}Len =  sig_lens["{{sig}}"]
     {% endfor %}
-
     {%- if has_parser %}
 
   {{parser_code}}
@@ -447,7 +452,6 @@ while(True):
     {%- endif %}
 
   {% endif %}
-
 
 {{ driver_code["write"] }}
 

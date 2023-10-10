@@ -108,6 +108,8 @@ cdef uint32_t *{{sig}}BufVars
 
 cdef void handle_exit(int exitStatus):
   global pmem, shm_size, pModUpSem, pModDownSem, pSigSems
+  printf("EXIT HANDLER for {{name}}\n")
+
   {{destruct_code}}
 {%- if platform_system == "Linux" %}
   sa_names = [sig.name for sig in sa.list()]
@@ -228,7 +230,7 @@ out_sigs["{{sig}}"].base.mlock()
 {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
 {{sig}}Latency =  {{args["latency"]}}
 {{sig}}BufVars[2] = 0
-{{sig}}BufVars[10] = {{sig}}Latency
+{{sig}}BufVars[10] = 0 # {{sig}}Latency
   {%- if args["max_packets_per_tick"] == 1 %}
 {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
   {%- else %}

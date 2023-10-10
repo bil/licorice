@@ -129,7 +129,10 @@ cdef unsigned long numDropped = 0
 cdef int i
 {%- for sig, dtype in (sig_types.items()) %} # declare signal BufVars pointers (to point into pBufVars)
 cdef uint32_t *{{sig}}BufVars
+  {%- if is_main_process %}
 cdef uint32_t {{sig}}Latency
+cdef uint8_t {{sig}}LatencySlip = 0
+  {%- endif %}
   {%- if is_reader and has_parser %}
 cdef {{dtype}} *{{sig}}StrtPtr
 cdef {{dtype}} *{{sig}}EndPtr
@@ -209,7 +212,6 @@ cdef void handle_exit(int exitStatus):
 
 
 cdef void int_handler(int signum):
-  # print("SOURCE INT HANDLER\n", flush=True)
   pass
 
 cdef void exit_handler(int signum):
@@ -272,11 +274,12 @@ if(pthread_mutex_init(pAsyncMutex, NULL) != 0):
   {%- if is_main_process %}
 {{sig}}Latency =  {{args["latency"]}}
 {{sig}}BufVars[2] = 0
-{{sig}}BufVars[10] = {{sig}}Latency
+{{sig}}BufVars[10] = 0 # {{sig}}Latency
 {{sig}}BufVars[5] = {{args["packet_size"]}}
 {{sig}}BufVars[6] = {{args["max_packets_per_tick"] * args["packet_size"]}}
 {{sig}}BufVars[7] = {{args["buf_tot_numel"]}}
 {{sig}}BufVars[13] = 1
+{{sig}}BufVars[15] = {{args["history"]}}
   {%- endif %}
 {%- endfor %}
 
@@ -372,7 +375,12 @@ while(True):
 
   {%- if has_parser %}
     {%- for sig, args in out_signals.items() %}
-  sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
+  if {{sig}}BufVars[10] == {{sig}}BufVars[15]:
+    sigs["{{sig}}"] = {{sig}}Raw[0]
+  else:
+    sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
+  # TODO test default:
+  # sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
   {{sig}} = sigs["{{sig}}"]
     {%- endfor %}
 
@@ -381,6 +389,9 @@ while(True):
   {%- endif %}
 
   # update bufVars
+  {%- if async %}
+  # pthread_mutex_lock(pAsyncMutex)
+  {%- endif %}
   {%- for sig,args in (out_signals.items()) %}
     {%- if async %}
   pthread_mutex_lock(pAsyncMutex)
@@ -403,16 +414,22 @@ while(True):
   {{sig}}BufVars[3] += {{sig}}BufVars[5]
   {{sig}}BufVars[11] += {{sig}}BufVars[13]
     {%- if async %}
-  # wrap buffer for async readers during setup. wrap is synchonous after setup
-  # meaning that async readers should not read more than
+  # wrap buffer for async readers during setup and close. wrap is synchonous
+  # after setup  meaning that async readers should not read more than
   # `max_packets_per_tick` packets in a tick
-  if (pNumTicks[0] < 0) and ({{sig}}BufVars[7] < ({{sig}}BufVars[2] + {{sig}}BufVars[6])):
+  if (
+    (pNumTicks[0] < 0 or pNumTicks[0] == {{config["config"]["num_ticks"]}} - 1)
+    and ({{sig}}BufVars[7] < ({{sig}}BufVars[2] + {{sig}}BufVars[6]))
+  ):
     {{sig}}BufVars[2] = 0
     {{sig}}BufVars[10] = 0
 
   pthread_mutex_unlock(pAsyncMutex)
     {%- endif %}
   {%- endfor %}
+  {%- if async %}
+  # pthread_mutex_unlock(pAsyncMutex)
+  {%- endif %}
 {%- endif %}
 
 {%- if is_main_process %}
@@ -420,10 +437,43 @@ while(True):
   pthread_mutex_lock(pAsyncMutex)
   {%- endif %}
   {%- for sig,args in (out_signals.items()) %}
-  {{sig}}BufVars[1] = {{sig}}BufVars[2]
-  {{sig}}BufVars[9] = {{sig}}BufVars[10] - {{sig}}Latency
+  if {{sig}}BufVars[2] == 0:
+    {{sig}}BufVars[1] = {{sig}}BufVars[7]
+  else:
+    {{sig}}BufVars[1] = {{sig}}BufVars[2]
   {{sig}}BufVars[0] = {{sig}}BufVars[1] - {{sig}}BufVars[3]
-  {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11]
+
+  # {{sig}}BufVars[9] = {{sig}}BufVars[10] - {{sig}}Latency
+  # {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11]
+
+  if (
+      ({{sig}}Latency > 0) and
+      pNumTicks[0] >= {{sig}}Latency and
+      ({{sig}}BufVars[11] == 0) and
+      ({{sig}}BufVars[9] < {{sig}}BufVars[10]) # and
+      # {{sig}}LatencySlip == 0
+    ):
+    # print(f"{pNumTicks[0]}: SLIP FORWARD\n", flush=True)
+    {{sig}}BufVars[9] += 1
+    {{sig}}BufVars[8] = {{sig}}BufVars[9] - 1
+    {{sig}}LatencySlip = 1
+  elif (
+      ({{sig}}Latency > 0) and
+      pNumTicks[0] >= {{sig}}Latency and
+      ({{sig}}BufVars[11]) > 1
+    ):
+    # print(f"{pNumTicks[0]}: SLIP BACK\n", flush=True)
+    {{sig}}BufVars[9] = {{sig}}BufVars[10] - {{sig}}Latency + {{sig}}LatencySlip
+    {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11] + {{sig}}LatencySlip
+    {{sig}}LatencySlip = 0
+  else:
+    # print(f"NOSLIP: { {{sig}}BufVars[11] }\n", flush=True)
+    if {{sig}}BufVars[10] == 0:
+      {{sig}}BufVars[9] = {{sig}}BufVars[15]
+    else:
+      {{sig}}BufVars[9] = {{sig}}BufVars[10] - {{sig}}Latency
+    {{sig}}BufVars[8] = {{sig}}BufVars[9] - {{sig}}BufVars[11]
+
   if (({{sig}}BufVars[7] < ({{sig}}BufVars[2]) + {{sig}}BufVars[6])):
     {{sig}}BufVars[2] = 0
     {{sig}}BufVars[10] = 0
