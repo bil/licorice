@@ -82,7 +82,6 @@ cdef extern from "sqlHelpers.h" nogil:
   void sql_finalize(sqlite3_stmt *stmt)
   void openDatabase(sqlite3 **db, char *startName, int db_index, char* newNameLocation)
   void createTables(sqlite3 *db, SQLTable* databaseArr, int numTables)
-  enum: NUM_MS_IN_S # TODO replace ms with ticks or just remove
   cdef const char *INSERT_STR
   cdef const char *VALUES_STR
   cdef const char *OPEN_BRACE
@@ -110,80 +109,86 @@ cdef extern from "constants.h":
 
 # __DRIVER_CODE__ variables
 
+# TODO convert to #define in a separate .h file
+num_tick_table = {{tick_table|length}}
+num_custom_tables = {{custom_tables|length}}
+
+# TODO throw in some declarative type hinting (aka volatile)
+# TODO or try converting these to structs/arrays
+# TODO can also try with unoptimized compile
+
+# jinja-templated vars
 in_sig_keys = {{in_sig_keys}}
 in_sig_sigs = {{in_signals}}
-tick_view_keys = {{tick_view_sigs.keys()|list}}
-tick_view_sigs = {{tick_view_sigs}}
-signal_view_keys = {{signal_view_sigs.keys()|list}}
-signal_view_sigs = {{signal_view_sigs}}
+tick_table_keys = {{tick_table.keys()|list}}
+tick_table = {{tick_table}}
+custom_table_sigs = {{custom_table_sigs}}
+custom_table_names = {{custom_table_names}}
+custom_tables = {{custom_tables}}
 msgpack_sigs = {{msgpack_sigs}}
-source_outputs = {{source_outputs}}
 
 cdef bool newDB = False
 cdef int ret
 cdef int rc
 cdef char currDbName[32]
+
 # worker thread vars
 cdef char *zErrMsg
 cdef void * retVal
 
+# table buffer vars
+cdef uint32_t sig_buf_size_bytes
+cdef uint32_t tableBufSize
+cdef uint32_t bufferOffsetCur
+cdef uint32_t bufferOffsetStrt
+cdef uint32_t bufferOffsetEnd
+
 # struct to hold one tick of data
-ctypedef struct tickViewData:
-  uint8_t *sigs[{{tick_view_sigs|length}}]
-  uint32_t sigNumSamplesRecvd[{{tick_view_sigs|length}}]
-{%- if tick_view_sigs|length == 0 %}
+ctypedef struct tickTableData:
+  uint8_t *sigs[{{tick_table|length}}]
+  int64_t tick
+  uint32_t sigNumPktsRecvd[{{tick_table|length}}]
+{%- if tick_table|length == 0 %}
   uint8_t padding
 {%- endif %}
-
-cdef tickViewData *pTickDataCur
-cdef tickViewData *pTickDataStart
-cdef tickViewData *pTickDataEnd
 
 # tick buffers to enable batching
-cdef tickViewData *tickViewBufStrt = NULL
-cdef tickViewData *tickViewBufEnd
-# size of intermediary logging buffer in blocks of signalMsData
-cdef int tickViewBufSize
+cdef tickTableData *tickTableBufStrt = NULL
 
-# struct to hold each signal-view signal
-ctypedef struct signalViewData:
-  uint8_t *sigs[{{signal_view_sigs|length}}]
-  int64_t *timestamps[{{signal_view_sigs|length}}]
-  uint32_t sigNumSamplesRecvd[{{signal_view_sigs|length}}]
-{%- if signal_view_sigs|length == 0 %}
-  uint8_t padding
-{%- endif %}
-
-cdef signalViewData *pSigDataCur
-cdef signalViewData *pSigDataStart
-cdef signalViewData *pSigDataEnd
+# struct to hold each custom table signal
+ctypedef struct customTableData:
+  uint8_t **sigs
+  int64_t *ticks
+  uint32_t *sigNumPktsRecvd
 
 # signal buffers to enable batching
-cdef signalViewData *signalViewBufStrt = NULL
-cdef signalViewData *signalViewBufEnd
-cdef int signalViewBufSize
+cdef customTableData *customTableBufStrts[{{custom_tables|length}}]
 
 # sqlite variables
 cdef sqlite3 *db
 cdef sqlite3_stmt *contStmt
 cdef sqlite3_stmt *signalsStmt
 cdef SQLTable databaseArray[{{logger_num_tables}}]
-cdef SQLTableElement *tickViewCols
-cdef SQLTableElement *signalViewCols[{{signal_view_sigs|length}}]
+cdef SQLTableElement *tickTableCols = NULL;
+cdef SQLTableElement *customTableCols[{{custom_tables|length}}]
 initialized = False
 
 # sqlite variables
 cdef int eNewHalt
-cdef char *tickViewQuery
-cdef char *signalViewQueries[{{signal_view_sigs|length}}]
+cdef char *tickTableQuery
+cdef char *customTableQueries[{{custom_tables|length}}]
+cdef uint32_t customTableOnes[{{in_sig_keys|length}}]
 
 # message pack
 cdef msgpack_sbuffer msgpackBufs[{{msgpack_sigs|length}}]
 cdef msgpack_packer msgpackPkrs[{{msgpack_sigs|length}}]
 
 cdef int db_index = 0
-tick_count = 0
 cdef uint32_t ticks_written = 0
+cdef int i, j, k
+
+tick_count = 0
+flushing = False
 
 cdef int msgpack_pack(dtype, msgpack_packer* pk, void *pVal, offset):
   if dtype == "uint8":
@@ -207,6 +212,26 @@ cdef int msgpack_pack(dtype, msgpack_packer* pk, void *pVal, offset):
   elif dtype == "double":
     return msgpack_pack_double(pk, (<double *>pVal)[offset])
 
+cdef void msgpack_init(
+  msgpack_sbuffer *msgpackBufs, msgpack_packer *msgpackPkrs,
+  in_sig_sigs, msgpack_sigs
+):
+  cdef uint64_t zeroVal = 0
+  for sig, args in in_sig_sigs.items():
+    if args["log"]["enable"] and args["log"]["type"] == "msgpack":
+      m_i = msgpack_sigs.index(sig)
+      msgpack_sbuffer_init(&msgpackBufs[m_i])
+      msgpack_packer_init(
+        &msgpackPkrs[m_i], &msgpackBufs[m_i], msgpack_sbuffer_write
+      )
+
+      # enlarge buffer before main execution
+      max_bytes = args["max_packets_per_tick"] * args["packet_size"]
+      msgpack_pack_array(&msgpackPkrs[m_i], max_bytes)
+      for _ in range(max_bytes):
+        msgpack_pack(
+          args["dtype_msgpack"], &msgpackPkrs[m_i], <void*>&zeroVal, 0
+        )
 
 # Malloc memory for dst and perform a strncpy with null-termination
 cdef void* py2cStr(char** dst, src):
@@ -236,19 +261,19 @@ cdef void* createQuery(
   strcat(query[0], CLOSE_BRACE_SEMI)
 
 cdef void* prepareTable(
-  SQLTableElement **cols, int numCols, sigs, int timestamps
+  char *dbName, SQLTable *dbArr, SQLTableElement **cols, int numCols,
+  sigs
 ):
   cols[0] = <SQLTableElement *> malloc(numCols * sizeof(SQLTableElement))
   # prepare SQL database table
-  cdef int num_extra_cols = 0 # counter for number of extra added columns
+  cdef int num_extra_cols = 0
 
-  for i in range(timestamps):  # TODO allow for both ticks and timestamps
-    py2cStr(
-      &cols[0][i + num_extra_cols].colName,
-      "tick_num".encode("ascii")
-    )
-    cols[0][i + num_extra_cols].SQLtype = "INTEGER"
-    num_extra_cols += 1
+  py2cStr(
+    &cols[0][num_extra_cols].colName,
+    "tick_num".encode("ascii")
+  )
+  cols[0][num_extra_cols].SQLtype = "INTEGER"
+  num_extra_cols += 1
 
   for i, (sig, args) in enumerate(sigs.items()):
     if args["log"]["type"] == "msgpack": # msgpack sigs
@@ -259,7 +284,7 @@ cdef void* prepareTable(
       cols[0][i + num_extra_cols].SQLtype = "BLOB"
 
     elif args["log"]["type"] == "vector": # vector sigs
-      for j in range(args["log"]["numCols"]):
+      for j in range(args["log"]["num_cols"]):
         if "suffixes" in args["log"]:
           py2cStr(
             &cols[0][i + num_extra_cols].colName,
@@ -296,57 +321,74 @@ cdef void* prepareTable(
       else: # float
         cols[0][i + num_extra_cols].SQLtype = "REAL"
 
+  dbArr[0].tableName = dbName
+  dbArr[0].numCol = numCols
+  dbArr[0].columns = cols[0]
 
-#all the memcpys happen here now
-cdef void* bufferSignals():
-  global signalViewBufStrt, signalViewBufEnd, pSigDataCur, pSigDataStart, tickViewBufStrt, tickViewBufEnd, pTickDataCur, sig_lens, sigs, source_outputs
+
+# perform copies from signal buffers to logger buffers
+cdef void* bufferSignals(
+  uint32_t bufferOffsetCur,
+  uint32_t tableBufSize,
+  tickTableData *tickTableBufStrt,
+  customTableData **customTableBufStrts,
+):
+  global customTableBufStrt, customTableBufEnd, tickTableBufStrt, sig_lens, sigs
+
+  cdef tickTableData *pTickDataCur
+  cdef customTableData *pCustomDataCur
 
   # for each tick buffered, copy each signal from buffer into pTickDataCur
-  for i, sig in enumerate(tick_view_keys):
+  for i, sig in enumerate(tick_table_keys):
     # s_i = in_sig_keys.index(sig)
-    args = tick_view_sigs[sig]
+    args = tick_table[sig]
     # TODO this logic should have some validation
     # in the case of max_packets_per_tick != 1, must be saved as a blob or be
     # in its own table
+
+    pTickDataCur = tickTableBufStrt + bufferOffsetCur
     memcpy(
       pTickDataCur.sigs[i],
       <void *><long>sigs[sig].__array_interface__["data"][0],
       sig_lens[sig] * args["bytes"]
     )
-    pTickDataCur.sigNumSamplesRecvd[i] = sig_lens[sig]
+    if args["max_packets_per_tick"] == 1:
+      pTickDataCur.sigNumPktsRecvd[i] = 1
+    else:
+      pTickDataCur.sigNumPktsRecvd[i] = sigs[sig].shape[0]
+
+    pTickDataCur.tick = tick_num
 
   atomic_thread_fence(memory_order_seq_cst)
 
-  # increment in values buffer
-  pTickDataCur += 1
-  if (pTickDataCur == tickViewBufEnd):
-    pTickDataCur = tickViewBufStrt
+  for i, table_name in enumerate(custom_table_names):
+    pCustomDataCur = customTableBufStrts[i] + bufferOffsetCur
+    table_sigs = custom_table_sigs[table_name]
+    for j, sig in enumerate(table_sigs):
+      args = custom_tables[table_name][sig]
+      memcpy(
+        pCustomDataCur.sigs[j],
+        <void *><long>(sigs[sig].__array_interface__["data"][0]),
+        sig_lens[sig] * args["bytes"]
+      )
+      if args["max_packets_per_tick"] == 1:
+        pCustomDataCur.sigNumPktsRecvd[j] = 1
+      else:
+        pCustomDataCur.sigNumPktsRecvd[j] = sigs[sig].shape[0]
 
-  for i, sig in enumerate(signal_view_keys):
-    args = signal_view_sigs[sig]
-    memcpy(
-      pSigDataCur.sigs[i],
-      <void *><long>(sigs[sig].__array_interface__["data"][0]),
-      sig_lens[sig] * args["bytes"]
-    )
-    for j in range(sig_lens[sig]):
-      pSigDataCur.timestamps[i][j] = tick_num
-    pSigDataCur.sigNumSamplesRecvd[i] = sig_lens[sig]
+    sig_len = sig_lens[table_sigs[0]]
+    for sig in table_sigs:
+      assert sig_lens[sig] == sig_len
+    for j in range(sig_len):
+      pCustomDataCur.ticks[j] = tick_num
 
   atomic_thread_fence(memory_order_seq_cst)
-
-  pSigDataCur += 1
-  if (pSigDataCur == signalViewBufEnd):
-    pSigDataCur = signalViewBufStrt
-
-  # for i, sig in enumerate(signal_view_keys):
-  #   pSigDataCur.sigs[i] += sig_lens[sig] * args["bytes"]
-  #   if (pSigDataCur.sigs[i] + args["buf_size_bytes"] >= signalViewBufEnds[i]):
-  #     pSigDataCur.sigs[i] = signalViewBufStrts[i]
 
 
 cdef void performFlush(
-  sig_keys, sigs, char *query, sqlite3_stmt *stmt, uint8_t **sigBufs, int64_t *timestampPtr
+  sig_keys, sigs,
+  char *query, sqlite3_stmt *stmt,
+  uint8_t **sigBufs, int64_t *tickPtr, uint32_t *sigNumPktsRecvd, int pkt_num
 ):
   global msgpack_sigs, msgpackBufs, msgpackPkrs
 
@@ -355,37 +397,29 @@ cdef void performFlush(
 
   sql_prepare(db, query, -1, &stmt, NULL)
 
-  cdef int num_extra_cols = 0 # restart counter for each row logged
+  cdef int num_extra_cols = 0 # restart counter for each row loggedc
+  cdef uint8_t *pSig
 
-  if timestampPtr != NULL:
-    sql_bind_int64(stmt, 1, timestampPtr)
+  if tickPtr != NULL:
+    sql_bind_int64(stmt, 1, tickPtr)
     num_extra_cols += 1
 
   for i, sig in enumerate(sig_keys):
     args = sigs[sig]
+    pSig = sigBufs[i] + <int>(pkt_num * args["bytes"])
     if args["log"]["type"] == "msgpack": # msgpack signal
       m_i = msgpack_sigs.index(sig)
       msgpack_sbuffer_clear(&msgpackBufs[m_i])
-      if sig in source_outputs:
-        msgpack_pack_array(
-          &msgpackPkrs[m_i], pTickDataStart.sigNumSamplesRecvd[i]
+      msgpack_pack_array(
+        &msgpackPkrs[m_i], args["packet_size"] * sigNumPktsRecvd[i]
+      )
+      for j in range (args["packet_size"] * sigNumPktsRecvd[i]):
+        msgpack_pack(
+          args["dtype_msgpack"],
+          &msgpackPkrs[m_i],
+          pSig,
+          j
         )
-        for j in range (pTickDataStart.sigNumSamplesRecvd[i]):
-          msgpack_pack(
-            args["dtype_msgpack"],
-            &msgpackPkrs[m_i],
-            sigBufs[i],
-            j
-          )
-      else:
-        msgpack_pack_array(&msgpackPkrs[m_i], args["packet_size"])
-        for j in range(args["packet_size"]):
-          msgpack_pack(
-            args["dtype_msgpack"],
-            &msgpackPkrs[m_i],
-            sigBufs[i],
-            j
-          )
       sql_bind_blob(
         stmt,
         i + 1 + num_extra_cols,
@@ -395,27 +429,27 @@ cdef void performFlush(
       )
 
     elif args['log']['type'] == "vector": # vector signal
-      for j in range(args["log"]["numCols"]):
+      for j in range(args["log"]["num_cols"]):
         if "int" in args["dtype"]:
           if "64" in args["dtype"]:
             sql_bind_int64(
               stmt,
               i + 1 + num_extra_cols,
-              &((<int64_t *>sigBufs[i])[j])
+              &((<int64_t *>pSig)[j])
             )
           else:
             sql_bind_int(
               stmt,
               i + 1 + num_extra_cols,
               args["dtype"].encode("utf-8"),
-              &((<uint8_t *>sigBufs[i])[j * args["bytes"]])
+              &((<uint8_t *>pSig)[j * args["bytes"]])
             )
         else: # float
           sql_bind_double(
             stmt,
             i + 1 + num_extra_cols,
             args["dtype"].encode("utf-8"),
-            &((<uint8_t *>sigBufs[i])[j * args["bytes"]])
+            &((<uint8_t *>pSig)[j * args["bytes"]])
           )
         num_extra_cols += 1
       num_extra_cols -= 1
@@ -424,7 +458,7 @@ cdef void performFlush(
       sql_bind_text(
         stmt,
         i + 1 + num_extra_cols,
-        sigBufs[i],
+        pSig,
         args["log"]["numBytes"] * args["packet_size"],
         SQLITE_STATIC
       )
@@ -433,21 +467,21 @@ cdef void performFlush(
       if "int" in args["dtype"]:
         if "64" in args["dtype"]:
           sql_bind_int64(
-            stmt, i + 1 + num_extra_cols, sigBufs[i]
+            stmt, i + 1 + num_extra_cols, pSig
           )
         else:
           sql_bind_int(
             stmt,
             i + 1 + num_extra_cols,
             args["dtype"].encode("utf-8"),
-            sigBufs[i]
+            pSig
           )
       else: # float
         sql_bind_double(
           stmt,
           i + 1 + num_extra_cols,
           args["dtype"].encode("utf-8"),
-          sigBufs[i]
+          pSig
         )
 
   sql_step(stmt)
@@ -455,15 +489,16 @@ cdef void performFlush(
 
 cdef void flushToDisk(bool newDB=False):
   global zErrMsg, db, newDB, db_index, exitMask, signalsStmt, \
-    tickViewBufStrt, tickViewBufEnd, ticks_written, \
-    pTickDataStart, pTickDataEnd, pTickDataCur, \
-    pSigDataStart, pSigDataEnd, pSigDataCur, \
-    tickViewQuery, signalViewQueries, flushing
+    bufferOffsetStrt, bufferOffsetEnd, tickTableBufStrt, customTableBufStrts, \
+    ticks_written, tickTableQuery, customTableQueries, flushing, \
+    custom_table_keys, custom_tables, tableBufSize
+
   flushing = True
   complete = True
 
-  cdef uint8_t *dataPtr
-  cdef int64_t *timestampPtr
+  cdef tickTableData *pTickDataStrt
+  cdef customTableData *pCustomDataStrt
+  # cdef uint8_t *dataPtr
 
   # create new database if time limit reached
   if (newDB):
@@ -488,36 +523,41 @@ cdef void flushToDisk(bool newDB=False):
     fflush(stdout)
     return
 
-  while (pTickDataStart != pTickDataEnd): # TODO combine with pSigData?
+  while (bufferOffsetStrt != bufferOffsetEnd):
+    pTickDataStrt = tickTableBufStrt + bufferOffsetStrt
+    # TODO validate:
+    # tick-view vector and scalar signals must have max_packets_per_tick == 1
     performFlush(
-      tick_view_keys,
-      tick_view_sigs,
-      tickViewQuery,
+      tick_table_keys,
+      tick_table,
+      tickTableQuery,
       signalsStmt,
-      pTickDataStart.sigs,
-      NULL,
+      pTickDataStrt.sigs,
+      &pTickDataStrt.tick,
+      pTickDataStrt.sigNumPktsRecvd,
+      0
     )
 
-    pTickDataStart += 1
-    if (pTickDataStart == tickViewBufEnd):
-      pTickDataStart = tickViewBufStrt
-
-    for i, sig in enumerate(signal_view_keys):
-      args = signal_view_sigs[sig]
-      for j in range(pSigDataStart.sigNumSamplesRecvd[i]):
-        dataPtr = pSigDataStart.sigs[i] + <int>(j * args["bytes"])
+    for i, table_name in enumerate(custom_table_names):
+      pCustomDataStrt = customTableBufStrts[i] + bufferOffsetStrt
+      sig_pkts = pCustomDataStrt.sigNumPktsRecvd[0]
+      for j in range(1, len(custom_tables[table_name])):
+        assert sig_pkts == pCustomDataStrt.sigNumPktsRecvd[j]
+      for j in range(sig_pkts):
         performFlush(
-          signal_view_keys,
-          {sig: signal_view_sigs[sig]},
-          signalViewQueries[i],
+          custom_table_sigs[table_name],
+          custom_tables[table_name],
+          customTableQueries[i],
           signalsStmt,
-          &dataPtr,
-          pSigDataStart.timestamps[i] + <int>j
+          pCustomDataStrt.sigs,
+          pCustomDataStrt.ticks,
+          customTableOnes,  # flush one packet at a time
+          j
         )
 
-    pSigDataStart += 1
-    if (pSigDataStart == signalViewBufEnd):
-      pSigDataStart = signalViewBufStrt
+    bufferOffsetStrt += 1
+    if (bufferOffsetStrt == tableBufSize):
+      bufferOffsetStrt = 0
 
     ticks_written += 1
     if (
@@ -543,65 +583,136 @@ cdef void flushToDisk(bool newDB=False):
 
 # __DRIVER_CODE__ setup
 
-flushing = False
-
 # create numpy signals table sql insert queries
-{%- if tick_view_sigs|length != 0 %}
-createQuery(&tickViewQuery, DATALOGGER_SIGNALS_TABLE_NAME, {{tick_view_sigs|length}} + {{tick_view_extra_cols}})
+{%- if tick_table|length != 0 %}
+createQuery(
+  &tickTableQuery,
+  DATALOGGER_SIGNALS_TABLE_NAME,
+  {{tick_table|length}} + {{tick_view_extra_cols}} + 1
+)
 {%- endif %}
-{%- for sig, args in signal_view_sigs.items() %}
-timestampCols = 0
-  {% if args["log"]["timestamps"] %}
-timestampCols += {{args["log"]["timestamps"]}}
-  {%- endif %}
-createQuery(&signalViewQueries[{{loop.index0}}], "{{sig}}", {{args["log"]["numCols"]}} + timestampCols)
+{%- for table_name in custom_table_names %}
+num_cols = 1
+  {%- for sig, args in custom_tables[table_name].items() %}
+num_cols += {{args["log"]["num_cols"]}}
+  {%- endfor %}
+createQuery(
+  &customTableQueries[{{loop.index0}}],
+  <char *>b"{{table_name}}",
+  num_cols
+)
 {%- endfor %}
 
+# assumes flush occurs in less than SQL_LOGGER_FLUSH ticks
+tableBufSize = 2 * SQL_LOGGER_FLUSH
+bufferOffsetCur = 0
+bufferOffsetStrt = 0
+bufferOffsetEnd = 0
 
 # tick-view signals buffer
-# TODO this should be signal size
-tickViewBufSize = 2 * SQL_LOGGER_FLUSH
-tickViewBufSizeBytes = sizeof(tickViewData) * tickViewBufSize
-tickViewBufStrt = <tickViewData *>malloc(tickViewBufSizeBytes)
-tickViewBufEnd = tickViewBufStrt + tickViewBufSize
-pTickDataCur = tickViewBufStrt
-pTickDataStart = tickViewBufStrt
-for i, sig in enumerate(tick_view_keys):
-  args = tick_view_sigs[sig]
+tickTableBufStrt = <tickTableData *>malloc(
+  sizeof(tickTableData) * tableBufSize
+)
+for i, sig in enumerate(tick_table_keys):
+  args = tick_table[sig]
   sig_buf_size_bytes = args["buf_size_bytes"]
-  tickViewBufStrt[0].sigs[i] = <uint8_t *>malloc(
-    sig_buf_size_bytes * tickViewBufSize
+  tickTableBufStrt[0].sigs[i] = <uint8_t *>malloc(
+    sig_buf_size_bytes * tableBufSize
   )
-  for j in range(1, tickViewBufSize):
-    tickViewBufStrt[j].sigs[i] = tickViewBufStrt[0].sigs[i] + <uint64_t>(
+  for j in range(1, tableBufSize):
+    tickTableBufStrt[j].sigs[i] = tickTableBufStrt[0].sigs[i] + <uint64_t>(
       j * sig_buf_size_bytes
     )
 
 # per-signal buffers
-signalViewBufSize = 2 * SQL_LOGGER_FLUSH
-signalViewBufSizeBytes = sizeof(signalViewData) * signalViewBufSize
-signalViewBufStrt = <signalViewData *>malloc(signalViewBufSizeBytes)
-signalViewBufEnd = signalViewBufStrt + signalViewBufSize
-pSigDataCur = signalViewBufStrt
-pSigDataStart = signalViewBufStrt
-for i, sig in enumerate(signal_view_keys):
-  args = signal_view_sigs[sig]
-  sig_buf_size_bytes = args["buf_size_bytes"]
-  signalViewBufStrt[0].sigs[i] = <uint8_t *>malloc(
-    sig_buf_size_bytes * signalViewBufSize
+for i, table_name in enumerate(custom_table_names):
+  customTableBufStrts[i] = <customTableData *>malloc(
+    sizeof(customTableData) * tableBufSize
   )
-  # TODO allow custom timestamps
-  ts_buf_size_bytes = args["packet_size"] * args["max_packets_per_tick"] * sizeof(int64_t)
-  signalViewBufStrt[0].timestamps[i] = <int64_t *>malloc(ts_buf_size_bytes)
-  for j in range(1, signalViewBufSize):
-    signalViewBufStrt[j].sigs[i] = signalViewBufStrt[0].sigs[i] + <int>(
-      j * sig_buf_size_bytes
+
+  # allocate memory for signal data
+  table_sigs = custom_table_sigs[table_name]
+  # this is validated to be the same for all table_sigs
+  args = custom_tables[table_name][table_sigs[0]]
+  tk_buf_size_bytes = (
+    args["packet_size"] * args["max_packets_per_tick"] * sizeof(int64_t)
+  )
+
+  # allocate buffers for ticks and counters and pointer buffer for signals
+  # for each struct
+  customTableBufStrts[i][0].sigs = <uint8_t **>malloc(
+    sizeof(uint8_t *) * len(table_sigs) * tableBufSize
+  )
+  customTableBufStrts[i][0].ticks = <int64_t *>malloc(
+    tk_buf_size_bytes * tableBufSize
+  )
+  customTableBufStrts[i][0].sigNumPktsRecvd = <uint32_t *>malloc(
+    sizeof(uint32_t) * len(table_sigs) * tableBufSize
+  )
+
+  for j in range(1, tableBufSize):
+    customTableBufStrts[i][j].sigs = (
+      customTableBufStrts[i][0].sigs + (
+        <uint64_t>(j * sizeof(uint8_t *) * len(table_sigs))
+      )
     )
-    signalViewBufStrt[j].timestamps[i] = signalViewBufStrt[0].timestamps[i] + (
-      <int>(j * ts_buf_size_bytes)
+    customTableBufStrts[i][j].ticks = (
+      customTableBufStrts[i][0].ticks + (<int>(j * tk_buf_size_bytes))
+    )
+    customTableBufStrts[i][j].sigNumPktsRecvd = (
+      customTableBufStrts[i][0].sigNumPktsRecvd + (
+        <int>(j * sizeof(uint32_t) * len(table_sigs))
+      )
     )
 
+  # allocate signal data buffers
+  for j, sig in enumerate(table_sigs):
+    args = custom_tables[table_name][sig]
+    sig_buf_size_bytes = args["buf_size_bytes"]
+    customTableBufStrts[i][0].sigs[j] = <uint8_t *>malloc(
+      sig_buf_size_bytes * tableBufSize
+    )
 
+    for k in range(1, tableBufSize):
+      customTableBufStrts[i][k].sigs[j] = (
+        customTableBufStrts[i][0].sigs[j] + <int>(k * sig_buf_size_bytes)
+      )
+
+for i in range(len(in_sig_keys)):
+  customTableOnes[i] = 1
+
+dbArrOffset = 0
+if num_tick_table != 0:
+  prepareTable(
+    DATALOGGER_SIGNALS_TABLE_NAME,
+    &databaseArray[0],
+    &tickTableCols,
+    {{tick_table|length}} + {{tick_view_extra_cols}} + 1,
+    tick_table,
+  )
+  dbArrOffset += 1
+
+{% for table_name in custom_table_names %}
+  {%- set outer_loop = loop %}
+# one column for ticks
+num_cols = 1
+  {%- for sig, args in custom_tables[table_name].items() %}
+num_cols += {{args["log"]["num_cols"]}}
+  {%- endfor %}
+prepareTable(
+  <char *>b"{{table_name}}",
+  &databaseArray[{{outer_loop.index0}} + dbArrOffset],
+  &customTableCols[{{outer_loop.index0}}],
+  num_cols,
+  custom_tables["{{table_name}}"],
+)
+{%- endfor %}
+
+
+# initialize message pack memory for matrix signals
+msgpack_init(
+  msgpackBufs, msgpackPkrs, in_sig_sigs, msgpack_sigs
+)
 
 openDatabase(&db, "{{ out_signal['args']['save_file'] }}", db_index, currDbName)
 rc = sqlite3_exec(db, "PRAGMA journal_mode = MEMORY;", NULL, NULL, &zErrMsg)
@@ -611,81 +722,14 @@ if (rc != SQLITE_OK):
   sqlite3_free(zErrMsg)
   die("SQL pragma error\n")
 
-{% if tick_view_sigs|length != 0 %}
-prepareTable(
-  &tickViewCols,
-  {{tick_view_sigs|length}} + {{tick_view_extra_cols}},
-  tick_view_sigs,
-  0
-)
-{%- endif %}
-
-{% for sig, args in signal_view_sigs.items() %}
-num_cols = {{args["log"]["numCols"]}}
-  {%- if args["log"]["timestamps"] %}
-num_cols += {{args["log"]["timestamps"]}}
-  {%- endif %}
-prepareTable(
-  &signalViewCols[{{loop.index0}}],
-  num_cols,
-  {"{{sig}}": signal_view_sigs["{{sig}}"]},
-  {{args["log"]["timestamps"]}}
-)
-{%- endfor %}
-
-dbArrOffset = 0
-{%- if tick_view_sigs|length != 0 %}
-databaseArray[0].tableName = DATALOGGER_SIGNALS_TABLE_NAME
-databaseArray[0].numCol = {{tick_view_sigs|length}} + {{tick_view_extra_cols}}
-databaseArray[0].columns = tickViewCols
-dbArrOffset = 1
-{%- endif %}
-
-{%- for sig, args in signal_view_sigs.items() %}
-i = {{loop.index0}} + dbArrOffset
-databaseArray[i].tableName = b"{{sig}}"
-num_cols = {{args["log"]["numCols"]}}
-  {% if args["log"]["timestamps"] %}
-num_cols += {{args["log"]["timestamps"]}}
-  {%- endif %}
-databaseArray[i].numCol = num_cols
-databaseArray[i].columns = signalViewCols[{{loop.index0}}]
-{% endfor %}
-
-{%- if (tick_view_sigs|length + signal_view_sigs|length) != 0 %}
-createTables(db, databaseArray, {{logger_num_tables}})
-{%- endif %}
-
-# initialize message pack for numpy signals
-cdef uint64_t zeroVal = 0
-for sig, args in in_sig_sigs.items():
-  if args["log"]["enable"] and args["log"]["type"] == "msgpack":
-    m_i = msgpack_sigs.index(sig)
-    msgpack_sbuffer_init(&msgpackBufs[m_i])
-    msgpack_packer_init(
-      &msgpackPkrs[m_i], &msgpackBufs[m_i], msgpack_sbuffer_write
-    )
-    # enlarge buffer before main execution
-    if sig in source_outputs:
-      # this should really be on a packet level
-      msgpack_pack_array(&msgpackPkrs[m_i], 2 * args["packet_size"])
-      for _ in range(2 * args["packet_size"]):
-        msgpack_pack(
-          args["dtype_msgpack"], &msgpackPkrs[m_i], <void*>&zeroVal, 0
-        )
-    else:
-      msgpack_pack_array(&msgpackPkrs[m_i], args["packet_size"])
-      for _ in range(args["packet_size"]):
-        msgpack_pack(
-          args["dtype_msgpack"], &msgpackPkrs[m_i], <void*>&zeroVal, 0
-        )
+if num_tick_table + num_custom_tables != 0:
+  createTables(db, databaseArray, {{logger_num_tables}})
 
 initialized = True
 
-
 # __DRIVER_CODE__ write
 
-{%- if (tick_view_sigs|length + signal_view_sigs|length) == 0 %}
+{%- if (tick_table|length + custom_tables|length) == 0 %}
   time.sleep(0.01)
 {%- else %}
 
@@ -693,14 +737,18 @@ initialized = True
   # signals can be put in separate tables if needed for multiple async.
   # sufficient ticks must be buffered for async to work. error handling??
   # parsing happens on async side, so need previous tick signals exposed here
-  bufferSignals()
+  bufferSignals(
+    bufferOffsetCur, tableBufSize, tickTableBufStrt, customTableBufStrts
+  )
+  bufferOffsetCur += 1
+  if (bufferOffsetCur == tableBufSize):
+    bufferOffsetCur = 0
 
   # after SQL_LOGGER_FLUSH ticks, flush buffered data to DB
   # TODO this has to be a different var since numTicks is not accurate for async
   tick_count += 1
   if (tick_count % SQL_LOGGER_FLUSH == 0):
-    pTickDataEnd = pTickDataCur
-    pSigDataEnd = pSigDataCur
+    bufferOffsetEnd = bufferOffsetCur
     flushToDisk()
 
 
@@ -709,34 +757,40 @@ initialized = True
 
 # __DRIVER_CODE__ exit_handler
 
-  global msgpackBufs, tickViewBufStrt, tickViewCols, tick_count, pNumTicks, pTickDataStart, pTickDataEnd, pSigDataStart, pSigDataEnd, initialized, flushing
+  global msgpackBufs, tickTableBufStrt, tickTableCols, customTableBufStrts, customTableCols, pNumTicks, initialized, flushing, bufferOffsetCur, bufferOffsetEnd, tick_table_keys, custom_table_names
 
   cdef int rc
+  cdef int i, j
 
   # perform final flush of buffered data
   if initialized and not flushing:
-    pTickDataEnd = pTickDataCur
-    pSigDataEnd = pSigDataCur
+    bufferOffsetEnd = bufferOffsetCur
     flushToDisk()
 
-  if tickViewBufStrt != NULL:
-    for i, sig in enumerate(tick_view_keys):
-      free(tickViewBufStrt[0].sigs[i])
-    free(tickViewBufStrt)
+  if tickTableBufStrt != NULL:
+    for i, sig in enumerate(tick_table_keys):
+      free(tickTableBufStrt[0].sigs[i])
+    free(tickTableBufStrt)
 
-  if signalViewBufStrt != NULL:
-    for i, sig in enumerate(signal_view_keys):
-      free(signalViewBufStrt[0].sigs[i])
-      free(signalViewBufStrt[0].timestamps[i])
-    free(signalViewBufStrt)
+  for i, table_name in enumerate(custom_table_names):
+    if customTableBufStrts[i] != NULL:
+      for j in range(len(custom_table_sigs[table_name])):
+        free(customTableBufStrts[i][0].sigs[j])
+      free(customTableBufStrts[i][0].sigNumPktsRecvd)
+      free(customTableBufStrts[i][0].ticks)
+      free(customTableBufStrts[i][0].sigs)
+      free(customTableBufStrts[i])
 
-  for i in range(len(tick_view_sigs)):
-    free(tickViewCols[i].colName)
-  free(tickViewCols)
-  for i, (sig, args) in enumerate(signal_view_sigs.items()):
-    for j in range(args["log"]["numCols"]):
-      free(signalViewCols[i][j].colName)
-    free(signalViewCols[i])
+  if tickTableCols != NULL:
+    for i in range(len(tick_table)):
+      free(tickTableCols[i].colName)
+    free(tickTableCols)
+
+  for i, table_name in enumerate(custom_table_names):
+    if customTableCols[i] != NULL:
+      for j in range(len(custom_table_sigs[table_name])):
+        free(customTableCols[i][j].colName)
+      free(customTableCols[i])
 
   # destroy msgpack signals
   for i in range(len(msgpack_sigs)):

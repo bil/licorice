@@ -1,9 +1,9 @@
 CC = gcc
 DEFAULTFLAGS = -Wall 
-CFLAGS = -O2 $(DEFAULTFLAGS)
+CFLAGS = -O0 $(DEFAULTFLAGS)
 CFLAGSUNOPT = -O0 $(DEFAULTFLAGS)
 CFLAGS+ = -g -O2 $(DEFAULTFLAGS)
-CYFLAGS = -Os -I {{py_incl}} -I {{numpy_incl}}
+CYFLAGS = -O0 -I {{py_incl}} -I {{numpy_incl}}
 LDFLAGS = -levent -pthread -lsqlite3 {{extra_incl}}
 LDTESTFLAGS = -lsqlite3 -pthread
 CYLDFLAGS = {{py_lib}} -lsqlite3 {% if line %}-lasound{% endif %} {{py_link_flags}} {{extra_incl}} # -lpthread -lm -lutil -ldl should be included in py_link_flags

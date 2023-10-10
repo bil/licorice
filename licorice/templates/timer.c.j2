@@ -125,7 +125,9 @@ sigset_t exitMask;
 static int running = true;
 static int sigchld_recv;
 
+#ifndef __APPLE__
 static int num_cores = {{num_cores}};
+#endif
 static size_t ex_i, al_i;
 
 struct period_info {
@@ -467,8 +469,6 @@ void *timer_task(void *data) {
 
 int run_child_process(char *procName, ChildDict *child) {
   int ch_pid;
-  int cpu_affinity = child->cpu_affinity;
-  int priority = TIMER_PRIORITY - 1;
 
   // fork and exec child process
   if ((ch_pid = fork()) == -1) {
@@ -476,6 +476,9 @@ int run_child_process(char *procName, ChildDict *child) {
   }
   if (ch_pid == 0) { // only runs for child
 #ifndef __APPLE__
+    int cpu_affinity = child->cpu_affinity;
+    int priority = TIMER_PRIORITY - 1;
+
     // create CPU affinity mask for runner
     cpu_set_t cpu_affinity_mask;
     CPU_ZERO(&cpu_affinity_mask);

@@ -476,7 +476,7 @@ def compile_model(model, **kwargs):  # noqa: E302
 def __run_model(**kwargs):
     _, _, paths = __load_and_validate_model(**kwargs)
     os_env = os.environ.copy()
-    os_env["PYTHONPATH"] = get_python_lib()
+    os_env["PYTHONPATH"] = get_python_lib() + ":."
     if kwargs["rt"]:
         # TODO rt models must set up cpuset themselves.
         # integrate this into LiCoRICE

@@ -48,10 +48,10 @@ signals:
       enable: true
     # matrices are flattened, packed through msgpack, and stored as a blob in
     # a single column this signal will receive columns named m_f8_matrix_out
-      view: tick
-    # logger view may be 'tick' or 'signal'. 'tick' view logs this signal as
-    # part of the main table and 'signal' view logs this signal in a separate
-    # table
+      table: tick
+    # logger table may be 'tick' or 'custom'. 'tick' logs this signal as
+    # part of the main signals table and 'custom' view logs this signal in a
+    # separate table
 
 modules:
 

@@ -17,7 +17,6 @@
 #define QUESTION "?"
 // constants for buffering data
 // number of seconds to buffer
-#define NUM_MS_IN_S 1000
 #define SQL_TEXT_FIELD_LEN 64
 
 void sql_bind_int(sqlite3_stmt *stmt, int index, const char* dtype, const void* value);

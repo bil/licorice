@@ -949,20 +949,27 @@ def parse(paths, config, confirmed):
 
             # if logger, group signals in different data structs depending on
             # storage type
-            tick_view_sigs = {}
-            signal_view_sigs = {}  # signals to be logged in their own tables
+            tick_table_sigs = {}
+            custom_tables = {}  # signals to be logged in their own tables
             msgpack_sigs = []  # signals to be wrapped in msgpack
             extra_cols = 0
 
             if out_signal["args"]["type"] == "disk":
                 # TODO this validation and logic should be moved to driver
-                # TODO validate history is at least FLUSH length and
-                # set automatically if not
 
                 # TODO figure out buffer sizing
                 schema_size = 0
                 for sig in in_signals:
                     args = in_signals[sig]
+
+                    # validate history is at least FLUSH length
+                    sql_logger_flush = config["config"]["sql_logger_flush"]
+                    if args["history"] < sql_logger_flush:
+                        print(
+                            "Warning: logger in signal history must be "
+                            "at least sql_logger_flush "
+                        )
+                        args["history"] = sql_logger_flush
 
                     # format and validate `log` keyword args
                     log = args.get("log")
@@ -971,8 +978,8 @@ def parse(paths, config, confirmed):
                             args["log"] = {
                                 "enable": True,
                                 "type": "auto",
-                                "view": "tick",
-                                "numCols": 1,
+                                "table": "tick",
+                                "num_cols": 1,
                             }
                         else:
                             continue
@@ -980,9 +987,9 @@ def parse(paths, config, confirmed):
                         if log.get("enable", True):
                             if "type" not in log:
                                 log["type"] = "auto"
-                            if "view" not in log:
-                                log["view"] = "tick"
-                            log["numCols"] = 1
+                            if "table" not in log:
+                                log["table"] = "tick"
+                            log["num_cols"] = 1
                             log["enable"] = True
                         else:
                             continue
@@ -991,45 +998,41 @@ def parse(paths, config, confirmed):
                             "`log` keyword must have type bool or dict"
                         )
                     log = args["log"]
-                    if log["view"] == "tick":
+                    if log["table"] == "tick":
                         in_signals[sig] = args
-                        tick_view_sigs[sig] = args
-                    elif log["view"] == "signal":
-                        log["timestamps"] = 1
-                        in_signals[sig] = args
-                        signal_view_sigs[sig] = args
+                        tick_table_sigs[sig] = args
                     else:
-                        raise ValueError(
-                            "log view must be 'tick' or 'signal' if specified"
-                        )
+                        if log["table"] == "signal":
+                            table_name = sig
+                        else:
+                            table_name = log["table"]
+                        in_signals[sig] = args
+                        if custom_tables.get(table_name):
+                            custom_tables[table_name][sig] = args
+                        else:
+                            custom_tables[table_name] = {sig: args}
 
                     schema_size += args["buf_tot_numel"] * args["bytes"]
 
                     # automatically determine  optimal signal storage type
                     if log["type"] == "auto":
-                        if (type(args["shape"]) == int) or (
-                            len(args["shape"]) == 1
+                        if (
+                            isinstance(args["shape"], int)
+                            or len(args["shape"]) == 1
                         ):  # if 1D signal
-                            if args["shape"] == 1:
+                            if args["shape"] == 1:  # scalar
                                 in_signals[sig]["log"]["type"] = "scalar"
                             else:  # vector
-                                if out_signal.get("async"):  # TODO revisit
-                                    in_signals[sig]["log"]["type"] = "msgpack"
-                                    msgpack_sigs.append(sig)
-                                else:
-                                    extra_cols += (
-                                        args["packet_size"] - 1
-                                    )  # only count *extra* columns
+                                in_signals[sig]["log"]["type"] = "vector"
                         else:  # shape is matrix
                             in_signals[sig]["log"]["type"] = "msgpack"
-                            msgpack_sigs.append(sig)
 
                     # assign specified storage
-                    elif (type(args["shape"]) == int) or (
+                    if isinstance(args["shape"], int) or (
                         len(args["shape"]) == 1
                     ):  # if 1D signal
                         if log["type"] == "vector":
-                            in_signals[sig]["log"]["numCols"] = args[
+                            in_signals[sig]["log"]["num_cols"] = args[
                                 "packet_size"
                             ]
                             extra_cols += (
@@ -1071,8 +1074,25 @@ def parse(paths, config, confirmed):
                     }
                 }
 
-            logger_num_tables = len(signal_view_sigs)
-            if any(tick_view_sigs):
+                # validate custom signal tables
+                for table, sigs in custom_tables.items():
+                    if len(sigs) > 1:
+                        first = True
+                        for sig, arg in sigs.items():
+                            if first:
+                                packet_size = args["packet_size"]
+                                max_packets_per_tick = args[
+                                    "max_packets_per_tick"
+                                ]
+                            else:
+                                assert packet_size == args["packet_size"]
+                                assert (
+                                    max_packets_per_tick
+                                    == args["max_packets_per_tick"]
+                                )
+
+            logger_num_tables = len(custom_tables)
+            if any(tick_table_sigs):
                 logger_num_tables += 1
 
             driver_template_name = f'{out_signal["args"]["type"]}'
@@ -1125,8 +1145,13 @@ def parse(paths, config, confirmed):
                 else min([x["history"] for x in in_signals.values()]),
                 # logger-specific:
                 "tick_view_extra_cols": extra_cols,
-                "tick_view_sigs": tick_view_sigs,
-                "signal_view_sigs": signal_view_sigs,
+                "tick_table": tick_table_sigs,
+                "custom_table_names": list(custom_tables.keys()),
+                "custom_table_sigs": {
+                    table: [sig for sig, args in sigs.items()]
+                    for table, sigs in custom_tables.items()
+                },
+                "custom_tables": custom_tables,
                 "msgpack_sigs": msgpack_sigs,
                 "logger_num_tables": logger_num_tables,
             }

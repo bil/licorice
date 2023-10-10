@@ -106,7 +106,7 @@ cdef uint32_t *{{sig}}BufVars
 
 {% block handlers %}
 
-cdef void handle_exit(int exitStatus):
+cdef void handle_exit(int exitStatus) noexcept:
   global pmem, shm_size, pModUpSem, pModDownSem, pSigSems
   printf("EXIT HANDLER for {{name}}\n")
 

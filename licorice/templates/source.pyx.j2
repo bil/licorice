@@ -24,6 +24,7 @@ import SharedArray as sa
 # import LiCoRICE utils
 from module_utils import create_shared_array
 
+
 # headers for all sources
 cdef extern from "<sys/resource.h>":
   enum: PRIO_PROCESS
@@ -163,7 +164,7 @@ shouldExit = False
 {%- endif %}
 
 # function to close the source
-cdef void handle_exit(int exitStatus):
+cdef void handle_exit(int exitStatus) noexcept:
   global pmem, shm_size, udpReadThread, exitMutex, exitRoutine, pSourceUpSem, pSourceDownSem, pSigSems
 
 {%- if is_reader %}
@@ -397,7 +398,6 @@ while(True):
   pthread_mutex_lock(pAsyncMutex)
 
   if (({{sig}}BufVars[9] - {{sig}}BufVars[8]) > {{sig}}BufVars[6]):
-    printf("6: %ld, 8: %ld, 9: %ld\n", {{sig}}BufVars[6], {{sig}}BufVars[8], {{sig}}BufVars[9])
     printf(
       "Warning: more data recieved on tick %lld than accounted for.\n",
       pNumTicks[0]

@@ -136,9 +136,7 @@ sig_lens = {}
 {%- if has_in_signal == 1 %}
 in_sig = None
 {%- endif %}
-{%- if not is_main_process %}
 shouldExit = False
-{%- endif %}
 in_sig_keys = {{in_sig_keys}}
 
 {%- if is_writer %}
@@ -146,7 +144,7 @@ in_sig_keys = {{in_sig_keys}}
 {{ driver_code["variables"] }}
 {%- endif %}
 
-cdef void handle_exit(int exitStatus):
+cdef void handle_exit(int exitStatus) noexcept:
   global retVal, tid, radio, context, s, shmSize, pmem, pSinkUpSem, pSinkDownSem, pSigSems
   printf("EXIT HANDLER for {{name}}\n")
 

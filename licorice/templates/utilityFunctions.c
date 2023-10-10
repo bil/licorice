@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include "constants.h"
+#include <pthread.h>
 
 static sigset_t exitMask;
 static void (*exit_handler)(int errorStr);
@@ -37,7 +38,10 @@ void make_realtime() {
   if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
     die("NETWORK ERROR: memory lock error.\n");
   }
-  stack_prefault();
+
+  // stack_prefault();
+
+  // TODO revisit https://wiki.linuxfoundation.org/realtime/documentation/howto/applications/application_base
 }
 
 /*

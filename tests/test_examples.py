@@ -106,11 +106,10 @@ def test_logger(capfd, snapshot):
 
     col_names = [col[0] for col in cur.description]
     col_vals = [[] for _ in col_names]
-    # print(cur.fetchall())
     for row in cur.fetchall():
         for i in range(len(col_names)):
             val = row[i]
-            if col_names[i][0] == 'm':
+            if col_names[i][0] == "m":
                 val = msgpack.unpackb(val)
             col_vals[i].append(val)
     table_dict = OrderedDict(sorted(dict(zip(col_names, col_vals)).items()))

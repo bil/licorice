@@ -1,6 +1,7 @@
 import copy
 import math
 import sqlite3
+from collections import OrderedDict
 
 import msgpack
 import numpy as np
@@ -64,9 +65,28 @@ def get_expected_list(num_ticks, dtype, seed=None):
     return np.array(expected_list)
 
 
+def snapshot_sql_output(cur, snapshot):
+    cur.execute("PRAGMA table_info(signals);")
+    col_names = [val[1] for val in cur.fetchall()]
+
+    cur.execute("SELECT * FROM signals;")
+
+    col_vals = [[] for _ in col_names]
+    for row in cur.fetchall():
+        for i in range(len(col_names)):
+            val = row[i]
+            if col_names[i][0] == "m":
+                # TODO format msgpack signals with correct shape
+                val = msgpack.unpackb(val)
+            col_vals[i].append(val)
+
+    table_dict = OrderedDict(sorted(dict(zip(col_names, col_vals)).items()))
+    assert table_dict == snapshot
+
+
 # test logging one signal:
 @pytest.mark.parametrize("enable", [True, False])
-def test_single_signal(enable, capfd):
+def test_single_signal(enable, capfd, snapshot):
     sig_type = "uint32"
     sig_name = f"{sig_type}_signal"
 
@@ -99,22 +119,16 @@ def test_single_signal(enable, capfd):
     )
     cur = conn.cursor()
     if enable:
-        cur.execute("SELECT * FROM signals;")
-        sig_dtype = np.dtype(sig_type).type
-        values = [sig_dtype(value[0]) for value in cur.fetchall()]
-        assert len(values) == NUM_TICKS
+        snapshot_sql_output(cur, snapshot)
 
-        expected_list = get_expected_list(NUM_TICKS, sig_dtype)
-        assert np.array_equal(expected_list, values)
     else:
         cur.execute('SELECT name FROM sqlite_master WHERE type = "table"')
         results = cur.fetchall()
         assert len(results) == 0
 
 
-def test_vector(capfd):
+def test_vector(capfd, snapshot):
     vector_shape = 10
-    dtype = np.int32
     dtype_str = "int32"
 
     # create LiCoRICE model dict
@@ -144,19 +158,12 @@ def test_vector(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("SELECT * FROM signals;")
-    values = cur.fetchall()
-    assert len(values) == NUM_TICKS
 
-    expected_list = get_expected_list(
-        NUM_TICKS, dtype, seed=np.array([1] * vector_shape)
-    )
-    assert np.array_equal(expected_list, values)
+    snapshot_sql_output(cur, snapshot)
 
 
-def test_msgpack(capfd):
+def test_msgpack(capfd, snapshot):
     matrix_shape = (4, 4)
-    dtype = np.float32
     dtype_str = "float32"
 
     # create LiCoRICE model dict
@@ -186,18 +193,8 @@ def test_msgpack(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("SELECT * FROM signals;")
-    values = [
-        np.array(msgpack.unpackb(value[0])).reshape(matrix_shape)
-        for value in cur.fetchall()
-    ]
-    assert len(values) == NUM_TICKS
 
-    expected_list = get_expected_list(
-        NUM_TICKS, dtype, seed=np.array(np.ones(matrix_shape))
-    )
-    values = np.array(values)
-    assert np.array_equal(expected_list, values)
+    snapshot_sql_output(cur, snapshot)
 
 
 @pytest.mark.parametrize("enable", [True, False])
@@ -241,6 +238,7 @@ def test_multi_signal(enable, capfd):
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(signals);")
     col_names = [val[1] for val in cur.fetchall()]
+    col_names.remove("tick_num")
     cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
     values = cur.fetchall()
     assert len(values) == NUM_TICKS
@@ -316,7 +314,10 @@ def test_suffixes(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("SELECT * FROM signals;")
+    cur.execute("PRAGMA table_info(signals);")
+    col_names = [val[1] for val in cur.fetchall()]
+    col_names.remove("tick_num")
+    cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
     values = cur.fetchall()
     assert len(values) == NUM_TICKS
 
@@ -325,8 +326,7 @@ def test_suffixes(capfd):
     )
     assert np.array_equal(expected_list, values)
 
-    cur.execute("PRAGMA table_info(signals);")
-    table_suffixes = [val[1].split("_")[-1] for val in cur.fetchall()]
+    table_suffixes = [name.split("_")[-1] for name in col_names]
     assert len(suffixes) == len(table_suffixes)
     assert set(suffixes) == set(table_suffixes)
 
@@ -371,7 +371,10 @@ def test_create_new_db(new_db_num_ticks, sql_logger_flush, capfd):
             f"{pytest.test_dir}/module_code/run.lico/out/data_000{i}.db"
         )
         cur = conn.cursor()
-        cur.execute("SELECT * FROM signals;")
+        cur.execute("PRAGMA table_info(signals);")
+        col_names = [val[1] for val in cur.fetchall()]
+        col_names.remove("tick_num")
+        cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
         vals = cur.fetchall()
         if i == num_dbs - 1:
             assert (
@@ -447,25 +450,38 @@ def test_logging_from_source(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("SELECT * FROM signals;")
+    cur.execute("PRAGMA table_info(signals);")
+    col_names = [val[1] for val in cur.fetchall()]
+    col_names.remove("tick_num")
+    cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
     values = [
-        np.array(msgpack.unpackb(value[0])).reshape((10,))
-        for value in cur.fetchall()
+        value for value in cur.fetchall()
     ]
     assert len(values) == NUM_TICKS
 
-    # print(np.array(values)[:3,:])
     values = np.array(values).flatten()
     t = np.linspace(0, 1, int(fs), endpoint=False)
     expected = amplitude * np.sin(2 * np.pi * f * t, dtype=np.float64) + offset
     assert np.allclose(expected, values)
 
 
-def test_per_signal_tables(capfd):
+def test_signal_and_custom_tables(capfd):
     num_ticks = 10
     tick_len = 10000
-    sig_type = "int64"
-    sig_name = f"{sig_type}_signal"
+    signal_table_type = "int64"
+    sig_name = f"{signal_table_type}_signal"
+
+    custom_table_types = ["float32", "int8"]
+    custom_sig_names = [f"{dtype}_signal" for dtype in custom_table_types]
+    custom_signals = {
+        f"{dtype}_signal": {
+            "shape": 1,
+            "dtype": dtype,
+            "log": {"enable": True, "table": "custom"},
+            "max_packets_per_tick": 11,
+        }
+        for dtype in custom_table_types
+    }
 
     # create LiCoRICE model dict
     logger_model = copy.deepcopy(logger_model_template)
@@ -473,14 +489,13 @@ def test_per_signal_tables(capfd):
     logger_model["config"]["tick_len"] = tick_len
     logger_model["signals"] = {
         sig_name: {
-            "shape": 1,
-            "dtype": sig_type,
-            "log": {"enable": True, "view": "signal"},
+            "shape": (1,),
+            "dtype": signal_table_type,
+            "log": {"enable": True, "table": "signal"},
             "max_packets_per_tick": 11,
-        }
+        },
+        **custom_signals
     }
-    signal_list = [sig_name]
-    del logger_model["modules"]["signal_generator"]
     logger_model["modules"]["shared_array_in"] = {
         "language": "python",
         "in": {
@@ -497,15 +512,15 @@ def test_per_signal_tables(capfd):
             "schema": {
                 "max_packets_per_tick": 11,
                 "data": {
-                    "dtype": sig_type,
+                    "dtype": signal_table_type,
                     "size": 1,
                 },
             },
             "async": True,
         },
-        "out": signal_list,
+        "out": [sig_name],
     }
-    logger_model["modules"]["logger"]["in"] = signal_list
+    logger_model["modules"]["logger"]["in"] = [sig_name, *custom_sig_names]
 
     sa_sig_name = logger_model["modules"]["shared_array_in"]["in"][
         "args"
@@ -513,6 +528,8 @@ def test_per_signal_tables(capfd):
     sa_sig = create_shared_array(sa_sig_name, 100, np.uint64)
     for i in range(sa_sig.size):
         sa_sig[i] = i + 1
+
+    logger_model["modules"]["signal_generator"]["out"] = custom_sig_names
 
     # run LiCoRICE
     licorice.go(
@@ -526,7 +543,7 @@ def test_per_signal_tables(capfd):
 
     validate_model_output(capfd, num_ticks)
 
-    # read values written to sqlite database
+    # validate async signal
     conn = sqlite3.connect(
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
@@ -534,12 +551,8 @@ def test_per_signal_tables(capfd):
     cur.execute(f"SELECT tick_num FROM {sig_name};")
     ticks = [np.int64(value[0]) for value in cur.fetchall()]
 
-    cur.execute(f"SELECT r_i8_int64_signal FROM {sig_name};")
-    sig_dtype = np.dtype(sig_type).type
-    values = [sig_dtype(value[0]) for value in cur.fetchall()]
-
-    print(ticks)
-    print(values)
+    cur.execute(f"SELECT v_i8_int64_signal_0 FROM {sig_name};")
+    values = [vals[0] for vals in cur.fetchall()]
 
     assert len(values) > 0
     assert len(ticks) == len(values)
@@ -549,6 +562,40 @@ def test_per_signal_tables(capfd):
 
     for i in range(1, len(values)):
         assert (
-            (values[i] == 1 and values[i-1] == 100) or
-            (values[i] - values[i-1] == 1)
+            (values[i] == 1 and values[i - 1] == 100) or
+            (values[i] - values[i - 1] == 1)
         )
+
+    # validate synchronous signals
+    cur.execute("SELECT tick_num FROM custom;")
+    ticks = [np.int64(value[0]) for value in cur.fetchall()]
+    cur.execute("SELECT r_i1_int8_signal, r_f4_float32_signal FROM custom;")
+    ints_and_floats = cur.fetchall()
+    ints = [vals[0] for vals in ints_and_floats]
+    floats = [vals[1] for vals in ints_and_floats]
+
+    assert len(ints) > 0
+    assert len(floats) > 0
+    assert len(ticks) == len(ints)
+    assert len(ticks) == len(floats)
+
+    for i in range(1, len(ticks)):
+        assert ticks[i] - ticks[i - 1] == 1
+
+    for i in range(1, len(ints)):
+        assert (
+            (ints[i] == 1 and ints[i - 1] == 100) or
+            (ints[i] - ints[i - 1] == 1)
+        )
+
+    for i in range(1, len(floats)):
+        assert (
+            (ints[i] == 1. and ints[i - 1] == 100.) or
+            (ints[i] - ints[i - 1] == 1.)
+        )
+
+
+# TODO
+# potential defaults
+# - system time logged in signals table
+# - auto-group signals into tables from async sources
