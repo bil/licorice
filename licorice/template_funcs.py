@@ -444,13 +444,20 @@ def parse(paths, config, confirmed):
         if signal_args["sig_shape"] == "":
             signal_args["sig_shape"] = str(signal_args["shape"]) + ")"
 
+        if "max_packets_per_tick" not in signal_args:
+            # TODO top-level signals should potentially inherit from source
+            signal_args["max_packets_per_tick"] = 1
+
         # TODO test setting this to low values
         if "history" not in signal_args:
             signal_args["history"] = HISTORY_DEFAULT
-        signal_history = signal_args["history"]
+
+        if signal_args["history"] < signal_args["max_packets_per_tick"]:
+            signal_args["history"] = signal_args["max_packets_per_tick"]
+            warnings.warn("history must be at least max_packets_per_tick.")
 
         signal_args["sig_shape"] = (
-            f"({signal_history}," f"{signal_args['sig_shape']}"
+            f"({signal_args['history']}," f"{signal_args['sig_shape']}"
         )
         signal_args["buf_tot_numel"] = np.prod(
             np.array(literal_eval(str(signal_args["sig_shape"])))
@@ -461,10 +468,6 @@ def parse(paths, config, confirmed):
         signal_args["ctype"] = fix_dtype(signal_args["dtype"])
         signal_args["dtype_msgpack"] = fix_dtype_msgpack(signal_args["dtype"])
         signal_args["bytes"] = bytes_for_ctype(signal_args["ctype"])
-
-        if "max_packets_per_tick" not in signal_args:
-            # TODO top-level signals should potentially inherit from source
-            signal_args["max_packets_per_tick"] = 1
 
         signal_args["buf_size_bytes"] = (
             signal_args["max_packets_per_tick"]
@@ -1028,29 +1031,28 @@ def parse(paths, config, confirmed):
                             in_signals[sig]["log"]["type"] = "msgpack"
 
                     # assign specified storage
-                    if isinstance(args["shape"], int) or (
-                        len(args["shape"]) == 1
-                    ):  # if 1D signal
-                        if log["type"] == "vector":
-                            in_signals[sig]["log"]["num_cols"] = args[
-                                "packet_size"
-                            ]
-                            extra_cols += (
-                                args["packet_size"] - 1
-                            )  # only count *extra* columns
-                        elif log["type"] == "text":
-                            # determine number of bytes in one signal
-                            # element
-                            shape = str(args["shape"])
-                            if "16" in shape:
-                                numBytes = 2
-                            elif "32" in shape:
-                                numBytes = 4
-                            elif "64" in shape:
-                                numBytes = 8
-                            else:  # int8
-                                numBytes = 1
-                            in_signals[sig]["log"]["numBytes"] = numBytes
+                    if log["type"] == "scalar":
+                        pass
+                    elif log["type"] == "vector":
+                        in_signals[sig]["log"]["num_cols"] = args[
+                            "packet_size"
+                        ]
+                        extra_cols += (
+                            args["packet_size"] - 1
+                        )  # only count *extra* columns
+                    elif log["type"] == "text":
+                        # determine number of bytes in one signal
+                        # element
+                        shape = str(args["shape"])
+                        if "16" in shape:
+                            numBytes = 2
+                        elif "32" in shape:
+                            numBytes = 4
+                        elif "64" in shape:
+                            numBytes = 8
+                        else:  # int8
+                            numBytes = 1
+                        in_signals[sig]["log"]["numBytes"] = numBytes
                     elif log["type"] == "msgpack":
                         msgpack_sigs.append(sig)
                     else:  # store as msgpack
@@ -1139,10 +1141,10 @@ def parse(paths, config, confirmed):
                 "source_outputs": list(source_outputs),
                 "history_pad_length": HISTORY_DEFAULT,
                 "platform_system": platform_system,
-                # TODO add clear documentation on how to set this
+                # TODO add clear documentation on how to set this and check max
                 "async_buf_len": None
                 if (not async_sink)
-                else min([x["history"] for x in in_signals.values()]),
+                else max([x["history"] for x in in_signals.values()]),
                 # logger-specific:
                 "tick_view_extra_cols": extra_cols,
                 "tick_table": tick_table_sigs,

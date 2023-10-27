@@ -167,7 +167,7 @@ void createTables(sqlite3 *db, SQLTable* databaseArr, int numTables) {
     strcat(cmd, CLOSE_BRACE_SEMI);
     rc = sqlite3_exec(db, cmd, NULL, NULL, &zErrMsg);
     if (rc != SQLITE_OK) {
-      printf("%s\n", *zErrMsg);
+      printf("%s\n", zErrMsg);
       fflush(stdout);
       sqlite3_free(zErrMsg);
       die("SQL create tables error\n");

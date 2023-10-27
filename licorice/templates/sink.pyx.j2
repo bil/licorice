@@ -368,13 +368,14 @@ while(True):
     (pAsyncFlushIndexEnd[0] == ASYNC_BUF_LEN) and
     (pAsyncFlushIndexStrt[0] == 0)
   ):
-    die("Async buffer overrun. Consider increasing signal history sizes.")
+    die("Async buffer overrun. Consider increasing signal history sizes.\n")
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].tickNum = pNumTicks[0]
   {% for sig,args in in_signals.items() %}
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffsetSamples = {{sig}}BufVars[0]
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffset = {{sig}}BufVars[8]
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}EndOffset ={{sig}}BufVars[9]
-  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+  # TODO make sure this is packets everywhere
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}Len = {{sig}}BufVars[9] - {{sig}}BufVars[8]
   {% endfor %}
   pAsyncFlushIndexEnd[0] += 1
   if pAsyncFlushIndexEnd[0] >= ASYNC_BUF_LEN:
@@ -403,12 +404,13 @@ while(True):
   asyncStrtOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffset
   asyncEndOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}EndOffset
   asyncStrtOffsetSamples[s_i] = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffsetSamples
-  if asyncEndOffset - asyncStrtOffset == 1:
-    sigs["{{sig}}"] = {{sig}}Raw[asyncStrtOffset]
-    {{sig}} = sigs["{{sig}}"]
-  else:
-    sigs["{{sig}}"] = {{sig}}Raw[asyncStrtOffset:asyncEndOffset]
-    {{sig}} = sigs["{{sig}}"]
+      {%- if args["max_packets_per_tick"] == 1 %}
+  sigs["{{sig}}"] = {{sig}}Raw[asyncStrtOffset]
+  {{sig}} = sigs["{{sig}}"]
+      {%- else %}
+  sigs["{{sig}}"] = {{sig}}Raw[asyncStrtOffset:asyncEndOffset]
+  {{sig}} = sigs["{{sig}}"]
+      {%- endif %}
   sig_lens["{{sig}}"] = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}Len
   {{sig}}Len =  sig_lens["{{sig}}"]
     {% endfor %}
@@ -429,12 +431,14 @@ while(True):
 
   # perform parsing for each packet
     {% for sig, args in in_signals.items() %}
-  if {{sig}}BufVars[9] - {{sig}}BufVars[8] == 1:
-    sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]]
-    {{sig}} = sigs["{{sig}}"]
-  else:
-    sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
-    {{sig}} = sigs["{{sig}}"]
+      {%- if args["max_packets_per_tick"] == 1 %}
+  sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]]
+  {{sig}} = sigs["{{sig}}"]
+      {%- else %}
+  sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
+  {{sig}} = sigs["{{sig}}"]
+      {%- endif %}
+
   sig_lens["{{sig}}}"] = {{sig}}BufVars[1] - {{sig}}BufVars[0]
   {{sig}}Len = sig_lens["{{sig}}}"]
     {% endfor %}

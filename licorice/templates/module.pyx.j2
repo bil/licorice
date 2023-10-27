@@ -228,6 +228,7 @@ out_sigs["{{sig}}"] = create_shared_array(
 out_sigs["{{sig}}"].base.mlock()
 {{sig}}Raw = out_sigs["{{sig}}"]
 {{sig}}BufVars = pBufVars + {{sig_nums[sig] * buf_vars_len}}
+memset({{sig}}BufVars, 0, 16)
 {{sig}}Latency =  {{args["latency"]}}
 {{sig}}BufVars[2] = 0
 {{sig}}BufVars[10] = 0 # {{sig}}Latency
@@ -284,7 +285,7 @@ while(True):
   {%- if args["max_packets_per_tick"] == 1 %}
   {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]]
   {%- else %}
-  {{sig}} = {{sig}}Raw[{{sig}}BufVars[0]:{{sig}}BufVars[1]]
+  {{sig}} = {{sig}}Raw[{{sig}}BufVars[8]:{{sig}}BufVars[9]]
   {%- endif %}
   {{sig}}Len = {{sig}}BufVars[1] - {{sig}}BufVars[0]
 {% endfor %}

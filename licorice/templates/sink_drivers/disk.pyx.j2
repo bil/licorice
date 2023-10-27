@@ -345,12 +345,11 @@ cdef void* bufferSignals(
     # TODO this logic should have some validation
     # in the case of max_packets_per_tick != 1, must be saved as a blob or be
     # in its own table
-
     pTickDataCur = tickTableBufStrt + bufferOffsetCur
     memcpy(
       pTickDataCur.sigs[i],
       <void *><long>sigs[sig].__array_interface__["data"][0],
-      sig_lens[sig] * args["bytes"]
+      sig_lens[sig] *  args["packet_size"] * args["bytes"]
     )
     if args["max_packets_per_tick"] == 1:
       pTickDataCur.sigNumPktsRecvd[i] = 1
@@ -369,7 +368,7 @@ cdef void* bufferSignals(
       memcpy(
         pCustomDataCur.sigs[j],
         <void *><long>(sigs[sig].__array_interface__["data"][0]),
-        sig_lens[sig] * args["bytes"]
+        sig_lens[sig] * args["packet_size"] * args["bytes"]
       )
       if args["max_packets_per_tick"] == 1:
         pCustomDataCur.sigNumPktsRecvd[j] = 1
@@ -397,12 +396,13 @@ cdef void performFlush(
 
   sql_prepare(db, query, -1, &stmt, NULL)
 
-  cdef int num_extra_cols = 0 # restart counter for each row loggedc
+  cdef int num_extra_cols = 0 # restart counter for each row logged
   cdef uint8_t *pSig
 
   if tickPtr != NULL:
     sql_bind_int64(stmt, 1, tickPtr)
     num_extra_cols += 1
+
 
   for i, sig in enumerate(sig_keys):
     args = sigs[sig]
@@ -508,16 +508,16 @@ cdef void flushToDisk(bool newDB=False):
     )
     ret = sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
     if (ret != SQLITE_OK):
-      printf("%s\n", zErrMsg[0])
+      printf("%s\n", zErrMsg)
       sqlite3_free(zErrMsg)
       printf("SQL pragma error\n")
       fflush(stdout)
       return
     createTables(db, databaseArray, {{logger_num_tables}})
-
+  t1 = time.time()
   ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
   if (ret != SQLITE_OK):
-    printf("%s\n", zErrMsg[0])
+    printf("%s\n", zErrMsg)
     sqlite3_free(zErrMsg)
     printf("SQL begin transaction error: %d\n", ret)
     fflush(stdout)
@@ -569,7 +569,7 @@ cdef void flushToDisk(bool newDB=False):
 
   ret = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &zErrMsg)
   if (ret != SQLITE_OK):
-    printf("%s\n", zErrMsg[0])
+    printf("%s\n", zErrMsg)
     sqlite3_free(zErrMsg)
     printf("SQL end transaction error\n")
     fflush(stdout)
@@ -588,7 +588,8 @@ cdef void flushToDisk(bool newDB=False):
 createQuery(
   &tickTableQuery,
   DATALOGGER_SIGNALS_TABLE_NAME,
-  {{tick_table|length}} + {{tick_view_extra_cols}} + 1
+  {{tick_table|length}} + {{tick_view_extra_cols}} + 1,
+  # 1
 )
 {%- endif %}
 {%- for table_name in custom_table_names %}
@@ -599,7 +600,8 @@ num_cols += {{args["log"]["num_cols"]}}
 createQuery(
   &customTableQueries[{{loop.index0}}],
   <char *>b"{{table_name}}",
-  num_cols
+  num_cols,
+  #
 )
 {%- endfor %}
 
@@ -634,6 +636,7 @@ for i, table_name in enumerate(custom_table_names):
   table_sigs = custom_table_sigs[table_name]
   # this is validated to be the same for all table_sigs
   args = custom_tables[table_name][table_sigs[0]]
+  tk_buf_size_samples = args["packet_size"] * args["max_packets_per_tick"]
   tk_buf_size_bytes = (
     args["packet_size"] * args["max_packets_per_tick"] * sizeof(int64_t)
   )
@@ -653,15 +656,15 @@ for i, table_name in enumerate(custom_table_names):
   for j in range(1, tableBufSize):
     customTableBufStrts[i][j].sigs = (
       customTableBufStrts[i][0].sigs + (
-        <uint64_t>(j * sizeof(uint8_t *) * len(table_sigs))
+        <uint64_t>(j * len(table_sigs))
       )
     )
     customTableBufStrts[i][j].ticks = (
-      customTableBufStrts[i][0].ticks + (<int>(j * tk_buf_size_bytes))
+      customTableBufStrts[i][0].ticks + (<uint64_t>(j * tk_buf_size_samples))
     )
     customTableBufStrts[i][j].sigNumPktsRecvd = (
       customTableBufStrts[i][0].sigNumPktsRecvd + (
-        <int>(j * sizeof(uint32_t) * len(table_sigs))
+        <uint64_t>(j * len(table_sigs))
       )
     )
 
@@ -675,7 +678,7 @@ for i, table_name in enumerate(custom_table_names):
 
     for k in range(1, tableBufSize):
       customTableBufStrts[i][k].sigs[j] = (
-        customTableBufStrts[i][0].sigs[j] + <int>(k * sig_buf_size_bytes)
+        customTableBufStrts[i][0].sigs[j] + <uint64_t>(k * sig_buf_size_bytes)
       )
 
 for i in range(len(in_sig_keys)):
@@ -717,7 +720,7 @@ msgpack_init(
 openDatabase(&db, "{{ out_signal['args']['save_file'] }}", db_index, currDbName)
 rc = sqlite3_exec(db, "PRAGMA journal_mode = MEMORY;", NULL, NULL, &zErrMsg)
 if (rc != SQLITE_OK):
-  printf("%s\n", zErrMsg[0])
+  printf("%s\n", zErrMsg)
   fflush(stdout)
   sqlite3_free(zErrMsg)
   die("SQL pragma error\n")
@@ -761,6 +764,7 @@ initialized = True
 
   cdef int rc
   cdef int i, j
+
 
   # perform final flush of buffered data
   if initialized and not flushing:

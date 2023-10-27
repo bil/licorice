@@ -16,10 +16,10 @@ static void (*exit_handler)(int errorStr);
 /* 
  * prefault stack to avoid faults during execution
  */
-static void stack_prefault() {
-  unsigned char dummy[MAX_SAFE_STACK];
-  memset(dummy, 0, MAX_SAFE_STACK);
-}
+// static void stack_prefault() {
+//   unsigned char dummy[MAX_SAFE_STACK];
+//   memset(dummy, 0, MAX_SAFE_STACK);
+// }
 
 /*
  * initialize utilities

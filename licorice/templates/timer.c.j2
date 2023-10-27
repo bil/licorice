@@ -507,6 +507,8 @@ int run_child_process(char *procName, ChildDict *child) {
 
     setpriority(PRIO_PROCESS, 0, -19);
     if (child->async) {
+      // TODO determine best priority for async procs
+      priority += 1;
       // priority -= 1;
       set_sched_prior(priority);
     }
@@ -627,11 +629,12 @@ int main(int argc, char* argv[]) {
       fflush(stdout);
     }
   }
-  printf("Runners (sources, modules, and sinks) ready.\n");
+  printf("Runners (sources, modules, and sinks) ready. Child PIDs: \n");
 
   for (int i = 0; i < NUM_CHILD_PROCS; i++) {
     printf("%s: %d\n", childProcnames[i], ch_pids[i]);
   }
+  fflush(stdout);
 
 
 {%- if platform_system != "Darwin" %}
@@ -640,8 +643,6 @@ int main(int argc, char* argv[]) {
 
   for (int i = 0; i < NUM_CHILD_PROCS; i++) {
     if (childDicts[i].type == async_reader) {
-      printf("async reader child pid: %d\n", ch_pids[i]);
-      fflush(stdout);
       kill(ch_pids[i], SIGUSR2);
     }
     else if (childDicts[i].type == source) {
