@@ -33,19 +33,6 @@
 #define LOGGER_CPU 1
 
 /*
- * Name of file for where data for the experiment should be stored.  48 character limit.
- * DO NOT add .db to the end.
- * TODO this has been removed. add above to YAML config documentation
- */
-#define DATALOGGER_FILENAME "{{db_name}}"
-
-/*
- * Table name for NumPy SharedArray signals table.  Make sure this name complies 
- * with SQL syntax, since it is simply spliced into SQL command without any error checking.
- */
-#define DATALOGGER_SIGNALS_TABLE_NAME "signals"
-
-/*
  * How often sql flushes (ticks)
  *
  */
@@ -180,18 +167,21 @@
 
 // Each section of shared memory's size is defined here:
 #define NUM_TICKS_SIZE sizeof(int64_t)
-#define CLOCK_TIME_SIZE sizeof(struct timespec)
+#define CLOCK_TIMESPEC_SIZE sizeof(struct timespec)
 #define BUF_VARS_SIZE (sizeof(uint32_t) * BUF_VARS_LEN * NUM_INTERNAL_SIGS)
 #define ASYNC_READER_MUTEXES_SIZE (sizeof(pthread_mutex_t) * NUM_ASYNC_READERS)
 
 // Each section of shared memory's byte off set is then calculatd
 #define NUM_TICKS_OFFSET 0
-#define CLOCK_TIME_OFFSET (NUM_TICKS_OFFSET + NUM_TICKS_SIZE)
-#define BUF_VARS_OFFSET (CLOCK_TIME_OFFSET + CLOCK_TIME_SIZE)
+#define CLOCK_MONOTONIC_RAW_OFFSET (NUM_TICKS_OFFSET + NUM_TICKS_SIZE)
+#define CLOCK_MONOTONIC_OFFSET (CLOCK_MONOTONIC_RAW_OFFSET + CLOCK_TIMESPEC_SIZE)
+#define CLOCK_REALTIME_OFFSET (CLOCK_MONOTONIC_OFFSET + CLOCK_TIMESPEC_SIZE)
+#define BUF_VARS_OFFSET (CLOCK_REALTIME_OFFSET + CLOCK_TIMESPEC_SIZE)
 #define ASYNC_READER_MUTEXES_OFFSET (BUF_VARS_OFFSET + BUF_VARS_SIZE)
 
 // Results in a simple total size calculation
-#define SHM_SIZE (NUM_TICKS_SIZE + CLOCK_TIME_SIZE + BUF_VARS_SIZE + ASYNC_READER_MUTEXES_SIZE)
+#define NUM_CLOCKS 3
+#define SHM_SIZE (NUM_TICKS_SIZE + NUM_CLOCKS * CLOCK_TIMESPEC_SIZE + BUF_VARS_SIZE + ASYNC_READER_MUTEXES_SIZE)
 
 // Named sempahore name buffer length.
 #define SEM_NAME_LEN 32

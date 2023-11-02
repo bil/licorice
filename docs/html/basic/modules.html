@@ -100,9 +100,9 @@ ambiguous when referring to source, internal modules, and sinks.</p>
 <p>The scaffold surrounding a module exposes some variables that the user may take advantage of:</p>
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 16%" />
-<col style="width: 10%" />
-<col style="width: 74%" />
+<col style="width: 24%" />
+<col style="width: 12%" />
+<col style="width: 64%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Name</p></th>
@@ -112,15 +112,28 @@ ambiguous when referring to source, internal modules, and sinks.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>time_tick</p></td>
-<td><p>uint64_t</p></td>
-<td><p>The current system tick 0-indexed to when all module
-processes start running (set by timer at tick start)</p></td>
+<td><p>int64_t</p></td>
+<td><p>The current system tick 0-indexed to when all
+module processes start running (set by timer at
+tick start)</p></td>
 </tr>
-<tr class="row-odd"><td><p>time_system</p></td>
-<td><p>double</p></td>
+<tr class="row-odd"><td><p>time_monotonic_raw</p></td>
+<td><p>uint64_t</p></td>
 <td><p>The current tick’s start time as measured by
-clock_gettime using CLOCK_MONOTONIC. Seconds with
-nanosecond resolution (set by timer at tick start)</p></td>
+clock_gettime using CLOCK_MONOTONIC_RAW in
+nanoseconds set by timer at tick start</p></td>
+</tr>
+<tr class="row-even"><td><p>time_monotonic</p></td>
+<td><p>uint64_t</p></td>
+<td><p>The current tick’s start time as measured by
+clock_gettime using CLOCK_MONOTONIC in
+nanoseconds. Set by timer at tick start</p></td>
+</tr>
+<tr class="row-odd"><td><p>time_realtime</p></td>
+<td><p>uint64_t</p></td>
+<td><p>The current tick’s start time as measured by
+clock_gettime using CLOCK_REALTIME in nanoseconds.
+Set by timer at tick start).</p></td>
 </tr>
 </tbody>
 </table>

@@ -19,12 +19,19 @@ Common Properties
 
 The scaffold surrounding a module exposes some variables that the user may take advantage of:
 
-============ ======== =========================================================
-Name         Type     Description
-============ ======== =========================================================
-time_tick    uint64_t The current system tick 0-indexed to when all module
-                      processes start running (set by timer at tick start)
-time_system  double   The current tick's start time as measured by
-                      clock_gettime using CLOCK_MONOTONIC. Seconds with
-                      nanosecond resolution (set by timer at tick start)
-============ ======== =========================================================
+=================== ========= =================================================
+Name                Type      Description
+=================== ========= =================================================
+time_tick           int64_t   The current system tick 0-indexed to when all
+                              module processes start running (set by timer at
+                              tick start)
+time_monotonic_raw  uint64_t  The current tick's start time as measured by
+                              clock_gettime using CLOCK_MONOTONIC_RAW in
+                              nanoseconds set by timer at tick start
+time_monotonic      uint64_t  The current tick's start time as measured by
+                              clock_gettime using CLOCK_MONOTONIC in
+                              nanoseconds. Set by timer at tick start
+time_realtime       uint64_t  The current tick's start time as measured by
+                              clock_gettime using CLOCK_REALTIME in nanoseconds.
+                              Set by timer at tick start).
+=================== ========= =================================================

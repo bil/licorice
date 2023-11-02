@@ -10,9 +10,10 @@ import SharedArray as sa
 
 import licorice
 from licorice.templates.module_utils import create_shared_array
-from tests.utils import validate_model_output
+from tests.utils import TIME_COLNAMES, validate_model_output
 
 NUM_TICKS = 100
+TICK_TABLE_NAME = "tick"
 
 logger_model_template = {
     "config": {
@@ -66,10 +67,13 @@ def get_expected_list(num_ticks, dtype, seed=None):
 
 
 def snapshot_sql_output(cur, snapshot):
-    cur.execute("PRAGMA table_info(signals);")
+    cur.execute(f"PRAGMA table_info({TICK_TABLE_NAME});")
     col_names = [val[1] for val in cur.fetchall()]
+    # don't snapshot nanosecond timers
+    for n in TIME_COLNAMES[1:]:
+        col_names.remove(n)
 
-    cur.execute("SELECT * FROM signals;")
+    cur.execute(f"SELECT {' ,'.join(col_names)} FROM {TICK_TABLE_NAME};")
 
     col_vals = [[] for _ in col_names]
     for row in cur.fetchall():
@@ -124,7 +128,7 @@ def test_single_signal(enable, capfd, snapshot):
     else:
         cur.execute('SELECT name FROM sqlite_master WHERE type = "table"')
         results = cur.fetchall()
-        assert len(results) == 0
+        assert len(results) == 1  # tick table always created
 
 
 def test_vector(capfd, snapshot):
@@ -236,10 +240,11 @@ def test_multi_signal(enable, capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("PRAGMA table_info(signals);")
+    cur.execute(f"PRAGMA table_info({TICK_TABLE_NAME});")
     col_names = [val[1] for val in cur.fetchall()]
-    col_names.remove("tick_num")
-    cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
+    for n in TIME_COLNAMES:
+        col_names.remove(n)
+    cur.execute(f"SELECT {','.join(col_names)} FROM {TICK_TABLE_NAME};")
     values = cur.fetchall()
     assert len(values) == NUM_TICKS
     new_values = []
@@ -314,10 +319,11 @@ def test_suffixes(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("PRAGMA table_info(signals);")
+    cur.execute(f"PRAGMA table_info({TICK_TABLE_NAME});")
     col_names = [val[1] for val in cur.fetchall()]
-    col_names.remove("tick_num")
-    cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
+    for n in TIME_COLNAMES:
+        col_names.remove(n)
+    cur.execute(f"SELECT {','.join(col_names)} FROM {TICK_TABLE_NAME};")
     values = cur.fetchall()
     assert len(values) == NUM_TICKS
 
@@ -371,10 +377,11 @@ def test_create_new_db(new_db_num_ticks, sql_logger_flush, capfd):
             f"{pytest.test_dir}/module_code/run.lico/out/data_000{i}.db"
         )
         cur = conn.cursor()
-        cur.execute("PRAGMA table_info(signals);")
+        cur.execute(f"PRAGMA table_info({TICK_TABLE_NAME});")
         col_names = [val[1] for val in cur.fetchall()]
-        col_names.remove("tick_num")
-        cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
+        for n in TIME_COLNAMES:
+            col_names.remove(n)
+        cur.execute(f"SELECT {','.join(col_names)} FROM {TICK_TABLE_NAME};")
         vals = cur.fetchall()
         if i == num_dbs - 1:
             assert (
@@ -450,10 +457,11 @@ def test_logging_from_source(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("PRAGMA table_info(signals);")
+    cur.execute(f"PRAGMA table_info({TICK_TABLE_NAME});")
     col_names = [val[1] for val in cur.fetchall()]
-    col_names.remove("tick_num")
-    cur.execute(f"SELECT {','.join(col_names)} FROM signals;")
+    for n in TIME_COLNAMES:
+        col_names.remove(n)
+    cur.execute(f"SELECT {','.join(col_names)} FROM {TICK_TABLE_NAME};")
     values = [
         value for value in cur.fetchall()
     ]
@@ -491,7 +499,7 @@ def test_signal_and_custom_tables(capfd):
         sig_name: {
             "shape": (1,),
             "dtype": signal_table_type,
-            "log": {"enable": True, "table": "signal"},
+            "log": {"enable": True, "table": f"{sig_name}"},
             "max_packets_per_tick": 11,
         },
         **custom_signals
@@ -548,7 +556,7 @@ def test_signal_and_custom_tables(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute(f"SELECT tick_num FROM {sig_name};")
+    cur.execute(f"SELECT time_tick FROM {sig_name};")
     ticks = [np.int64(value[0]) for value in cur.fetchall()]
 
     cur.execute(f"SELECT v_i8_int64_signal_0 FROM {sig_name};")
@@ -567,7 +575,7 @@ def test_signal_and_custom_tables(capfd):
         )
 
     # validate synchronous signals
-    cur.execute("SELECT tick_num FROM custom;")
+    cur.execute("SELECT time_tick FROM custom;")
     ticks = [np.int64(value[0]) for value in cur.fetchall()]
     cur.execute("SELECT r_i1_int8_signal, r_f4_float32_signal FROM custom;")
     ints_and_floats = cur.fetchall()

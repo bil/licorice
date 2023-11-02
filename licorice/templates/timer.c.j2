@@ -103,7 +103,7 @@ static size_t shm_size;
 static uint8_t *pmem;
 // global tick counter
 static int64_t *pNumTicks = NULL;
-static struct timespec *pClockTime;
+static struct timespec *pClockMonotonicRaw, *pClockMonotonic, *pClockRealtime;
 // per-process tick start and end semaphores for sources, modules, and sinks
 // timer signals trigger each process by upping these semaphores
 // timer checks if process finished tick by downing (trywait) these semaphores
@@ -283,9 +283,23 @@ void set_sched_prior(int priority) {
 #endif
 
 static void check_children(struct period_info *pinfo) {
-  // record current system time (NTP-affected)
-  if (clock_gettime(CLOCK_MONOTONIC, pClockTime)) {
-      printf("clock_gettime failed,\n");
+  // record current monotonic raw system time
+  if (clock_gettime(CLOCK_MONOTONIC_RAW, pClockMonotonicRaw)) {
+      printf("monotonic clock_gettime failed,\n");
+      running = 0;
+      return;
+  }
+
+  // record current monotonic system time (NTP-affected)
+  if (clock_gettime(CLOCK_MONOTONIC_RAW, pClockMonotonic)) {
+      printf("monotonic clock_gettime failed,\n");
+      running = 0;
+      return;
+  }
+
+  // record current realtime system time (NTP-affected)
+  if (clock_gettime(CLOCK_REALTIME, pClockRealtime)) {
+      printf("realtime clock_gettime failed,\n");
       running = 0;
       return;
   }
@@ -444,7 +458,11 @@ static void wait_rest_of_period(struct period_info *pinfo) {
   }
 
   /* for simplicity, ignoring possibilities of signal wakes */
-  clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &pinfo->next_period, NULL);
+  if (clock_nanosleep(
+    CLOCK_MONOTONIC, TIMER_ABSTIME, &pinfo->next_period, NULL
+  )){
+      die("clock_nanosleep failed \n");
+  }
 }
 
 
@@ -568,7 +586,9 @@ int main(int argc, char* argv[]) {
     PROT_READ | PROT_WRITE
   );
   pNumTicks = (int64_t *)(pmem + NUM_TICKS_OFFSET);
-  pClockTime = (struct timespec *)(pmem + CLOCK_TIME_OFFSET);
+  pClockMonotonicRaw = (struct timespec *)(pmem + CLOCK_MONOTONIC_RAW_OFFSET);
+  pClockMonotonic = (struct timespec *)(pmem + CLOCK_MONOTONIC_OFFSET);
+  pClockRealtime = (struct timespec *)(pmem + CLOCK_REALTIME_OFFSET);
   pBufVars = (uint32_t *)(pmem + BUF_VARS_OFFSET);
   *pNumTicks = (-1 * (SOURCE_INIT_TICKS + MODULE_INIT_TICKS)) - 1;
 

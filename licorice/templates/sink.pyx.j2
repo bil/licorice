@@ -57,7 +57,9 @@ cdef extern from "constants.h":
   enum: BUF_VARS_LEN
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
-  enum: CLOCK_TIME_OFFSET
+  enum: CLOCK_MONOTONIC_RAW_OFFSET
+  enum: CLOCK_MONOTONIC_OFFSET
+  enum: CLOCK_REALTIME_OFFSET
   enum: BUF_VARS_OFFSET
   enum: ASYNC_WRITER_MUTEXES_OFFSET
   enum: SEM_NAME_LEN
@@ -81,7 +83,7 @@ cdef uint8_t *pmem
 cdef int64_t *pNumTicks
 cdef uint64_t time_tick = <uint64_t>NULL
 cdef double time_system
-cdef timespec *pClockTime
+cdef timespec *pClockMonotonicRaw, *pClockMonotonic, *pClockRealtime
 {% if is_main_process -%}
 cdef sem_t *pSinkUpSem
 cdef sem_t *pSinkDownSem
@@ -108,7 +110,10 @@ cdef int64_t tick_num
 
 # track start and end vars (BufVars[8] and [9]) for each tick to flush
 ctypedef struct asyncBufTickInfo:
-  int64_t tickNum
+  int64_t timeTick
+  uint64_t timeMonotonicRaw
+  uint64_t timeMonotonic
+  uint64_t timeRealtime
 {%- for sig,dtype in sig_types.items() %}
   uint32_t {{sig}}StrtOffsetSamples  # buffered {{sig}}BufVars[0] values
   uint32_t {{sig}}StrtOffset  # buffered {{sig}}BufVars[8] values
@@ -232,7 +237,9 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 shmSize = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shmSize, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
-pClockTime = <timespec *>(pmem + CLOCK_TIME_OFFSET)
+pClockMonotonicRaw = <timespec *>(pmem + CLOCK_MONOTONIC_RAW_OFFSET)
+pClockMonotonic = <timespec *>(pmem + CLOCK_MONOTONIC_OFFSET)
+pClockRealtime = <timespec *>(pmem + CLOCK_REALTIME_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {%- for sig, args in in_signals.items() %}
 {{sig}}BufVars = pBufVars + {{in_sig_nums[sig] * buf_vars_len}}
@@ -359,8 +366,14 @@ while(True):
   sem_wait(pSigSems[{{sem_num}}])
   {%- endfor %}
 
-  time_system = pClockTime[0].tv_sec + pClockTime[0].tv_nsec / 1.0e9
   time_tick = pNumTicks[0]
+  time_monotonic_raw = (
+    pClockMonotonicRaw[0].tv_sec * 1e9 + pClockMonotonicRaw[0].tv_nsec
+  )
+  time_monotonic = (
+    pClockMonotonic[0].tv_sec * 1e9 + pClockMonotonic[0].tv_nsec
+  )
+  time_realtime = pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
 
   {% if async %}
   # async main process updates buffer flush end variable
@@ -369,7 +382,10 @@ while(True):
     (pAsyncFlushIndexStrt[0] == 0)
   ):
     die("Async buffer overrun. Consider increasing signal history sizes.\n")
-  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].tickNum = pNumTicks[0]
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeTick = time_tick
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeMonotonicRaw = <uint64_t>time_monotonic_raw
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeMonotonic = <uint64_t>time_monotonic
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeRealtime = <uint64_t>time_realtime
   {% for sig,args in in_signals.items() %}
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffsetSamples = {{sig}}BufVars[0]
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffset = {{sig}}BufVars[8]
@@ -388,9 +404,6 @@ while(True):
   {% if async -%} # async buffering and parser logic
 
   # async writer udpates buffer flush start variable
-  # print("ASYNC: ", pAsyncFlushIndexStrt[0], pAsyncFlushIndexEnd[0], flush=True)
-  # printf("%lu\n", pAsyncBufInfo[pAsyncFlushIndexStrt[0]].cerebus_timestampsStrtOffset)
-  # fflush(stdout)
   if pAsyncFlushIndexStrt[0] == pAsyncFlushIndexEnd[0]:
     if shouldExit:
       handle_exit(0)
@@ -398,9 +411,12 @@ while(True):
     time.sleep({{config["config"]["tick_len"]}} / (2. * 1e6))
     continue
 
+  time_tick = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeTick
+  time_monotonic_raw = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonicRaw
+  time_monotonic = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonic
+  time_realtime = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeRealtime
     {% for sig, args in in_signals.items() %}
   s_i = in_sig_keys.index("{{sig}}")
-  tick_num = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].tickNum
   asyncStrtOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffset
   asyncEndOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}EndOffset
   asyncStrtOffsetSamples[s_i] = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffsetSamples

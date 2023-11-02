@@ -12,7 +12,7 @@ typedef struct {
 
 typedef struct {
   char *tableName; // max 32
-  short numCol;
+  int numCol;
   SQLTableElement *columns;
 } SQLTable;
 

@@ -1802,7 +1802,7 @@
         100.0,
       ]),
     ]),
-    'tick_num': list([
+    'time_tick': list([
       0,
       1,
       2,
@@ -2010,7 +2010,7 @@
       99,
       100,
     ]),
-    'tick_num': list([
+    'time_tick': list([
       0,
       1,
       2,
@@ -2116,7 +2116,7 @@
 # ---
 # name: test_vector
   OrderedDict({
-    'tick_num': list([
+    'time_tick': list([
       0,
       1,
       2,

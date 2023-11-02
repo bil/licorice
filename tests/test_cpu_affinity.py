@@ -389,4 +389,8 @@ def test_core_assignment(
     captured_err += err
 
     assert f"LiCoRICE will run on {lico_cores} core(s)." in captured_out
+    print(captured_out)
+    print(num_cores)
+    print(proc_affinities)
+    print(affinity_map)
     assert proc_affinities == affinity_map

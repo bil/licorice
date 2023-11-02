@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import platform
 import shutil
@@ -960,6 +961,9 @@ def parse(paths, config, confirmed):
             if out_signal["args"]["type"] == "disk":
                 # TODO this validation and logic should be moved to driver
 
+                if not out_signal["args"].get("tick_table"):
+                    out_signal["args"]["tick_table"] = "tick"
+
                 # TODO figure out buffer sizing
                 schema_size = 0
                 for sig in in_signals:
@@ -991,7 +995,7 @@ def parse(paths, config, confirmed):
                             if "type" not in log:
                                 log["type"] = "auto"
                             if "table" not in log:
-                                log["table"] = "tick"
+                                log["table"] = out_signal["args"]["tick_table"]
                             log["num_cols"] = 1
                             log["enable"] = True
                         else:
@@ -1001,14 +1005,11 @@ def parse(paths, config, confirmed):
                             "`log` keyword must have type bool or dict"
                         )
                     log = args["log"]
-                    if log["table"] == "tick":
+                    if log["table"] == out_signal["args"]["tick_table"]:
                         in_signals[sig] = args
                         tick_table_sigs[sig] = args
                     else:
-                        if log["table"] == "signal":
-                            table_name = sig
-                        else:
-                            table_name = log["table"]
+                        table_name = log["table"]
                         in_signals[sig] = args
                         if custom_tables.get(table_name):
                             custom_tables[table_name][sig] = args
@@ -1093,9 +1094,7 @@ def parse(paths, config, confirmed):
                                     == args["max_packets_per_tick"]
                                 )
 
-            logger_num_tables = len(custom_tables)
-            if any(tick_table_sigs):
-                logger_num_tables += 1
+            logger_num_tables = 1 + len(custom_tables)
 
             driver_template_name = f'{out_signal["args"]["type"]}'
             driver_output_name = f"{name}_{driver_template_name}"
@@ -1144,7 +1143,7 @@ def parse(paths, config, confirmed):
                 # TODO add clear documentation on how to set this and check max
                 "async_buf_len": None
                 if (not async_sink)
-                else max([x["history"] for x in in_signals.values()]),
+                else math.ceil(1e6 / config["config"]["tick_len"]),
                 # logger-specific:
                 "tick_view_extra_cols": extra_cols,
                 "tick_table": tick_table_sigs,

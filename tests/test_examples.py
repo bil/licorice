@@ -9,7 +9,7 @@ import pygame
 import pytest
 from udp import udp_server_recv
 
-from tests.utils import validate_model_output
+from tests.utils import TIME_COLNAMES, validate_model_output
 
 
 def num_parports():
@@ -102,7 +102,13 @@ def test_logger(capfd, snapshot):
         f"{pytest.examples_dir}/logger/logger_demo.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("SELECT * FROM signals;")
+    cur.execute("PRAGMA table_info(tick);")
+    col_names = [val[1] for val in cur.fetchall()]
+    # don't snapshot nanosecond timers
+    for n in TIME_COLNAMES[1:]:
+        col_names.remove(n)
+
+    cur.execute(f"SELECT {' ,'.join(col_names)} FROM tick;")
 
     col_names = [col[0] for col in cur.description]
     col_vals = [[] for _ in col_names]

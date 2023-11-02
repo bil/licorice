@@ -8,10 +8,10 @@
 #include <errno.h>
 #include "constants.h"
 #include <pthread.h>
+#include <time.h>
 
 static sigset_t exitMask;
 static void (*exit_handler)(int errorStr);
-
 
 /* 
  * prefault stack to avoid faults during execution
@@ -130,4 +130,3 @@ sem_t *create_semaphore(const char *pName, int value) {
   }
   return sem;
 }
-

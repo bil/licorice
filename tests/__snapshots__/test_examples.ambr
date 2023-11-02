@@ -228,7 +228,7 @@
       32,
       33,
     ]),
-    'tick_num': list([
+    'time_tick': list([
       0,
       1,
       2,

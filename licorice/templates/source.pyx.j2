@@ -69,7 +69,9 @@ cdef extern from "constants.h":
   enum: BUF_VARS_LEN
   enum: SHM_SIZE
   enum: NUM_TICKS_OFFSET
-  enum: CLOCK_TIME_OFFSET
+  enum: CLOCK_MONOTONIC_RAW_OFFSET
+  enum: CLOCK_MONOTONIC_OFFSET
+  enum: CLOCK_REALTIME_OFFSET
   enum: BUF_VARS_OFFSET
   enum: ASYNC_READER_MUTEXES_OFFSET
   enum: SEM_NAME_LEN
@@ -106,7 +108,7 @@ cdef uint8_t *pmem
 cdef int64_t *pNumTicks
 cdef uint64_t time_tick = <uint64_t>NULL
 cdef double time_system
-cdef timespec *pClockTime
+cdef timespec *pClockMonotonicRaw, *pClockMonotonic, *pClockRealtime
 {% if is_main_process -%}
 cdef sem_t *pSourceUpSem
 cdef sem_t *pSourceDownSem
@@ -252,7 +254,9 @@ set_sighandler(SIGUSR2, &usr2_handler, NULL)
 shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
 open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
 pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
-pClockTime = <timespec *>(pmem + CLOCK_TIME_OFFSET)
+pClockMonotonicRaw = <timespec *>(pmem + CLOCK_MONOTONIC_RAW_OFFSET)
+pClockMonotonic = <timespec *>(pmem + CLOCK_MONOTONIC_OFFSET)
+pClockRealtime = <timespec *>(pmem + CLOCK_REALTIME_OFFSET)
 pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
 {% if is_main_process -%}
 pSourceUpSem = sem_open("/source_up_sem_{{source_num}}", 0)
@@ -354,9 +358,16 @@ while(True):
   sem_wait(pSourceUpSem)
 {%- endif %}
 
-  time_system = pClockTime[0].tv_sec + pClockTime[0].tv_nsec / 1.0e9
   if pNumTicks[0] >= 0:
     time_tick = pNumTicks[0]
+  time_monotonic_raw = (
+    pClockMonotonicRaw[0].tv_sec * 1e9 + pClockMonotonicRaw[0].tv_nsec
+  )
+  time_monotonic = (
+    pClockMonotonic[0].tv_sec * 1e9 + pClockMonotonic[0].tv_nsec
+  )
+  time_realtime = pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
+
 
 {%- if is_reader %}
   {%- if not is_main_process %}

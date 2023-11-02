@@ -1,3 +1,8 @@
+TIME_COLNAMES = [
+    "time_tick", "time_monotonic_raw", "time_monotonic", "time_realtime"
+]
+
+
 def validate_model_output(
     cf, num_ticks, validate_stdout=True, validate_stderr=True
 ):
@@ -16,8 +21,8 @@ def validate_model_output(
     # TODO add snapshottest/syrupy
 
     captured_out, captured_err = cf.readouterr()
-    print(captured_out)
-    print(captured_err)
+    print(captured_out, flush=True)
+    print(captured_err, flush=True)
     if validate_stdout:
         assert "Seg Fault" not in captured_out
         assert f"LiCoRICE ran for {num_ticks} ticks." in captured_out

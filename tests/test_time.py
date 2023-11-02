@@ -8,31 +8,14 @@ from tests.utils import validate_model_output
 
 NUM_TICKS = 10
 
-clock_time_model = {
+clock_monotonic_model = {
     "config": {
         "tick_len": 10000,
         "num_ticks": NUM_TICKS,
     },
-    "signals": {
-        "clock_time": {
-            "shape": 1,
-            "dtype": "double",
-            "log": True,
-        },
-        "tick_num": {
-            "shape": 1,
-            "dtype": "uint64",
-            "log": True,
-        },
-    },
     "modules": {
-        "clock": {
-            "language": "python",
-            "out": ["clock_time", "tick_num"],
-        },
         "logger": {
             "language": "python",
-            "in": ["clock_time", "tick_num"],
             "out": {
                 "name": "log_sqlite",
                 "async": True,
@@ -46,11 +29,11 @@ clock_time_model = {
 }
 
 
-def test_clock_time(capfd):
+def test_clock_monotonic(capfd):
     # run LiCoRICE
     try:
         licorice.go(
-            clock_time_model,
+            clock_monotonic_model,
             confirm=True,
             working_path=f"{pytest.test_dir}/module_code",
         )
@@ -64,24 +47,50 @@ def test_clock_time(capfd):
         f"{pytest.test_dir}/module_code/run.lico/out/data_0000.db"
     )
     cur = conn.cursor()
-    cur.execute("PRAGMA table_info(signals);")
+    cur.execute("PRAGMA table_info(tick);")
     col_names = [val[1] for val in cur.fetchall()]
 
-    clock_time_idx = col_names.index("r_f8_clock_time")
-    time_num_idx = col_names.index("r_u8_tick_num")
-    cur.execute("SELECT * FROM signals;")
+    time_tick_idx = col_names.index("time_tick")
+    time_monotonic_raw_idx = col_names.index("time_monotonic_raw")
+    time_monotonic_idx = col_names.index("time_monotonic")
+    time_realtime_idx = col_names.index("time_realtime")
+    cur.execute("SELECT * FROM tick;")
     values = [value for value in cur.fetchall()]
 
-    expected_diff = .01
-    tolerance = .001
+    # in nanoseconds
+    expected_diff = 1e7
+    tolerance = 1e6
 
     for i in range(1, len(values)):
         # tick times should be sequential
-        assert values[i][time_num_idx] - values[i - 1][time_num_idx] == 1
+        assert values[i][time_tick_idx] - values[i - 1][time_tick_idx] == 1
         # clock times should be 10ms apart (1ms jitter tolerance)
         assert (
             abs(
-                (values[i][clock_time_idx] - values[i - 1][clock_time_idx]) -
+                (
+                    values[i][time_monotonic_raw_idx] -
+                    values[i - 1][time_monotonic_raw_idx]
+                ) -
+                expected_diff
+            ) < tolerance
+        )
+
+        assert (
+            abs(
+                (
+                    values[i][time_monotonic_idx] -
+                    values[i - 1][time_monotonic_idx]
+                ) -
+                expected_diff
+            ) < tolerance
+        )
+
+        assert (
+            abs(
+                (
+                    values[i][time_realtime_idx] -
+                    values[i - 1][time_realtime_idx]
+                ) -
                 expected_diff
             ) < tolerance
         )
