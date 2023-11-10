@@ -1,0 +1,73 @@
+from libc.errno cimport EAGAIN, EINTR
+from libc.stdio cimport printf, fflush, stdout
+
+cdef class UdpSourceDriver(source_driver.SourceDriver):
+    def __cinit__(self):
+        self.src_addr_len = sizeof(sockaddr_storage)
+
+        # create a UDP socket
+        memset(&self.hints, 0, sizeof(addrinfo))
+        self.hints.ai_family = AF_INET       # IPv4 only
+        self.hints.ai_socktype = SOCK_DGRAM  # Datagram socket
+        self.hints.ai_flags = AI_PASSIVE     # For use with bind
+        self.hints.ai_protocol = IPPROTO_UDP # UDP only
+        self.hints.ai_canonname = NULL
+        self.hints.ai_addr = NULL
+        self.hints.ai_next = NULL
+
+        self.s = getaddrinfo(
+            "{{in_signal['args']['interface']}}",
+            "{{in_signal['args']['port']}}",
+            &self.hints,
+            &self.result
+        )
+        if (self.s != 0):
+            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(self.s))
+            die("getaddrinfo")
+
+        self.rp = self.result
+        while (self.rp != NULL):
+            self.sfd = socket(self.rp.ai_family, self.rp.ai_socktype, self.rp.ai_protocol)
+            if (self.sfd == -1):
+                continue
+            if (bind(self.sfd, self.rp.ai_addr, self.rp.ai_addrlen) == 0):
+                break # Success
+            close(self.sfd)
+            self.rp = self.rp.ai_next
+
+        if (self.rp == NULL): # No address succeeded
+            fprintf(stderr, "Could not bind\n")
+            die("Could not bind.\n")
+
+
+        self.tv.tv_sec = 60
+        self.tv.tv_usec = 0
+        if (setsockopt(self.sfd, SOL_SOCKET, SO_RCVTIMEO, &self.tv, sizeof(self.tv)) < 0):
+            die("Could not set socket timeout.")
+
+        freeaddrinfo(self.result) # No longer needed
+
+        self.sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *:
+        cdef size_t inBufLen
+
+        inBufLen = recvfrom(self.sfd, inBuf, packetSize, 0, <sockaddr *> &self.src_addr, &self.src_addr_len)
+        if (inBufLen == -1):
+            if (errno == EAGAIN):# or errno == EWOULDBLOCK)):
+                die("recvfrom timeout.\n")
+            if (errno != EINTR):
+                die("NETWORK ERROR: recvfrom()\n")
+            else:
+                die("Read error.\n")
+
+        # {%- if async %}
+        #   sleep(self.sleep_duration)
+        # {%- endif %}
+
+        return inBufLen
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        if (self.sfd):
+            close(self.sfd)

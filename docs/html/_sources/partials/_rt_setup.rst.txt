@@ -46,5 +46,3 @@
     .. code-block:: bash
 
         UBUNTU_VERSION=18.04 KERNEL_RT_VERSION=4.16.18-rt12 LICO_ENABLE_USB=0 ./install/kernel_setup.sh
-
-

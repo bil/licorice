@@ -16,10 +16,12 @@ signals:
   joystick_axis:
     shape: 2
     dtype: double
+    max_packets_per_tick: 2
 
   joystick_buttons:
     shape: 6 # set this to the number of buttons to extract from the joystick
     dtype: uint8
+    max_packets_per_tick: 2
 
 modules:
 

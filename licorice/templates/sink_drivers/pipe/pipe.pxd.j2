@@ -1,0 +1,11 @@
+from libc.stdint cimport uint8_t
+
+from runner_utils cimport times_t
+from sink_drivers cimport sink_driver
+
+cdef class PipeSinkDriver(sink_driver.SinkDriver):
+    cdef int named_pipe
+    cdef const char *FIFOFILE
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *
+    cdef void exit_handler(self, int exitStatus) except *

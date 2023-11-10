@@ -1,0 +1,56 @@
+from libc.string cimport memcpy
+
+import time
+
+import numpy as np
+
+from source_drivers cimport source_driver
+
+
+cdef class SignalGeneratorSourceDriver(source_driver.SourceDriver):
+    def __cinit__(self):
+        self.sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
+        fc = 1.e6 / {{config["config"]["tick_len"]}}
+
+        self.signal_args = {{in_signal["args"]["signals"]}}
+        self.signals = []
+        self.sig_idxs = []
+        self.out_sig_names = {{source_args["out"]}}
+
+        for args in self.signal_args:
+            fs = args["fs"]
+            f = args["f"]
+            # TODO only works for fs >= fc
+            args["step"] = int(fs / fc)
+            if args["type"] == "sine":
+                t = np.linspace(0, 1, int(fs), endpoint=False)
+                sig = args["amplitude"] * np.sin(2 * np.pi * f * t, dtype=np.float64) + args["offset"]
+            else:
+                raise NotImplementedError
+            self.signals.append(sig)
+            self.sig_idxs.append(0)
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *:
+
+        for i, args in enumerate(self.signal_args):
+            # TODO set out_sigs directly
+            # sigs[self.out_sig_names[i]] = self.signals[i][self.sig_idxs[i]:self.sig_idxs[i]+args["step"]]
+            memcpy(
+              inBuf,
+              <void *><long>self.signals[i][self.sig_idxs[i]:self.sig_idxs[i]+args["step"]].__array_interface__["data"][0],
+              args["step"] * 8
+            )
+            self.sig_idxs[i] += args["step"]
+            if self.sig_idxs[i] >= args["fs"]:
+                self.sig_idxs[i] = 0
+
+        {% if async %}
+        time.sleep(self.sleep_duration)
+        {% endif %}
+
+        return 0  # Downstream modules can't use inBufLen
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        pass
+

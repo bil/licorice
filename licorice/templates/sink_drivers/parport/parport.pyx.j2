@@ -1,0 +1,16 @@
+import parallel
+
+from libc.stdint cimport uint8_t
+
+from sink_drivers cimport sink_driver
+
+cdef class ParportSinkDriver(sink_driver.SinkDriver):
+    def __cinit__(self):
+        self.pport = parallel.Parallel(port={{out_signal['args']['addr']}})
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *:
+        self.pport.setData((<unsigned char *>outBuf)[0])
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        pass
+

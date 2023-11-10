@@ -1,4 +1,6 @@
 include licorice/generators/* licorice/templates/* install/*.in
 include licorice/templates/source_drivers/*
+include licorice/templates/source_drivers/*/*
 include licorice/templates/sink_drivers/*
+include licorice/templates/sink_drivers/*/*
 include licorice/templates/darwin_compat/*

@@ -14,6 +14,8 @@ from posix.fcntl cimport O_RDWR, O_CREAT, O_TRUNC
 from libcpp cimport bool
 from posix.time cimport clock_gettime, timespec
 
+from runner_utils cimport times_t
+
 import sys, signal
 import SharedArray as sa
 from cpython.exc cimport PyErr_CheckSignals
@@ -88,9 +90,10 @@ cdef public sigset_t exitMask
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
-cdef uint64_t time_tick = <uint64_t>NULL
-cdef double time_system
-cdef timespec *pClockMonotonicRaw, *pClockMonotonic, *pClockRealtime
+cdef times_t times
+cdef timespec *pClockMonotonicRaw
+cdef timespec *pClockMonotonic
+cdef timespec *pClockRealtime
 cdef sem_t *pModUpSem
 cdef sem_t *pModDownSem
 cdef sem_t *pSigSems[NUM_SEM_SIGS]
@@ -282,15 +285,16 @@ while(True):
 {%- endfor %}
 
   if pNumTicks[0] >= 0:
-    time_tick = pNumTicks[0]
-  time_monotonic_raw = (
+    times.tick = pNumTicks[0]
+  times.monotonic_raw = <uint64_t>(
     pClockMonotonicRaw[0].tv_sec * 1e9 + pClockMonotonicRaw[0].tv_nsec
   )
-  time_monotonic = (
+  times.monotonic = <uint64_t>(
     pClockMonotonic[0].tv_sec * 1e9 + pClockMonotonic[0].tv_nsec
   )
-  time_realtime = pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
-
+  times.realtime = <uint64_t>(
+    pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
+  )
 
 {% for sig,args in in_signals.items() %}
   {%- if args["max_packets_per_tick"] == 1 %}

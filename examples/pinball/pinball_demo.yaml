@@ -80,11 +80,9 @@ modules:
     parser: true
     in:
       name: joystick_raw
-      async: true
       args:
         type: pygame_joystick
       schema:
-        max_packets_per_tick: 2
         data:
           dtype: float
           size: 8

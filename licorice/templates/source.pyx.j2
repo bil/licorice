@@ -1,19 +1,23 @@
+# declare jinja variables
+{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %}
+
 # cimport C libraries
 cimport cython
 cimport numpy as np
-from libc.stdio cimport fprintf, printf, snprintf, stderr, stdout, fflush
+from libc.stdio cimport printf, snprintf, stderr, stdout, fflush
 from libc.stdlib cimport exit, malloc, free, calloc, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2, SIGTERM
-from libc.string cimport memset, memcpy, strerror
-from libc.errno cimport errno, EINTR, EPIPE, EAGAIN
+from libc.string cimport memset
 from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
-from posix.unistd cimport close, getpid, getppid, pause
+from posix.unistd cimport getpid, getppid, pause
 from posix.mman cimport munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall
 from posix.types cimport pid_t
 from posix.fcntl cimport O_RDWR, open, fcntl, O_CREAT, O_RDONLY, F_SETFL, O_NONBLOCK
 from posix.ioctl cimport ioctl
 from posix.time cimport clock_gettime, timespec
+
+from runner_utils cimport times_t
 
 # import Python libraries
 import numpy as np
@@ -21,18 +25,20 @@ import numpy as np
 import SharedArray as sa
 {%- endif %}
 
+# cimport key Python libraries
+cimport numpy as np
+cimport cython
+
 # import LiCoRICE utils
 from module_utils import create_shared_array
 
+{% if is_reader -%}
+# import driver
+cimport source_drivers.{{ driver_import }} as {{ driver_name }}
+import source_drivers.{{ driver_import }} as {{ driver_name }}
+{%- endif %}
 
 # headers for all sources
-cdef extern from "<sys/resource.h>":
-  enum: PRIO_PROCESS
-  int setpriority(int which, int who, int prio)
-
-cdef extern from "<sys/socket.h>":
-  ctypedef uint32_t socklen_t
-
 cdef extern from "semaphore.h" nogil:
   cdef union sem_union:
     pass
@@ -92,23 +98,19 @@ cdef extern from "<pthread.h>" nogil:
   int pthread_mutex_unlock(pthread_mutex_t *)
 {%- endif %}
 
-{%- if is_reader %}
-{{ driver_code["imports"] }}
-{%- endif %}
-
 # cdef variables
 cdef pid_t pid, ppid
 cdef sigset_t exitMask
-cdef char *outbuf
 cdef int parse_idx
 cdef int semVal
 
 cdef size_t shm_size
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
-cdef uint64_t time_tick = <uint64_t>NULL
-cdef double time_system
-cdef timespec *pClockMonotonicRaw, *pClockMonotonic, *pClockRealtime
+cdef times_t times
+cdef timespec *pClockMonotonicRaw
+cdef timespec *pClockMonotonic
+cdef timespec *pClockRealtime
 {% if is_main_process -%}
 cdef sem_t *pSourceUpSem
 cdef sem_t *pSourceDownSem
@@ -147,6 +149,9 @@ cdef uint32_t packetSize = {{in_signal["schema"]["data"]["size"]}} * sizeof({{in
 cdef {{in_dtype}} *inBufStrt
 cdef {{in_dtype}} *inBufEnd
 cdef {{in_dtype}} *inBuf
+cdef size_t inBufLen
+# driver
+cdef {{ driver_name }}.{{ driver_class }} driver
 {%- endif %}
 
 # python variables
@@ -160,11 +165,6 @@ out_sig = None
 shouldExit = False
 {%- endif %}
 
-{% if is_reader -%}
-# driver variables
-{{ driver_code["variables"] }}
-{%- endif %}
-
 # function to close the source
 cdef void handle_exit(int exitStatus) noexcept:
   global pmem, shm_size, udpReadThread, exitMutex, exitRoutine, pSourceUpSem, pSourceDownSem, pSigSems
@@ -173,7 +173,7 @@ cdef void handle_exit(int exitStatus) noexcept:
 
   {{ destruct_code }}
 
-{{ driver_code["exit_handler"] }}
+  driver.exit_handler(exitStatus)
 
   # delete the signal's shared memory array
   {%- if platform_system == "Linux" %}
@@ -193,7 +193,6 @@ cdef void handle_exit(int exitStatus) noexcept:
   {%- if has_parser %}
   free(inBufStrt)
   {%- endif %}
-
 {%- endif %}
 
   munmap(pmem, shm_size)
@@ -321,7 +320,7 @@ sa.mlock(out_sigs["{{sig}}"])
     {%- endif %}
   {%- endfor %}
 
-{{ driver_code["setup"] }}
+driver = {{ driver_name }}.{{ driver_class }}()
 
 {%- endif %}
 
@@ -336,6 +335,7 @@ inBuf = inBufStrt
 inBufEnd = inBufStrt + {{out_signal_name}}BufVars[7]
 # inBufEnd = inBufStrt + packetSize
   {%- endif %}
+inBufLen = inBufEnd - inBufStrt
 {%- endif %}
 
 {% if default_params -%}
@@ -359,15 +359,16 @@ while(True):
 {%- endif %}
 
   if pNumTicks[0] >= 0:
-    time_tick = pNumTicks[0]
-  time_monotonic_raw = (
-    pClockMonotonicRaw[0].tv_sec * 1e9 + pClockMonotonicRaw[0].tv_nsec
-  )
-  time_monotonic = (
-    pClockMonotonic[0].tv_sec * 1e9 + pClockMonotonic[0].tv_nsec
-  )
-  time_realtime = pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
-
+    times.tick = pNumTicks[0]
+    times.monotonic_raw = <uint64_t>(
+      pClockMonotonicRaw[0].tv_sec * 1e9 + pClockMonotonicRaw[0].tv_nsec
+    )
+    times.monotonic = <uint64_t>(
+      pClockMonotonic[0].tv_sec * 1e9 + pClockMonotonic[0].tv_nsec
+    )
+    times.realtime = <uint64_t>(
+      pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
+    )
 
 {%- if is_reader %}
   {%- if not is_main_process %}
@@ -380,7 +381,7 @@ while(True):
   inBuf = inBufStrt + {{out_signal_name}}BufVars[2]
   {%- endif %}
 
-{{ driver_code["read"] }}
+  inBufLen = driver.run(&times, <void *>inBuf, packetSize, sigs)
 
   {%- if not is_main_process %}
   if (shouldExit):
@@ -444,7 +445,10 @@ while(True):
     pNumTicks[0] != {{config["config"]["num_ticks"]}} - 1 and
     {{sig}}BufVars[11] > {{args["max_packets_per_tick"]}}
   ):
-    die("More packets received than allowed in {{name}}. Increase max_packets_per_tick.\n")
+    # TODO this should be a check on the in_signal, not out_signal.
+    # out_signals should inherit max_packets_per_tick by default
+    printf("More packets received than allowed in {{name}}. Increase max_packets_per_tick.\n")
+    fflush(stdout)
     {%- endif %}
   {%- endfor %}
   {%- if async %}

@@ -1,0 +1,24 @@
+# assumes only one input signal
+{% set sig_ctype = in_signals[in_signal_name]["ctype"] -%}
+
+from libc.stdint cimport {{sig_ctype}}
+from libc.stdio cimport printf, stdout, fflush
+
+import time
+
+import numpy as np
+import SharedArray as sa
+
+from runner_utils cimport times_t
+from sink_drivers cimport sink_driver
+
+cdef class ConsoleSinkDriver(sink_driver.SinkDriver):
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *:
+
+        if outBufLen != 0:
+            printf("console_out: %d\n", (<{{ sig_ctype }} *>outBuf)[0])
+            fflush(stdout)
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        pass

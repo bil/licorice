@@ -1,0 +1,31 @@
+from libc.stdint cimport uint8_t
+
+from sink_drivers cimport sink_driver
+
+cdef extern from "zmq.h":
+    int zmq_close(void *s)
+    int zmq_ctx_destroy(void *context)
+    void *zmq_ctx_new()
+    void *zmq_socket(void *, int type)
+    int zmq_bind(void *s, const char *addr)
+    int zmq_recv(void *s, void *buf, size_t len, int flags)
+
+
+cdef class ZmqSinkDriver(sink_driver.SinkDriver):
+    def __cinit__(self):
+        self.context = zmq_ctx_new()
+        if (not self.context):
+            die("Could not create ZMQ context.\n")
+        self.radio = zmq_socket(self.context, ZMQ_RADIO)
+        if (not self.radio):
+            die("Could not create ZMQ socket.\n")
+        if (zmq_connect(self.radio, "udp://192.168.1.1:5555") != 0)
+            die("Could not connect to ZMQ client")
+
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *
+        raise NotImplementedError
+
+    cdef void exit_handler(self, int exitStatus) except *
+        zmq_close(self.radio)
+        zmq_ctx_destroy(self.context)

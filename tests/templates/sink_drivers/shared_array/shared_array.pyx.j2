@@ -1,0 +1,39 @@
+from libc.stdint cimport uint8_t, uint64_t
+
+import time
+
+import numpy as np
+import SharedArray as sa
+
+from sink_drivers cimport sink_driver
+
+cdef class SharedArraySinkDriver(sink_driver.SinkDriver):
+    def __cinit__(self):
+        {% if async %}
+        self.sleep_func = getattr(np.random, "{{out_signal['args']['func']}}")
+        self.sleep_kwargs = {{out_signal['args']['kwargs']}}
+        {% endif %}
+        sig_name = "{{out_signal['args']['sig_name']}}"
+        self.sa_sig = sa.attach(sig_name)
+        self.sa_index = 0
+
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *:
+
+        if in_sig_lens["{{in_signal_name}}"] == 0:
+            return
+        for i in range (in_sig_lens["{{in_signal_name}}"]):
+            self.sa_sig[self.sa_index] = (<uint64_t*>outBuf)[i]
+            self.sa_index += 1
+            if self.sa_index >= self.sa_sig.size:
+                self.sa_index = 0
+        {% if async %}
+        sleep_duration = self.sleep_func(**self.sleep_kwargs)
+        if sleep_duration < 0:
+            sleep_duration = 0
+        time.sleep(sleep_duration)
+        {% endif %}
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        pass

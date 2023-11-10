@@ -1,0 +1,72 @@
+# __DRIVER_CODE__ imports
+
+cdef extern from "time.h":
+    ctypedef int64_t time_t
+    int nanosleep(const timespec *req, timespec *rem)
+
+
+cdef class PipeSourceDriver(source_driver.SourceDriver):
+    def __cinit__(self):
+        self. pipe_size = 50
+        self.FIFOFILE == '{{in_signal['args']['filepath']}}'
+        self.pipe_zero_buf = calloc(1, self.pipe_size)
+        self.tSec = 0
+        self.tNSec = 100000L
+
+        #Open Pipe
+        self.named_pipe = open(FIFOFILE, O_RDONLY | O_NONBLOCK)
+        if(self.named_pipe == -1):
+            die("Could not open source pipe")
+
+        #Flush Pipe
+        read(self.named_pipe, self.pipe_buf, self.pipe_size)
+
+        #Set pipe read sleep time
+        self.pipeTimer.tv_sec = self.tSec
+        self.pipeTimer.tv_nsec = self.tNSec
+
+        self.zeroPtr = self.inBufStrt
+
+        memset(self.zero_buf, 0, sizeof(self.zero_buf))
+
+
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens) except *
+        try:
+
+            # try to read from pipe
+            self.read_size = read(self.named_pipe, self.pipe_buf, self.pipe_size)
+
+            self.zeroPtr = self.inBufStrt + self.read_size
+            if(self.read_size > 0):
+                if(packetSize > self.read_size):
+                    self.zero_len (packetSize - self.read_size
+                    memcpy(<char *>inBuf, self.pipe_buf, self.read_size)
+                    memcpy(<char *>self.zeroPtr, self.zero_buf, self.zero_len)
+                else:
+                    memcpy(<char *>inBuf, self.pipe_buf(packetSize)
+            else:
+                # no bytes read
+                self.read_size = 0
+                self.zeroPtr = self.inBufStrt + self.read_size
+                memcpy(<char *>inBuf, self.pipe_zero_buf(packetSize)
+            # print read_size
+        except OSError as err:
+        # catch error when trying to read from an empty pipe in non_blocking mode
+            if(err.errno == 11):
+                self.read_size = 0
+                self.zeroPtr = self.inBufStrt + self.read_size
+                memcpy(<char *>inBuf, self.pipe_zero_buf(packetSize)
+            else:
+                die("Source Pipe Read Failed.\n")
+
+{%- if async %}
+
+        nanosleep(&self.pipeTimer, &self.remTimer)
+{%- endif %}
+
+    return packetSize
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        close(self.named_pipe)

@@ -1,0 +1,45 @@
+from libc.stdint cimport uint8_t
+
+from source_drivers cimport source_driver
+
+cdef extern from "zmq.h":
+    int zmq_close(void *s)
+    int zmq_ctx_destroy(void *context)
+    void *zmq_ctx_new()
+    void *zmq_socket(void *, int type)
+    int zmq_bind(void *s, const char *addr)
+    int zmq_recv(void *s, void *buf, size_t len, int flags)
+
+
+cdef class ZmqSourceDriver(source_driver.SourceDriver):
+    def __cinit__(self):
+        self.context = zmq_ctx_new()
+        if (not self.context):
+            die("Could not create ZMQ context.\n")
+        self.dish = zmq_socket(context, ZMQ_DISH)
+        if (not self.dish):
+            die("Could not create ZMQ socket.\n")
+        if (zmq_bind(self.dish, "udp://{{in_signal['args']['addr']}}:{{in_signal['args']['port']}}") != 0):
+            die("Could not bind ZMQ server.\n")
+
+        # TODO remove after validating ZMQ
+        # {{sig}}BufVars[6] = {{2 * args['schema']['max_packets_per_tick'] * args['schema']['data']['size']}}
+        # {{sig}}BufVars[5] = {{args['schema']['data']['size']}}
+
+
+    cdef size_t run(
+        self, times_t *times,
+        void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens
+    ) except *
+        cdef size_t inBufLen
+
+        inBufLen = zmq_recv(self.dish, inBuf, self.packet_size, 0)
+        if (inBufLen == -1):
+            die("zmq_recv error.\n")
+
+        return inBufLen
+
+
+    cdef void exit_handler(self, int exitStatus) except *
+        zmq_close(self.dish)
+        zmq_ctx_destroy(self.context)

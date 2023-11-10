@@ -1,0 +1,202 @@
+from cython.operator cimport dereference as deref
+from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
+from libc.string cimport strncpy
+
+from runner_utils cimport times_t
+from sink_drivers cimport sink_driver
+
+cdef extern from "<msgpack.h>" nogil:
+    ctypedef int (*msgpack_packer_write)(void* data, const char* buf, size_t len)
+    ctypedef struct msgpack_sbuffer:
+        size_t size
+        char* data
+        size_t alloc
+    ctypedef struct msgpack_packer:
+        void* data
+        msgpack_packer_write callback
+    void msgpack_sbuffer_destroy(msgpack_sbuffer* sbuf)
+    void msgpack_sbuffer_clear(msgpack_sbuffer* sbuf)
+    int msgpack_sbuffer_write(void* data, const char* buf, size_t len)
+    void msgpack_sbuffer_init(msgpack_sbuffer* sbuf)
+    int msgpack_pack_array(msgpack_packer* pk, size_t n)
+    void msgpack_packer_init(msgpack_packer* pk, void* data, msgpack_packer_write callback)
+    int msgpack_pack_uint8(msgpack_packer* pk, uint8_t d)
+    int msgpack_pack_uint16(msgpack_packer* pk, uint16_t d)
+    int msgpack_pack_uint32(msgpack_packer* pk, uint32_t d)
+    int msgpack_pack_uint64(msgpack_packer* pk, uint64_t d)
+    int msgpack_pack_int8(msgpack_packer* pk, int8_t d)
+    int msgpack_pack_int16(msgpack_packer* pk, int16_t d)
+    int msgpack_pack_int32(msgpack_packer* pk, int32_t d)
+    int msgpack_pack_int64(msgpack_packer* pk, int64_t d)
+    int msgpack_pack_float(msgpack_packer* pk, float d)
+    int msgpack_pack_double(msgpack_packer* pk, double d)
+
+cdef extern from "loggingStruct.h" nogil:
+    ctypedef struct SQLTableElement:
+        char *colName
+        char *type
+        short number
+        char *unit
+        void *data
+        char *SQLtype
+
+    ctypedef struct SQLTable:
+        char* tableName
+        short numCol
+        SQLTableElement *columns
+
+cdef extern from "<sqlite3.h>" nogil:
+    ctypedef struct sqlite3:
+        pass
+    ctypedef struct sqlite3_stmt:
+        pass
+    ctypedef struct sqlite3_blob:
+        pass
+    int sqlite3_close(sqlite3 *)
+    int sqlite3_exec(
+        sqlite3*,
+        const char *sql,
+        int (*callback)(void*,int,char**,char**),
+        void *,
+        char **errmsg
+    )
+    void sqlite3_free(void*)
+    enum: SQLITE_OK
+    ctypedef void (*destructor)(void*)
+    destructor SQLITE_STATIC
+    enum: SQLITE_OPEN_READWRITE
+    int sqlite3_open_v2(
+        const char *filename,
+        sqlite3 **ppDb,
+        int flags,
+        const char *zVfs
+    )
+
+cdef extern from "sqlHelpers.h" nogil:
+    void sql_bind_int(
+        sqlite3_stmt *stmt, int index, const char* dtype, const void* value
+    )
+    void sql_bind_int64(sqlite3_stmt *stmt, int index, const void* value)
+    void sql_bind_double(
+        sqlite3_stmt *stmt, int index,  const char* dtype, const void* value
+    )
+    void sql_bind_text(
+        sqlite3_stmt *stmt, int index, const void* value,
+        int numBytes, destructor destruct
+    )
+    void sql_bind_blob(
+        sqlite3_stmt *stmt, int index, const void* value, int numBytes, destructor destruct
+    )
+    void sql_prepare(
+        sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail
+    )
+    void sql_step(sqlite3_stmt *stmt)
+    void sql_finalize(sqlite3_stmt *stmt)
+    void openDatabase(
+        sqlite3 **db, char *startName, int db_index, char* newNameLocation
+    )
+    void createTables(sqlite3 *db, SQLTable* databaseArr, int numTables)
+    cdef const char *INSERT_STR
+    cdef const char *VALUES_STR
+    cdef const char *OPEN_BRACE
+    cdef const char *QUESTION
+    cdef const char *CLOSE_BRACE_SEMI
+    cdef const char *CLOSE_BRACE
+    cdef const char *COMMA
+
+
+cdef extern from "stdatomic.h":
+  enum memory_order:
+    memory_order_relaxed,
+    memory_order_consume,
+    memory_order_acquire,
+    memory_order_release,
+    memory_order_acq_rel,
+    memory_order_seq_cst
+  void atomic_thread_fence(memory_order)
+
+cdef extern from "../../constants.h":
+    enum: NEW_DB_NUM_TICKS
+    enum: SQL_LOGGER_FLUSH
+
+cdef extern from "../../utilityFunctions.h" nogil:
+  enum: __GNU_SOURCE
+  void die(char *errorStr)
+
+# struct to hold one tick of data
+ctypedef struct tickTableData:
+  uint8_t *sigs[{{tick_table|length}}]
+  int64_t timeTick
+  uint64_t timeMonotonicRaw
+  uint64_t timeMonotonic
+  uint64_t timeRealtime
+  uint32_t sigNumPktsRecvd[{{tick_table|length}}]
+
+# struct to hold each custom table signal
+ctypedef struct customTableData:
+  uint8_t **sigs
+  int64_t *timeTicks
+  uint32_t *sigNumPktsRecvd
+
+cdef class DiskSinkDriver(sink_driver.SinkDriver):
+    cdef int ret, rc
+    cdef char currDbName[32]
+
+    # worker thread vars
+    cdef char *zErrMsg
+
+    # table buffer vars
+    cdef uint32_t sig_buf_size_bytes
+    cdef uint32_t tableBufSize
+    cdef uint32_t bufferOffsetCur
+    cdef uint32_t bufferOffsetStrt
+    cdef uint32_t bufferOffsetEnd
+
+    # tick buffers to enable batching
+    cdef tickTableData *tickTableBufStrt
+    cdef customTableData *customTableBufStrts[{{custom_tables|length}}]
+
+    # sqlite variables
+    cdef sqlite3 *db
+    cdef sqlite3_stmt *contStmt
+    cdef sqlite3_stmt *signalsStmt
+    cdef SQLTable databaseArray[{{logger_num_tables}}]
+    cdef SQLTableElement *tickTableCols
+    cdef SQLTableElement *customTableCols[{{custom_tables|length}}]
+    cdef bint initialized, flushing
+
+    # sqlite variables
+    cdef char *tickTableQuery
+    cdef char *customTableQueries[{{custom_tables|length}}]
+    cdef uint32_t customTableOnes[{{in_sig_keys|length}}]
+
+    # message pack
+    cdef msgpack_sbuffer msgpackBufs[{{msgpack_sigs|length}}]
+    cdef msgpack_packer msgpackPkrs[{{msgpack_sigs|length}}]
+
+    cdef int db_index
+    cdef uint64_t tick_count
+    cdef uint64_t ticks_written
+
+
+    cdef void* py2cStr(self, char** dst, src)
+    cdef void msgpack_init(self, in_sig_sigs, msgpack_sigs)
+    cdef int msgpack_pack(self, dtype, msgpack_packer* pk, void *pVal, offset)
+    cdef void* createQuery(
+        self, char **query, const char* tableName, int numCols
+    )
+    cdef void* prepareTable(
+        self, char *dbName, SQLTable *dbArr, SQLTableElement **cols, int numCols, bint timeCols, sigs
+    )
+    cdef void* bufferSignals(self, times_t *times, object sigs, object sig_lens)
+    cdef void performFlush(
+        self, sig_keys, sigs,
+        char *query, sqlite3_stmt *stmt,
+        uint8_t **sigBufs, int64_t *tickPtr, uint64_t *tickMonotonicRawPtr,
+        uint64_t *tickMonotonicPtr, uint64_t *tickRealtimePtr,
+        uint32_t *sigNumPktsRecvd, int pkt_num
+    )
+    cdef void flushToDisk(self, bint newDB=*)
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *
+    cdef void exit_handler(self, int exitStatus) except *

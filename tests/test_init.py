@@ -35,9 +35,9 @@ init_ticks_model = {
             "parser": True,
             "constructor": True,
             "in": {
-                "name": "shared_array_test_input",
+                "name": "shared_array_input",
                 "args": {
-                    "type": "shared_array_test",
+                    "type": "shared_array",
                     "sig_name": "test_sa_in",
                 },
                 "schema": {
@@ -62,9 +62,9 @@ init_ticks_model = {
             # "parser": True,
             "in": ["uint64_signal_out"],
             "out": {
-                "name": "shared_array_test_output",
+                "name": "shared_array_output",
                 "args": {
-                    "type": "shared_array_test",
+                    "type": "shared_array",
                     "sig_name": "test_sa_snk",
                 },
                 "schema": {

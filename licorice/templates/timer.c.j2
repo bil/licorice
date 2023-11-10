@@ -46,7 +46,7 @@
 
 // process IDs for each child numbered according to the index of the child's
 // name in childProcnames
-static pid_t ch_pids[NUM_CHILD_PROCS] = {-1};
+static pid_t ch_pids[NUM_CHILD_PROCS];
 static char childProcnames[NUM_CHILD_PROCS][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in child_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
 static char sourceProcnames[NUM_SOURCES][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in source_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
 static char moduleProcnames[NUM_MODULES][MAX_CHILD_NAME_LEN] = {{'{'}}{% for n in module_names %}"{{n}}"{{ ", " if not loop.last else "" }}{% endfor %}{{'}'}};
@@ -103,7 +103,9 @@ static size_t shm_size;
 static uint8_t *pmem;
 // global tick counter
 static int64_t *pNumTicks = NULL;
-static struct timespec *pClockMonotonicRaw, *pClockMonotonic, *pClockRealtime;
+static struct timespec *pClockMonotonicRaw;
+static struct timespec *pClockMonotonic;
+static struct timespec *pClockRealtime;
 // per-process tick start and end semaphores for sources, modules, and sinks
 // timer signals trigger each process by upping these semaphores
 // timer checks if process finished tick by downing (trywait) these semaphores
@@ -181,7 +183,7 @@ static void timer_init(struct period_info *pinfo) {
 void handle_exit(int exitStatus) {
   int childStatus;
   for (int i = NUM_CHILD_PROCS - 1; i >= 0; i--) {
-    if (ch_pids[i] != -1) {
+    if (ch_pids[i] && ch_pids[i] != -1) {
       printf("Killing %s %s with pid: %d\n", CHILD_TYPES[childDicts[i].type], childDicts[i].name, ch_pids[i]);
       fflush(stdout);
       if (childDicts[i].async) {
@@ -315,6 +317,8 @@ static void check_children(struct period_info *pinfo) {
   }
 {%- endif %}
 
+{%- if num_sources != 0 %}
+
   for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
     if (sem_trywait(pSourceDownSems[al_i])) {
       printf(
@@ -329,6 +333,7 @@ static void check_children(struct period_info *pinfo) {
       // }
     }
   }
+{%- endif %}
 
   // Trigger sources but not modules
   if(*pNumTicks < (-1 * MODULE_INIT_TICKS)){
@@ -364,6 +369,8 @@ static void check_children(struct period_info *pinfo) {
     }
 {%- endif %}
 
+{%- if num_modules != 0 %}
+
     // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_MODULES; al_i++) {
       if (sem_trywait(pModDownSems[al_i])) {
@@ -377,8 +384,11 @@ static void check_children(struct period_info *pinfo) {
         return;
       }
     }
+{%- endif %}
 
-    // check if modules have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
+{%- if num_sinks != 0 %}
+
+    // check if sink have finished execution in allotted time (could just check last round, but need to properly figure val topo stuff again)
     for (al_i = 0; al_i < NUM_SINKS; al_i++) {
       if(sem_trywait(pSinkDownSems[al_i])){
         printf(
@@ -389,6 +399,7 @@ static void check_children(struct period_info *pinfo) {
         fflush(stdout);
       }
     }
+{%- endif %}
 
     for (al_i = 0; al_i < NUM_SOURCES; al_i++) {
       sem_post(pSourceUpSems[al_i]);

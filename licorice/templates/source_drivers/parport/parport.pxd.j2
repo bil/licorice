@@ -1,0 +1,11 @@
+from libc.stdint cimport uint8_t
+
+from runner_utils cimport times_t
+from source_drivers cimport source_driver
+
+cdef class ParportSourceDriver(source_driver.SourceDriver):
+    cdef object pport
+    cdef float sleep_duration
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens) except *
+    cdef void exit_handler(self, int exitStatus) except *

@@ -28,9 +28,9 @@ async_reader_model = {
         "shared_array_in": {
             "language": "python",
             "in": {
-                "name": "shared_array_test_input",
+                "name": "shared_array_input",
                 "args": {
-                    "type": "shared_array_test",
+                    "type": "shared_array",
                     "sig_name": "test_sa_in",
                     "func": "uniform",
                     "kwargs": {
@@ -113,9 +113,9 @@ async_writer_model = {
             "language": "python",
             "in": ["uint64_signal"],
             "out": {
-                "name": "shared_array_test_output",
+                "name": "shared_array_output",
                 "args": {
-                    "type": "shared_array_test",
+                    "type": "shared_array",
                     "sig_name": "test_sa_out",
                     "func": "normal",
                     "kwargs": {
@@ -173,9 +173,9 @@ async_combo_model["modules"].update(
             "language": "python",
             "in": ["uint64_signal"],
             "out": {
-                "name": "shared_array_test_output",
+                "name": "shared_array_output",
                 "args": {
-                    "type": "shared_array_test",
+                    "type": "shared_array",
                     "sig_name": "test_sa_out",
                     "func": "normal",
                     "kwargs": {
@@ -222,6 +222,7 @@ def test_async_combo(capfd):
     validate_model_output(capfd, NUM_TICKS)
 
     # check output is sequential
+    print(sa_sig_out)
     for i in range(1, len(sa_sig_out)):
         assert (sa_sig_out[i - 1] == 100) or (
             sa_sig_out[i] - sa_sig_out[i - 1] == 1

@@ -1,0 +1,86 @@
+from libc.stdio cimport printf
+from libc.stdlib cimport malloc, free, EXIT_SUCCESS, EXIT_FAILURE
+from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
+from posix.signal cimport sigset_t, sigfillset
+from libc.string cimport memcpy
+from libcpp cimport bool
+
+from sink_drivers cimport sink_driver
+
+DEF LINE_BUFFER_PERIODS = 4 # TODO figure out where constants live now
+
+cdef class LineSinkDriver(sink_driver.SinkDriver):
+    def __cinit__(self):
+        # initialize line out
+        self.play_values.device = "{{out_signal["args"]["pcm"]["device"]}}"
+        self.play_values.mode = {{out_signal["args"]["pcm"]["mode"]}}
+        self.play_values.access = {{out_signal["args"]["pcm"]["access"]}}
+        self.play_values.format = {{out_signal["args"]["pcm"]["format"]}}
+        self.play_values.channels = {{out_signal["args"]["pcm"]["channels"]}}
+        self.play_values.rate = {{out_signal["args"]["pcm"]["rate"]}}
+        self.play_values.buffer_time = {{out_signal["args"]["pcm"]["buffer_time"]}}
+        self.play_values.period_time = {{out_signal["args"]["pcm"]["period_time"]}}
+        self.play_values.periods = {{out_signal["args"]["pcm"]["periods"]}}
+
+        pcm_init_playback(&self.play_handle, self.play_hwparams, self.play_swparams, &self.play_values)
+        self.linePeriodSizeBytes = pcm_get_period_size_bytes(&self.play_values)
+        self.linePeriodSizeSamples = self.linePeriodSizeBytes // sizeof({{out_dtype}})
+        self.linePeriodSizeFrames = snd_pcm_bytes_to_frames(self.play_handle, self.linePeriodSizeBytes)
+        self.lineOutBufSizeBytes = LINE_BUFFER_PERIODS * self.linePeriodSizeBytes
+        self.lineOutBufSizeSamples = self.lineOutBufSizeBytes // sizeof({{out_dtype}})
+        self.pLineOutBuf = <{{out_dtype}} *>malloc(self.lineOutBufSizeBytes)
+        self.pLineOutBufWrite = self.pLineOutBuf
+        self.pLineOutBufRead = self.pLineOutBuf
+        self.lineBufferedPeriods = 0
+        snd_pcm_prepare(self.play_handle)
+
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *:
+        # TODO debug latency
+        # TODO make pNumTicks accessible
+        # printf("%d\n", pNumTicks[0])
+        # fflush(stdout)
+
+        self.lineSamplesWrapped = (self.pLineOutBufWrite - self.pLineOutBuf) + outBufLen - self.lineOutBufSizeSamples
+        self.linePeriodsWritten = 0
+
+        if (self.lineSamplesWrapped >= 0):
+            memcpy(self.pLineOutBufWrite, outBuf, (outBufLen - self.lineSamplesWrapped) * sizeof({{out_dtype}}))
+            memcpy(self.pLineOutBuf, outBuf + outBufLen - self.lineSamplesWrapped, self.lineSamplesWrapped * sizeof({{out_dtype}}))
+
+            self.linePeriodsWritten = outBufLen // self.linePeriodSizeSamples
+            self.lineBufferedPeriods += self.linePeriodsWritten
+
+            self.pLineOutBufWrite = self.pLineOutBuf + self.lineSamplesWrapped
+        else:
+            memcpy(self.pLineOutBufWrite, outBuf, outBufLen * sizeof({{out_dtype}}))
+            self.linePeriodsWritten = outBufLen // self.linePeriodSizeSamples
+            self.lineBufferedPeriods += self.linePeriodsWritten
+            self.pLineOutBufWrite += outBufLen
+
+        # TODO debug latency
+        # print(linePeriodsWritten, flush=True)
+        for i in range(self.linePeriodsWritten):
+            if (pcm_write_buffer(self.play_handle, <uint8_t *>self.pLineOutBufRead, self.linePeriodSizeFrames) < 0):
+                die("pcm_write_buffer failed.\n")
+
+            # j = 0
+            # printf("sink (num_ticks: linePeriodSizeFrames, outBufLen): %lu %d %d\n", pNumTicks[0], linePeriodSizeFrames, outBufLen)
+            # while (j < 20):
+            #   printf("%d ", (<int16_t *>pLineOutBufRead)[j])
+            #   j += 1
+            # printf("%d ", (<int16_t *>pLineOutBufRead)[linePeriodSizeFrames-1])
+            # printf("\n")
+            # fflush(stdout)
+
+        self.pLineOutBufRead += self.linePeriodSizeSamples
+        if (self.pLineOutBufRead >= self.pLineOutBuf + self.lineOutBufSizeSamples):
+            self.pLineOutBufRead = self.pLineOutBuf
+
+
+        self.linePeriodsWritten = 0
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        free(self.pLineOutBuf)
+        pcm_close(self.play_handle, exitStatus)

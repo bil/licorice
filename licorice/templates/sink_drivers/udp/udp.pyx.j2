@@ -1,0 +1,61 @@
+from libc.stdint cimport uint8_t
+
+from sink_drivers cimport sink_driver
+
+cdef extern from "<arpa/inet.h>":
+    uint16_t htons(uint16_t hostshort)
+    int inet_aton(const char *cp, in_addr *inp)
+
+cdef extern from "<netinet/in.h>":
+    enum: IPPROTO_UDP
+    ctypedef uint16_t in_port_t
+    ctypedef unsigned short sa_family_t
+    struct in_addr:
+        uint32_t s_addr
+    struct sockaddr_in:
+        sa_family_t sin_family
+        in_port_t sin_port
+        in_addr sin_addr
+        unsigned char sin_zero[8]
+
+cdef extern from "<sys/socket.h>":
+    enum: AF_INET
+    enum: SOCK_DGRAM
+    ctypedef uint32_t socklen_t
+    struct sockaddr:
+        unsigned char sa_len
+        unsigned char sa_family
+        char  sa_data[14]
+    ssize_t recvfrom(int, void *restrict, size_t, int, sockaddr *restrict, socklen_t *restrict)
+    int bind(int, const sockaddr *, socklen_t)
+    int socket(int domain, int type, int protocol)
+    ssize_t sendto(int socket, const void *message, size_t length,
+             int flags, const sockaddr *dest_addr,
+             socklen_t dest_len)
+
+
+cdef class UdpSinkDriver(sink_driver.SinkDriver):
+    def __cinit__(self):
+        self.slen = sizeof(self.si_other)
+
+        # create a UDP socket
+        self.s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+        if (self.s == -1):
+            die("NETWORK ERROR: socket\n")
+        # zero out the structure
+        memset(<char *> &self.si_other, 0, sizeof(self.si_other))
+        self.si_other.sin_family = AF_INET
+        self.si_other.sin_port = htons({{out_signal['args']['port']}})
+        if (inet_aton("{{out_signal['args']['addr']}}", &self.si_other.sin_addr)==0):
+            die("inet_aton() failed\n")
+
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *
+        # TODO read in MTU or make constant for user. or could use sendto max
+        for sentBytes in range(0, outBufLen, 1472):
+            if (sendto(self.s, outBuf + sentBytes, 1472, 0, <sockaddr *>&self.si_other, self.slen)==-1):
+                die("sendto() failed")
+
+
+    cdef void exit_handler(self, int exitStatus) except *
+        close(self.s)

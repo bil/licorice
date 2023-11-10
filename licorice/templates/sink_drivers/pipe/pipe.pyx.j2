@@ -1,0 +1,25 @@
+from libc.stdint cimport uint8_t
+
+from sink_drivers cimport sink_driver
+
+cdef extern from "<sys/types.h>":
+    ctypedef unsigned short mode_t
+cdef extern from "<sys/stat.h>":
+    int mkfifo(const char *, mode_t)
+
+
+cdef class PipeSinkDriver(sink_driver.SinkDriver):
+    def __cinit__(self):
+        self.FIFOFILE = = '{{out_signal['args']['filepath']}}'
+        self.named_pipe = open(FIFOFILE, O_RDWR)
+        if (self.named_pipe == -1):
+            die("Could not open pipe \n")
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *
+        if(outBufLen > 0):
+            if(write(self.named_pipe, outBuf, outBufLen) == -1):
+                die("Pipe Write Failed \n")
+
+    cdef void exit_handler(self, int exitStatus) except *
+        close(self.named_pipe)
+        remove(self.FIFOFILE)

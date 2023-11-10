@@ -1,0 +1,41 @@
+import pygame
+from time import sleep
+{%- if config["config"]["sdl_driver"] %}
+import os
+os.environ["SDL_VIDEODRIVER"] = "{{config["config"]["sdl_driver"]}}"
+{%- endif %}
+
+cdef class PygameJoystickSourceDriver(source_driver.SourceDriver):
+    def __cinit__(self):
+
+        pygame.display.init()
+        pygame.joystick.init()
+
+        if pygame.joystick.get_count() < 1:
+            die("No joystick found!\n")
+
+        self.pygame_joystick = pygame.joystick.Joystick(0)
+        self.pygame_joystick.init()
+        self.num_buttons = self.pygame_joystick.get_numbuttons()
+        pygame.event.pump()
+        self.sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
+
+    cdef size_t run(
+        self, times_t *times, void *inBuf, size_t packetSize, object out_sigs
+    ) except *:
+        pygame.event.pump()
+        (<double*>inBuf)[0] = self.pygame_joystick.get_axis(0)
+        (<double*>inBuf)[1] = self.pygame_joystick.get_axis(1)
+        for i in range(self.num_buttons):
+            (<uint8_t*>inBuf)[128 + i] = self.pygame_joystick.get_button(i)
+
+    {%- if async %}
+
+        sleep(self.sleep_duration)
+    {%- endif %}
+
+        return packetSize
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        pass

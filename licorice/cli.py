@@ -39,9 +39,10 @@ def __split_path(path):
 def __get_licorice_paths(**kwargs):
     # determine model name and output directory
     if type(kwargs["model"]) is str:
-        run_dirname = f"{kwargs['model'].split('.')[0]}.lico"
+        run_dirname = f"{kwargs['model'].split('.')[0]}.lico/out"
     else:
-        run_dirname = "run.lico"
+        run_dirname = "run.lico/out"
+    backup_dirname = f"{run_dirname[:-3]}/.out"
 
     paths = {}
 
@@ -91,7 +92,7 @@ def __get_licorice_paths(**kwargs):
     default_lico_working_path = lico_paths["working"][0]
 
     fallback_output_dir = os.path.join(
-        default_lico_working_path, f"{run_dirname}/out"
+        default_lico_working_path, f"{run_dirname}"
     )
     if not lico_dirs["output"] and len(lico_paths["working"]) > 1:
         print(
@@ -121,7 +122,7 @@ def __get_licorice_paths(**kwargs):
     paths["tmp_modules"] = lico_dirs["tmp_module"] or fallback_tmp_module_dir
 
     fallback_tmp_output_dir = os.path.join(
-        default_lico_working_path, f"{run_dirname}/.out"
+        default_lico_working_path, f"{backup_dirname}"
     )
     if not lico_dirs["tmp_output"] and len(lico_paths["working"]) > 1:
         print(

@@ -1,0 +1,677 @@
+from libc.stdio cimport printf, stdout, fflush
+from libc.stdlib cimport exit, malloc, free
+from libc.string cimport memcpy, strcat, strcpy, strlen
+
+import time
+
+# TODO convert to #define in a separate .h file
+tick_table_num_cols = {{tick_table|length}} + {{tick_view_extra_cols}} + 4
+num_custom_tables = {{custom_tables|length}}
+
+# TODO throw in some declarative type hinting (aka volatile)
+# TODO or try converting these to structs/arrays
+# TODO can also try with unoptimized compile
+
+# jinja-templated vars
+in_sig_keys = {{in_sig_keys}}
+in_sig_sigs = {{in_signals}}
+tick_table_keys = {{tick_table.keys()|list}}
+tick_table = {{tick_table}}
+custom_table_sigs = {{custom_table_sigs}}
+custom_table_names = {{custom_table_names}}
+custom_tables = {{custom_tables}}
+msgpack_sigs = {{msgpack_sigs}}
+
+cdef class DiskSinkDriver(sink_driver.SinkDriver):
+    def __cinit__(self):
+        cdef int i, j, k, rc
+        cdef char *zErrMsg
+
+        # init table buffer vars
+        cdef uint32_t sig_buf_size_bytes
+
+        self.tickTableCols = NULL
+        self.tickTableBufStrt = NULL
+        self.initialized = False
+        self.db_index = 0
+        self.tick_count = 0
+        self.ticks_written = 0
+
+        # create numpy signals table sql insert queri
+        self.createQuery(
+            &self.tickTableQuery,
+            "{{ out_signal["args"]["tick_table"] }}",
+            tick_table_num_cols
+        )
+        {%- for table_name in custom_table_names %}
+        num_cols = 1
+            {%- for sig, args in custom_tables[table_name].items() %}
+        num_cols += {{args["log"]["num_cols"]}}
+            {%- endfor %}
+        self.createQuery(
+            &self.customTableQueries[{{loop.index0}}],
+            <char *>b"{{table_name}}",
+            num_cols
+        )
+        {%- endfor %}
+
+        # assumes flush occurs in less than SQL_LOGGER_FLUSH ticks
+        self.tableBufSize = 2 * SQL_LOGGER_FLUSH
+        self.bufferOffsetCur = 0
+        self.bufferOffsetStrt = 0
+        self.bufferOffsetEnd = 0
+
+        # tick-view signals buffer
+        self.tickTableBufStrt = <tickTableData *>malloc(
+            sizeof(tickTableData) * self.tableBufSize
+        )
+        for i, sig in enumerate(tick_table_keys):
+            args = tick_table[sig]
+            sig_buf_size_bytes = args["buf_size_bytes"]
+            self.tickTableBufStrt[0].sigs[i] = <uint8_t *>malloc(
+            sig_buf_size_bytes * self.tableBufSize
+            )
+            for j in range(1, self.tableBufSize):
+                self.tickTableBufStrt[j].sigs[i] = (
+                    self.tickTableBufStrt[0].sigs[i] + <uint64_t>(j * sig_buf_size_bytes)
+                )
+
+        # per-signal buffers
+        for i, table_name in enumerate(custom_table_names):
+            self.customTableBufStrts[i] = <customTableData *>malloc(
+                sizeof(customTableData) * self.tableBufSize
+            )
+
+            # allocate memory for signal data
+            table_sigs = custom_table_sigs[table_name]
+            # this is validated to be the same for all table_sigs
+            args = custom_tables[table_name][table_sigs[0]]
+            tk_buf_size_samples = args["packet_size"] * args["max_packets_per_tick"]
+            tk_buf_size_bytes = (
+                args["packet_size"] * args["max_packets_per_tick"] *
+                sizeof(int64_t)
+            )
+
+            # allocate buffers for ticks and counters and pointer buffer for signals
+            # for each struct
+            self.customTableBufStrts[i][0].sigs = <uint8_t **>malloc(
+                sizeof(uint8_t *) * len(table_sigs) * self.tableBufSize
+            )
+            self.customTableBufStrts[i][0].timeTicks = <int64_t *>malloc(
+                tk_buf_size_bytes * self.tableBufSize
+            )
+            self.customTableBufStrts[i][0].sigNumPktsRecvd = <uint32_t *>malloc(
+                sizeof(uint32_t) * len(table_sigs) * self.tableBufSize
+            )
+
+            for j in range(1, self.tableBufSize):
+                self.customTableBufStrts[i][j].sigs = (
+                    self.customTableBufStrts[i][0].sigs + (
+                        <uint64_t>(j * len(table_sigs))
+                    )
+                )
+                self.customTableBufStrts[i][j].timeTicks = (
+                    self.customTableBufStrts[i][0].timeTicks + (
+                        <uint64_t>(j * tk_buf_size_samples)
+                    )
+                )
+                self.customTableBufStrts[i][j].sigNumPktsRecvd = (
+                    self.customTableBufStrts[i][0].sigNumPktsRecvd + (
+                        <uint64_t>(j * len(table_sigs))
+                    )
+                )
+
+            # allocate signal data buffers
+            for j, sig in enumerate(table_sigs):
+                args = custom_tables[table_name][sig]
+                sig_buf_size_bytes = args["buf_size_bytes"]
+                self.customTableBufStrts[i][0].sigs[j] = <uint8_t *>malloc(
+                    sig_buf_size_bytes * self.tableBufSize
+                )
+
+                for k in range(1, self.tableBufSize):
+                    self.customTableBufStrts[i][k].sigs[j] = (
+                        self.customTableBufStrts[i][0].sigs[j] + <uint64_t>(
+                            k * sig_buf_size_bytes
+                        )
+                    )
+
+        for i in range(len(in_sig_keys)):
+            self.customTableOnes[i] = 1
+
+        self.prepareTable(
+            "{{ out_signal["args"]["tick_table"] }}",
+            &self.databaseArray[0],
+            &self.tickTableCols,
+            tick_table_num_cols,
+            True,
+            tick_table,
+        )
+
+        {% for table_name in custom_table_names %}
+            {%- set outer_loop = loop %}
+        # one column for ticks
+        num_cols = 1
+            {%- for sig, args in custom_tables[table_name].items() %}
+        num_cols += {{args["log"]["num_cols"]}}
+            {%- endfor %}
+        self.prepareTable(
+            <char *>b"{{table_name}}",
+            &self.databaseArray[{{outer_loop.index0}} + 1],
+            &self.customTableCols[{{outer_loop.index0}}],
+            num_cols,
+            False,
+            custom_tables["{{table_name}}"],
+        )
+        {%- endfor %}
+
+        # initialize message pack memory for matrix signals
+        self.msgpack_init(in_sig_sigs, msgpack_sigs)
+
+        openDatabase(
+            &self.db, "{{ out_signal['args']['save_file'] }}", self.db_index, self.currDbName
+        )
+        rc = sqlite3_exec(
+            self.db, "PRAGMA journal_mode = MEMORY;", NULL, NULL, &zErrMsg
+        )
+        if (rc != SQLITE_OK):
+            printf("%s\n", zErrMsg)
+            fflush(stdout)
+            sqlite3_free(zErrMsg)
+            die("SQL pragma error\n")
+
+        createTables(self.db, self.databaseArray, {{logger_num_tables}})
+
+        self.initialized = True
+
+
+    # Malloc memory for dst and perform a strncpy with null-termination
+    cdef void* py2cStr(self, char** dst, src):
+        n = len(src)
+        dst[0] = <char *> malloc(n + 1)
+        strncpy(dst[0], <char *>src, n)
+        dst[0][n] = b'\0'
+
+
+    cdef void msgpack_init(self, in_sig_sigs, msgpack_sigs):
+        cdef uint64_t zeroVal = 0
+        cdef int m_i
+        for sig, args in in_sig_sigs.items():
+            if args["log"]["enable"] and args["log"]["type"] == "msgpack":
+                m_i = msgpack_sigs.index(sig)
+                msgpack_sbuffer_init(&self.msgpackBufs[m_i])
+                msgpack_packer_init(
+                    &self.msgpackPkrs[m_i], &self.msgpackBufs[m_i], msgpack_sbuffer_write
+                )
+
+                # enlarge buffer before main execution
+                max_bytes = args["max_packets_per_tick"] * args["packet_size"]
+                msgpack_pack_array(&self.msgpackPkrs[m_i], max_bytes)
+                for _ in range(max_bytes):
+                    self.msgpack_pack(
+                        args["dtype_msgpack"], &self.msgpackPkrs[m_i], <void*>&zeroVal, 0
+                    )
+
+
+    cdef int msgpack_pack(self, dtype, msgpack_packer* pk, void *pVal, offset):
+        if dtype == "uint8":
+            return msgpack_pack_uint8(pk, (<uint8_t *>pVal)[offset])
+        elif dtype == "uint16":
+            return msgpack_pack_uint16(pk, (<uint16_t *>pVal)[offset])
+        elif dtype == "uint32":
+            return msgpack_pack_uint32(pk, (<uint32_t *>pVal)[offset])
+        elif dtype == "uint64":
+            return msgpack_pack_uint64(pk, (<uint64_t *>pVal)[offset])
+        elif dtype == "int8":
+            return msgpack_pack_int8(pk, (<int8_t *>pVal)[offset])
+        elif dtype == "int16":
+            return msgpack_pack_int16(pk, (<int16_t *>pVal)[offset])
+        elif dtype == "int32":
+            return msgpack_pack_int32(pk, (<int32_t *>pVal)[offset])
+        elif dtype == "int64":
+            return msgpack_pack_int64(pk, (<int64_t *>pVal)[offset])
+        elif dtype == "float":
+            return msgpack_pack_float(pk, (<float *>pVal)[offset])
+        elif dtype == "double":
+            return msgpack_pack_double(pk, (<double *>pVal)[offset])
+
+
+    cdef void* createQuery(self, char **query, const char* tableName, int numCols):
+        cdef int queryLen, i
+        queryLen = (
+            strlen(INSERT_STR) + strlen(tableName) +
+            strlen(VALUES_STR) + strlen(OPEN_BRACE) +
+            (strlen(QUESTION) + strlen(COMMA)) * numCols - strlen(COMMA) +
+            strlen(CLOSE_BRACE_SEMI)
+        )
+        query[0] = <char *> malloc(queryLen + 1)
+        strcpy(query[0], INSERT_STR)
+        strcat(query[0], tableName)
+        strcat(query[0], VALUES_STR)
+        strcat(query[0], OPEN_BRACE)
+        for i in range(numCols):
+            strcat(query[0], QUESTION)
+            if (i != numCols - 1):
+                strcat(query[0], COMMA)
+        strcat(query[0], CLOSE_BRACE_SEMI)
+        query[queryLen] = '\0'
+
+    # prepare SQL database table
+    cdef void* prepareTable(
+        self, char *dbName, SQLTable *dbArr, SQLTableElement **cols, int numCols, bint timeCols, sigs
+    ):
+        cdef int i, j
+        cdef int num_extra_cols = 0
+
+        cols[0] = <SQLTableElement *> malloc(numCols * sizeof(SQLTableElement))
+
+        self.py2cStr(
+            &cols[0][num_extra_cols].colName,
+            "time_tick".encode("ascii")
+        )
+        cols[0][num_extra_cols].SQLtype = "INTEGER"
+        num_extra_cols += 1
+
+        if (timeCols):
+            self.py2cStr(
+                &cols[0][num_extra_cols].colName,
+                "time_monotonic_raw".encode("ascii")
+            )
+            cols[0][num_extra_cols].SQLtype = "INTEGER"
+            num_extra_cols += 1
+            self.py2cStr(
+                &cols[0][num_extra_cols].colName,
+                "time_monotonic".encode("ascii")
+            )
+            cols[0][num_extra_cols].SQLtype = "INTEGER"
+            num_extra_cols += 1
+            self.py2cStr(
+                &cols[0][num_extra_cols].colName,
+                "time_realtime".encode("ascii")
+            )
+            cols[0][num_extra_cols].SQLtype = "INTEGER"
+            num_extra_cols += 1
+
+        for i, (sig, args) in enumerate(sigs.items()):
+            if args["log"]["type"] == "msgpack": # msgpack sigs
+                self.py2cStr(
+                    &cols[0][i + num_extra_cols].colName,
+                    f"m_{args['dtype_short']}_{sig}".encode("ascii")
+                )
+                cols[0][i + num_extra_cols].SQLtype = "BLOB"
+
+            elif args["log"]["type"] == "vector": # vector sigs
+                for j in range(args["log"]["num_cols"]):
+                    if "suffixes" in args["log"]:
+                        self.py2cStr(
+                            &cols[0][i + num_extra_cols].colName,
+                            f"v_{args['dtype_short']}_{sig}_{args['log']['suffixes'][j]}".encode("ascii")
+                        )
+                    else:
+                        self.py2cStr(
+                            &cols[0][i + num_extra_cols].colName,
+                            f"v_{args['dtype_short']}_{sig}_{j}".encode("ascii")
+                        )
+                    if "int" in args["dtype"]:
+                        cols[0][i + num_extra_cols].SQLtype = "INTEGER"
+                    else: # float
+                        cols[0][i + num_extra_cols].SQLtype = "REAL"
+
+                    num_extra_cols += 1
+
+                num_extra_cols -= 1 # only count *extra* added cols
+
+            elif args["log"]["type"] == "text": # text sigs
+                self.py2cStr(
+                    &cols[0][i + num_extra_cols].colName,
+                    f"t_{args['dtype_short']}_{sig}".encode("ascii")
+                )
+                cols[0][i + num_extra_cols].SQLtype = "TEXT"
+
+            elif args["log"]["type"] == "scalar": # raw number sigs
+                self.py2cStr(
+                    &cols[0][i + num_extra_cols].colName,
+                    f"r_{args['dtype_short']}_{sig}".encode("ascii")
+                )
+                if "int" in args["dtype"]:
+                    cols[0][i + num_extra_cols].SQLtype = "INTEGER"
+                else: # float
+                    cols[0][i + num_extra_cols].SQLtype = "REAL"
+
+        dbArr[0].tableName = dbName
+        dbArr[0].numCol = numCols
+        dbArr[0].columns = cols[0]
+
+
+    # perform copies from signal buffers to logger buffers
+    cdef void* bufferSignals(
+        self, times_t *times, object sigs, object sig_lens
+    ):
+        cdef int i, j
+        cdef tickTableData *pTickDataCur
+        cdef customTableData *pCustomDataCur
+
+        pTickDataCur = self.tickTableBufStrt + self.bufferOffsetCur
+        pTickDataCur.timeTick = times.tick
+        pTickDataCur.timeMonotonicRaw = times.monotonic_raw
+        pTickDataCur.timeMonotonic = times.monotonic
+        pTickDataCur.timeRealtime = times.realtime
+        # for each tick buffered, copy each signal from buffer into pTickDataCur
+        for i, sig in enumerate(tick_table_keys):
+            args = tick_table[sig]
+            # TODO this logic should have some validation
+            # in the case of max_packets_per_tick != 1, must be saved as a blob # or be in its own table
+            memcpy(
+                pTickDataCur.sigs[i],
+                <void *><long>sigs[sig].__array_interface__["data"][0],
+                sig_lens[sig] * args["packet_size"] * args["bytes"]
+            )
+            if args["max_packets_per_tick"] == 1:
+                pTickDataCur.sigNumPktsRecvd[i] = 1
+            else:
+                pTickDataCur.sigNumPktsRecvd[i] = sigs[sig].shape[0]
+
+        atomic_thread_fence(memory_order_seq_cst)
+
+        for i, table_name in enumerate(custom_table_names):
+            pCustomDataCur = self.customTableBufStrts[i] + self.bufferOffsetCur
+            table_sigs = custom_table_sigs[table_name]
+            for j, sig in enumerate(table_sigs):
+                args = custom_tables[table_name][sig]
+                memcpy(
+                    pCustomDataCur.sigs[j],
+                    <void *><long>(sigs[sig].__array_interface__["data"][0]),
+                    sig_lens[sig] * args["packet_size"] * args["bytes"]
+                )
+                if args["max_packets_per_tick"] == 1:
+                    pCustomDataCur.sigNumPktsRecvd[j] = 1
+                else:
+                    pCustomDataCur.sigNumPktsRecvd[j] = sigs[sig].shape[0]
+
+            sig_len = sig_lens[table_sigs[0]]
+            for sig in table_sigs:
+                assert sig_lens[sig] == sig_len
+            for j in range(sig_len):
+                pCustomDataCur.timeTicks[j] = times.tick
+
+        atomic_thread_fence(memory_order_seq_cst)
+
+
+    cdef void performFlush(
+        self, sig_keys, sigs,
+        char *query, sqlite3_stmt *stmt,
+        uint8_t **sigBufs, int64_t *tickPtr, uint64_t *tickMonotonicRawPtr,
+        uint64_t *tickMonotonicPtr, uint64_t *tickRealtimePtr,
+        uint32_t *sigNumPktsRecvd, int pkt_num
+    ):
+        global msgpack_sigs
+
+        if len(sig_keys) == 0:
+            return
+
+        cdef int i, j, m_i
+        cdef int num_extra_cols = 0 # restart counter for each row loggedc
+        cdef uint8_t *pSig
+
+        sql_prepare(self.db, query, -1, &stmt, NULL)
+
+        if tickPtr != NULL:
+            sql_bind_int64(stmt, 1, tickPtr)
+            num_extra_cols += 1
+
+        if tickMonotonicRawPtr != NULL:
+            sql_bind_int64(stmt, 2, tickMonotonicRawPtr)
+            num_extra_cols += 1
+
+        if tickMonotonicPtr != NULL:
+            sql_bind_int64(stmt, 3, tickMonotonicPtr)
+            num_extra_cols += 1
+
+        if tickRealtimePtr != NULL:
+            sql_bind_int64(stmt, 4, tickRealtimePtr)
+            num_extra_cols += 1
+
+        for i, sig in enumerate(sig_keys):
+            args = sigs[sig]
+            pSig = sigBufs[i] + <int>(pkt_num * args["bytes"])
+            if args["log"]["type"] == "msgpack": # msgpack signal
+                m_i = msgpack_sigs.index(sig)
+                msgpack_sbuffer_clear(&self.msgpackBufs[m_i])
+                msgpack_pack_array(
+                    &self.msgpackPkrs[m_i], args["packet_size"] * sigNumPktsRecvd[i]
+                )
+                for j in range (args["packet_size"] * sigNumPktsRecvd[i]):
+                    self.msgpack_pack(
+                        args["dtype_msgpack"],
+                        &self.msgpackPkrs[m_i],
+                        pSig,
+                        j
+                    )
+                sql_bind_blob(
+                    stmt,
+                    i + 1 + num_extra_cols,
+                    self.msgpackBufs[m_i].data,
+                    self.msgpackBufs[m_i].size,
+                    SQLITE_STATIC
+                )
+
+            elif args['log']['type'] == "vector": # vector signal
+                for j in range(args["log"]["num_cols"]):
+                    if "int" in args["dtype"]:
+                        if "64" in args["dtype"]:
+                            sql_bind_int64(
+                                stmt,
+                                i + 1 + num_extra_cols,
+                                &((<int64_t *>pSig)[j])
+                            )
+                        else:
+                            sql_bind_int(
+                                stmt,
+                                i + 1 + num_extra_cols,
+                                args["dtype"].encode("utf-8"),
+                                &((<uint8_t *>pSig)[j * args["bytes"]])
+                            )
+                    else: # float
+                        sql_bind_double(
+                            stmt,
+                            i + 1 + num_extra_cols,
+                            args["dtype"].encode("utf-8"),
+                            &((<uint8_t *>pSig)[j * args["bytes"]])
+                        )
+                    num_extra_cols += 1
+                num_extra_cols -= 1
+
+            elif args["log"]["type"] == "text": # text signal
+                sql_bind_text(
+                    stmt,
+                    i + 1 + num_extra_cols,
+                    pSig,
+                    args["log"]["numBytes"] * args["packet_size"],
+                    SQLITE_STATIC
+                )
+
+            elif args["log"]["type"] == "scalar": # raw number signal
+                if "int" in args["dtype"]:
+                    if "64" in args["dtype"]:
+                        sql_bind_int64(
+                            stmt, i + 1 + num_extra_cols, pSig
+                        )
+                    else:
+                        sql_bind_int(
+                            stmt,
+                            i + 1 + num_extra_cols,
+                            args["dtype"].encode("utf-8"),
+                            pSig
+                        )
+                else: # float
+                    sql_bind_double(
+                        stmt,
+                        i + 1 + num_extra_cols,
+                        args["dtype"].encode("utf-8"),
+                        pSig
+                    )
+
+        sql_step(stmt)
+        sql_finalize(stmt)
+
+
+    cdef void flushToDisk(self, bint newDB=False):
+        global custom_table_keys, custom_tables
+
+        cdef int i, j, rc
+        cdef bint complete = True
+        cdef char *zErrMsg
+        cdef tickTableData *pTickDataStrt
+        cdef customTableData *pCustomDataStrt
+
+        self.flushing = True
+
+        # create new database if time limit reached
+        if (newDB):
+            self.db_index += 1
+            openDatabase(
+                &self.db, "{{ out_signal['args']['save_file']}}", self.db_index, self.currDbName
+            )
+            rc = sqlite3_exec(self.db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
+            if (rc != SQLITE_OK):
+                printf("%s\n", zErrMsg)
+                sqlite3_free(zErrMsg)
+                printf("SQL pragma error\n")
+                fflush(stdout)
+                return
+            createTables(self.db, self.databaseArray, {{logger_num_tables}})
+
+        rc = sqlite3_exec(self.db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
+        if (rc != SQLITE_OK):
+            printf("%s\n", zErrMsg)
+            sqlite3_free(zErrMsg)
+            printf("SQL begin transaction error: %d\n", rc)
+            fflush(stdout)
+            return
+
+        while (self.bufferOffsetStrt != self.bufferOffsetEnd):
+            pTickDataStrt = self.tickTableBufStrt + self.bufferOffsetStrt
+            # TODO validate:
+            # tick-view vector and scalar signals must have max_packets_per_tick == 1
+            self.performFlush(
+                tick_table_keys,
+                tick_table,
+                self.tickTableQuery,
+                self.signalsStmt,
+                pTickDataStrt.sigs,
+                &pTickDataStrt.timeTick,
+                &pTickDataStrt.timeMonotonicRaw,
+                &pTickDataStrt.timeMonotonic,
+                &pTickDataStrt.timeRealtime,
+                pTickDataStrt.sigNumPktsRecvd,
+                0
+            )
+
+            for i, table_name in enumerate(custom_table_names):
+                pCustomDataStrt = self.customTableBufStrts[i] + self.bufferOffsetStrt
+                sig_pkts = pCustomDataStrt.sigNumPktsRecvd[0]
+                for j in range(1, len(custom_tables[table_name])):
+                    assert sig_pkts == pCustomDataStrt.sigNumPktsRecvd[j]
+                for j in range(sig_pkts):
+                    self.performFlush(
+                        custom_table_sigs[table_name],
+                        custom_tables[table_name],
+                        self.customTableQueries[i],
+                        self.signalsStmt,
+                        pCustomDataStrt.sigs,
+                        pCustomDataStrt.timeTicks,
+                        NULL, NULL, NULL,
+                        self.customTableOnes,  # flush one packet at a time
+                        j
+                    )
+
+            self.bufferOffsetStrt += 1
+            if (self.bufferOffsetStrt == self.tableBufSize):
+                self.bufferOffsetStrt = 0
+
+            self.ticks_written += 1
+            if (
+                (self.ticks_written % NEW_DB_NUM_TICKS == 0) and
+                (self.ticks_written < {{ config["config"]["num_ticks"] }})
+            ):
+                complete = False
+                break
+
+        rc = sqlite3_exec(self.db, "END TRANSACTION", NULL, NULL, &zErrMsg)
+        if (rc != SQLITE_OK):
+            printf("%s\n", zErrMsg)
+            sqlite3_free(zErrMsg)
+            printf("SQL end transaction error\n")
+            fflush(stdout)
+            return
+
+        if not complete:
+            self.flushToDisk(newDB=True)
+
+        self.flushing = False
+
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *:
+
+        # for now we assume signals are synchronous and we get one signal each tick.
+        # signals can be put in separate tables if needed for multiple async.
+        # sufficient ticks must be buffered for async to work. error handling??
+        # parsing happens on async side, so need previous tick signals exposed here
+        self.bufferSignals(times, in_sigs, in_sig_lens)
+        self.bufferOffsetCur += 1
+        if (self.bufferOffsetCur == self.tableBufSize):
+            self.bufferOffsetCur = 0
+
+        # after SQL_LOGGER_FLUSH ticks, flush buffered data to DB
+        # TODO this has to be a different var since numTicks is not accurate for async
+        self.tick_count += 1
+        if (self.tick_count % SQL_LOGGER_FLUSH == 0):
+            self.bufferOffsetEnd = self.bufferOffsetCur
+            self.flushToDisk()
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        global tick_table_keys, custom_table_names
+
+        cdef int rc
+        cdef int i, j
+
+        # perform final flush of buffered data
+        if self.initialized and not self.flushing:
+            self.bufferOffsetEnd = self.bufferOffsetCur
+            self.flushToDisk()
+
+        if self.tickTableBufStrt != NULL:
+            for i, sig in enumerate(tick_table_keys):
+                free(self.tickTableBufStrt[0].sigs[i])
+            free(self.tickTableBufStrt)
+
+        for i, table_name in enumerate(custom_table_names):
+            if self.customTableBufStrts[i] != NULL:
+                for j in range(len(custom_table_sigs[table_name])):
+                    free(self.customTableBufStrts[i][0].sigs[j])
+                free(self.customTableBufStrts[i][0].sigNumPktsRecvd)
+                free(self.customTableBufStrts[i][0].timeTicks)
+                free(self.customTableBufStrts[i][0].sigs)
+                free(self.customTableBufStrts[i])
+
+        if self.tickTableCols != NULL:
+            for i in range(len(tick_table)):
+                free(self.tickTableCols[i].colName)
+            free(self.tickTableCols)
+
+        for i, table_name in enumerate(custom_table_names):
+            if self.customTableCols[i] != NULL:
+                for j in range(len(custom_table_sigs[table_name])):
+                    free(self.customTableCols[i][j].colName)
+                free(self.customTableCols[i])
+
+        # destroy msgpack signals
+        for i in range(len(msgpack_sigs)):
+            msgpack_sbuffer_destroy(&self.msgpackBufs[i])
+
+        # clean up sqlite db
+        rc = sqlite3_close(self.db)
+        if (rc != SQLITE_OK):
+            printf("SQL close error\n")
+            fflush(stdout)

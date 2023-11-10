@@ -1,0 +1,37 @@
+{% set buf_ctype = in_signal["schema"]["data"]["ctype"] -%}
+
+from libc.stdint cimport {{buf_ctype}}
+
+import time
+
+import numpy as np
+import SharedArray as sa
+
+from source_drivers cimport source_driver
+
+cdef class SharedArraySourceDriver(source_driver.SourceDriver):
+    def __cinit__(self):
+        {% if async %}
+        self.sleep_func = getattr(np.random, "{{in_signal['args']['func']}}")
+        self.sleep_kwargs = {{in_signal['args']['kwargs']}}
+        {% endif %}
+        sig_name = "{{in_signal['args']['sig_name']}}"
+        self.sa_sig = sa.attach(sig_name)
+        self.sa_index = 0
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *:
+        (<{{buf_ctype}} *>inBuf)[0] = self.sa_sig[self.sa_index]
+        self.sa_index += 1
+        if self.sa_index >= self.sa_sig.size:
+            self.sa_index = 0
+    {% if async %}
+        sleep_duration = self.sleep_func(**self.sleep_kwargs)
+        time.sleep(sleep_duration)
+    {% endif %}
+
+        return 1
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        pass
+

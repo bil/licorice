@@ -28,9 +28,9 @@ small_model = {
         "shared_array_in": {
             "language": "python",
             "in": {
-                "name": "shared_array_test_input",
+                "name": "shared_array_input",
                 "args": {
-                    "type": "shared_array_test",
+                    "type": "shared_array",
                     "sig_name": "test_sa_in",
                     "func": "uniform",
                     "kwargs": {
@@ -53,9 +53,9 @@ small_model = {
             "language": "python",
             "in": ["uint64_signal"],
             "out": {
-                "name": "shared_array_test_output",
+                "name": "shared_array_output",
                 "args": {
-                    "type": "shared_array_test",
+                    "type": "shared_array",
                     "sig_name": "test_sa_out",
                     "func": "normal",
                     "kwargs": {

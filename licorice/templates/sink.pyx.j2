@@ -6,7 +6,7 @@ from libc.stdio cimport printf, snprintf, stdout, fflush, remove
 from libc.stdlib cimport exit, malloc, free, EXIT_SUCCESS, EXIT_FAILURE
 from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
 from libc.signal cimport SIGINT, SIGUSR1, SIGALRM, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2, SIGTERM
-from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset, kill
+from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
 from posix.unistd cimport getppid, pause, close, getpid, write
 from posix.mman cimport munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall, shm_unlink
 from posix.fcntl cimport O_RDWR, O_WRONLY, O_CREAT, O_TRUNC, open
@@ -14,8 +14,7 @@ from posix.types cimport pid_t
 from libc.errno cimport errno, EINTR, EPIPE
 from libc.string cimport memset, strcpy, strcat, strlen, memcpy
 from posix.time cimport clock_gettime, timespec
-from libcpp cimport bool
-DEF SIG_BLOCK = 1
+from runner_utils cimport times_t
 
 # import Python libraries
 import numpy as np
@@ -23,6 +22,12 @@ import numpy as np
 import SharedArray as sa
 {%- endif %}
 import time
+
+{% if is_writer -%}
+# import driver
+cimport sink_drivers.{{ driver_import }} as {{ driver_name }}
+import sink_drivers.{{ driver_import }} as {{ driver_name }}
+{%- endif %}
 
 # headers for all sinks
 cdef extern from "utilityFunctions.h" nogil:
@@ -44,7 +49,7 @@ cdef extern from "semaphore.h" nogil:
   int sem_post(sem_t *)
   int sem_close(sem_t *sem)
 
-cdef extern from "constants.h":
+cdef extern from "constants.h" nogil:
   enum: NUM_CHANNELS
   enum: NUM_CHILDREN
   enum: PAGESIZE
@@ -70,9 +75,6 @@ cdef extern from "<pthread.h>" nogil:
     int sched_priority
 {%- endif %}
 
-{%- if is_writer %}
-{{ driver_code["imports"] }}
-{%- endif %}
 
 # cdef variables
 cdef pid_t pid, ppid
@@ -81,9 +83,10 @@ cdef sigset_t exitMask
 cdef size_t shmSize
 cdef uint8_t *pmem
 cdef int64_t *pNumTicks
-cdef uint64_t time_tick = <uint64_t>NULL
-cdef double time_system
-cdef timespec *pClockMonotonicRaw, *pClockMonotonic, *pClockRealtime
+cdef times_t times
+cdef timespec *pClockMonotonicRaw
+cdef timespec *pClockMonotonic
+cdef timespec *pClockRealtime
 {% if is_main_process -%}
 cdef sem_t *pSinkUpSem
 cdef sem_t *pSinkDownSem
@@ -103,13 +106,14 @@ cdef {{out_dtype}} *outBufStrt
 cdef {{out_dtype}} *outBufEnd
 cdef {{out_dtype}} *outBuf
 cdef size_t outBufLen
+# driver
+cdef {{ driver_name }}.{{ driver_class }} driver
 {%- endif %}
 
 {% if async %}
-cdef int64_t tick_num
-
 # track start and end vars (BufVars[8] and [9]) for each tick to flush
 ctypedef struct asyncBufTickInfo:
+  # TODO use times_t here
   int64_t timeTick
   uint64_t timeMonotonicRaw
   uint64_t timeMonotonic
@@ -134,7 +138,6 @@ ASYNC_BUF_LEN = {{async_buf_len}}
 {% endif %}
 
 # python variables
-lastVal = 1
 in_sigs = {}
 sigs = {}
 sig_lens = {}
@@ -144,21 +147,20 @@ in_sig = None
 shouldExit = False
 in_sig_keys = {{in_sig_keys}}
 
-{%- if is_writer %}
-# driver variables
-{{ driver_code["variables"] }}
-{%- endif %}
-
 cdef void handle_exit(int exitStatus) noexcept:
-  global retVal, tid, radio, context, s, shmSize, pmem, pSinkUpSem, pSinkDownSem, pSigSems
+  global retVal, tid, radio, context, s, shmSize, pmem, pSinkUpSem, pSinkDownSem, pSigSems, outBufStrt
   printf("EXIT HANDLER for {{name}}\n")
 
 {%- if is_writer %}
 
   {{destruct_code}}
 
-{{ driver_code["exit_handler"] }}
+  driver.exit_handler(exitStatus)
 
+{%- endif %}
+
+{% if is_writer and not has_in_signal %}
+  free(outBufStrt)
 {%- endif %}
 
   munmap(pmem, shmSize)
@@ -328,7 +330,7 @@ in_sig = in_sigs["{{sig}}"]
   {% endfor %}
 {%- endif %}
 
-{{ driver_code["setup"] }}
+driver = {{ driver_name }}.{{ driver_class }}()
 
 {%- endif %}
 
@@ -366,14 +368,16 @@ while(True):
   sem_wait(pSigSems[{{sem_num}}])
   {%- endfor %}
 
-  time_tick = pNumTicks[0]
-  time_monotonic_raw = (
+  times.tick = pNumTicks[0]
+  times.monotonic_raw = <uint64_t>(
     pClockMonotonicRaw[0].tv_sec * 1e9 + pClockMonotonicRaw[0].tv_nsec
   )
-  time_monotonic = (
+  times.monotonic = <uint64_t>(
     pClockMonotonic[0].tv_sec * 1e9 + pClockMonotonic[0].tv_nsec
   )
-  time_realtime = pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
+  times.realtime = <uint64_t>(
+    pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
+  )
 
   {% if async %}
   # async main process updates buffer flush end variable
@@ -382,10 +386,10 @@ while(True):
     (pAsyncFlushIndexStrt[0] == 0)
   ):
     die("Async buffer overrun. Consider increasing signal history sizes.\n")
-  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeTick = time_tick
-  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeMonotonicRaw = <uint64_t>time_monotonic_raw
-  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeMonotonic = <uint64_t>time_monotonic
-  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeRealtime = <uint64_t>time_realtime
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeTick = times.tick
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeMonotonicRaw = <uint64_t>times.monotonic_raw
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeMonotonic = <uint64_t>times.monotonic
+  pAsyncBufInfo[pAsyncFlushIndexEnd[0]].timeRealtime = <uint64_t>times.realtime
   {% for sig,args in in_signals.items() %}
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffsetSamples = {{sig}}BufVars[0]
   pAsyncBufInfo[pAsyncFlushIndexEnd[0]].{{sig}}StrtOffset = {{sig}}BufVars[8]
@@ -411,10 +415,10 @@ while(True):
     time.sleep({{config["config"]["tick_len"]}} / (2. * 1e6))
     continue
 
-  time_tick = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeTick
-  time_monotonic_raw = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonicRaw
-  time_monotonic = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonic
-  time_realtime = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeRealtime
+  times.tick = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeTick
+  times.monotonic_raw = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonicRaw
+  times.monotonic = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonic
+  times.realtime = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeRealtime
     {% for sig, args in in_signals.items() %}
   s_i = in_sig_keys.index("{{sig}}")
   asyncStrtOffset = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}StrtOffset
@@ -455,8 +459,8 @@ while(True):
   {{sig}} = sigs["{{sig}}"]
       {%- endif %}
 
-  sig_lens["{{sig}}}"] = {{sig}}BufVars[1] - {{sig}}BufVars[0]
-  {{sig}}Len = sig_lens["{{sig}}}"]
+  sig_lens["{{sig}}"] = {{sig}}BufVars[1] - {{sig}}BufVars[0]
+  {{sig}}Len = sig_lens["{{sig}}"]
     {% endfor %}
 
     {%- if has_parser %}
@@ -466,12 +470,12 @@ while(True):
     {%- elif has_in_signal %}
 
   outBuf = outBufStrt + {{in_signal_name}}BufVars[0]
-  outBufLen = {{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0]
+  outBufLen = ({{in_signal_name}}BufVars[1] - {{in_signal_name}}BufVars[0]) * sizeof({{in_signal_name}}StrtPtr[0])
     {%- endif %}
 
   {% endif %}
 
-{{ driver_code["write"] }}
+  driver.run(&times, outBuf, outBufLen, sigs, sig_lens)
 
   {%- if not is_main_process %}
   if (shouldExit) and (pAsyncFlushIndexStrt[0] == pAsyncFlushIndexEnd[0]):

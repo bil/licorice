@@ -1,0 +1,127 @@
+from libc.stdio cimport printf
+from libc.stdlib cimport malloc, free, EXIT_SUCCESS, EXIT_FAILURE
+from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
+from posix.signal cimport sigset_t, sigfillset
+from libc.string cimport memcpy
+
+from time import sleep
+
+from .source_drivers cimport source_driver
+
+
+cdef extern from "<alsa/asoundlib.h>":
+    struct _snd_pcm:
+        pass
+    ctypedef _snd_pcm snd_pcm_t
+    struct _snd_pcm_hw_params:
+        pass
+    ctypedef _snd_pcm_hw_params snd_pcm_hw_params_t
+    struct _snd_pcm_sw_params:
+        pass
+    enum snd_pcm_format_t:
+        SND_PCM_FORMAT_S16
+    enum snd_pcm_access_t:
+        SND_PCM_ACCESS_RW_INTERLEAVED
+    ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t
+    ctypedef unsigned long snd_pcm_uframes_t
+    ctypedef long snd_pcm_sframes_t
+    snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
+    const char * snd_strerror (int errnum)
+    int snd_pcm_prepare(snd_pcm_t* pcm)
+    int snd_pcm_drop(snd_pcm_t* pcm)
+    int snd_pcm_recover (snd_pcm_t *pcm, int err, int silent)
+
+# TODO move lineUtilities? or come up with scheme to include utils for drivers
+cdef extern from "../lineUtilities.h" nogil:
+    ctypedef struct pcm_values_t:
+        const char *device
+        int mode
+        snd_pcm_access_t access
+        snd_pcm_format_t format
+        unsigned int channels
+        unsigned int rate
+        unsigned int buffer_time
+        unsigned int period_time
+        unsigned int periods
+        snd_pcm_uframes_t buffer_size
+        snd_pcm_uframes_t period_size
+    int pcm_init_capture(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams, pcm_values_t *values)
+    void pcm_close(snd_pcm_t *handle, int exitStatus)
+    int pcm_read_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr);
+    snd_pcm_sframes_t pcm_get_period_size_bytes(pcm_values_t *values)
+
+
+# TODO add parent path to gcc lib or similar: https://stackoverflow.com/questions/15120330/include-parent-directorys-file
+cdef extern from "../utilityFunctions.h":
+    void die(char *errorStr)
+
+DEF SIG_BLOCK = 1
+DEF LINE_BUFFER_PERIODS = 100
+
+cdef class LineSourceDriver(source_driverSourceDriver):
+    def __cinit__(self):
+        # initiliaze line in
+        self.cap_values.device = '{{in_signal["args"]["pcm"]["device"]}}'
+        self.cap_values.mode = {{in_signal["args"]["pcm"]["mode"]}}
+        self.cap_values.access = {{in_signal["args"]["pcm"]["access"]}}
+        self.cap_values.format = {{in_signal["args"]["pcm"]["format"]}}
+        self.cap_values.channels = {{in_signal["args"]["pcm"]["channels"]}}
+        self.cap_values.rate = {{in_signal["args"]["pcm"]["rate"]}}
+        self.cap_values.buffer_time = {{in_signal["args"]["pcm"]["buffer_time"]}}
+        self.cap_values.period_time = {{in_signal["args"]["pcm"]["period_time"]}}
+        self.cap_values.periods = {{in_signal["args"]["pcm"]["periods"]}}
+
+        pcm_init_capture(&self.cap_handle, self.cap_hwparams, self.cap_swparams, &self.cap_values)
+        self.linePeriodSizeBytes = pcm_get_period_size_bytes(&self.cap_values)
+        self.linePeriodSizeSamples = self.linePeriodSizeBytes // sizeof({{in_dtype}})
+        self.linePeriodSizeFrames = snd_pcm_bytes_to_frames(self.cap_handle, self.linePeriodSizeBytes)
+        self.lineBufferSizeBytes = self.linePeriodSizeBytes * self.cap_values.periods
+        self.lineBufferSizeSamples = self.lineBufferSizeBytes // sizeof({{in_dtype}})
+        self.lineBufferSizeFrames = snd_pcm_bytes_to_frames(self.cap_handle, self.lineBufferSizeBytes)
+
+        snd_pcm_prepare(self.cap_handle)
+        snd_pcm_drop(self.cap_handle)
+        snd_pcm_prepare(self.cap_handle)
+
+        # printf("dbg: %d %d %d\n", linePeriodSizeBytes, linePeriodSizeSamples, linePeriodSizeFrames)
+        {% for sig,args in (out_signals.items()) %}
+        # {{sig}}BufVars[5] = linePeriodSizeSamples
+        # {{sig}}BufVars[6] = {{sig}}BufVars[5] * 2
+        {% endfor %}
+
+        # half a tick
+        self.sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
+        # full tick
+        # sleep_duration = sleep_duration * 2.
+
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens) except *
+        # printf("read (num_ticks, lineBufferSizeFrames, lineBufferSizeBytes): %ld, %lu, %lu\n",
+        #   pNumTicks[0], lineBufferSizeFrames, lineBufferSizeBytes)
+        # fflush(stdout)
+        cdef size_t inBufLen
+
+        inBufLen = pcm_read_buffer(self.cap_handle, inBuf, self.linePeriodSizeFrames)
+        if (inBufLen < 0):
+            die("pcm_read_buffer failed.\n")
+        # memset(inBuf, pNumTicks[0], lineBufferSizeBytes)
+
+{%- if async %}
+
+        sleep(self.sleep_duration)
+{%- endif %}
+
+        # i = 0
+        # printf("source lineBufferSizeFrames: %d\n", lineBufferSizeFrames)
+        # while (i < 20):
+        #   printf("%d ", (<int16_t *>inBuf)[i])
+        #   i += 1
+        # printf("%d ", (<int16_t *>inBuf)[lineBufferSizeFrames - 1])
+        # printf("\n")
+        # fflush(stdout)
+
+        return inBufLen
+
+
+    cdef void exit_handler(self, int exitStatus) except *:
+        pcm_close(self.cap_handle, exitStatus)

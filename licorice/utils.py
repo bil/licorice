@@ -1,3 +1,4 @@
+import fnmatch
 import os
 from collections.abc import Iterable
 
@@ -12,7 +13,7 @@ def __handle_completed_process(result, print_stdout=False):
 
 
 # return valid filepath if any of files exists in given path_list
-def __find_in_path(path_list, files, raise_error=True):
+def __find_in_path(path_list: list, files, raise_error=True):
     if type(files) != list:
         files = [files]
     for path in path_list:
@@ -37,6 +38,28 @@ def __dict_deep_update(orig_dict, update_dict):
         elif isinstance(v, dict):
             __dict_deep_update(v, update_dict[k])
     return update_dict
+
+
+# convert snake_case to UpperCamelCase
+def to_upper_camelcase(x):
+    return "".join(y.title() for y in x.split("_"))
+
+
+def ignore_patterns(*patterns):
+    """Generates function for copytree() ignore.
+
+    Patterns can now include directories with slashes"""
+
+    def _ignore_patterns(path, names):
+        ignored_names = []
+        for p in patterns:
+            ignored_names.extend(fnmatch.filter(names, p))
+            ignored_names.extend(
+                [n for n in names if p in os.path.join(path, n)]
+            )
+        return set(ignored_names)
+
+    return _ignore_patterns
 
 
 class BitMask:

@@ -418,7 +418,7 @@ def test_logging_from_source(capfd):
     }
     signal_list = [sig_name]
     logger_model["modules"]["signal_generator"]["in"] = {
-        "name": "shared_array_test_input",
+        "name": "shared_array_input",
         "args": {
             "type": "signal_generator",
             "sig_name": "bnc",
@@ -507,9 +507,9 @@ def test_signal_and_custom_tables(capfd):
     logger_model["modules"]["shared_array_in"] = {
         "language": "python",
         "in": {
-            "name": "shared_array_test_input",
+            "name": "shared_array_input",
             "args": {
-                "type": "shared_array_test",
+                "type": "shared_array",
                 "sig_name": "test_sa_in",
                 "func": "uniform",
                 "kwargs": {

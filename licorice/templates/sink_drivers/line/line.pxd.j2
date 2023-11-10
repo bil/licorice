@@ -1,0 +1,94 @@
+from posix.signal cimport sigset_t
+
+from libc.stdint cimport uint8_t, int16_t, uint32_t
+
+from runner_utils cimport times_t
+from sink_drivers cimport sink_driver
+
+cdef extern from "../../utilityFunctions.h":
+  void die(char *errorStr)
+
+cdef extern from "<sched.h>":
+    enum: SCHED_FIFO
+    ctypedef struct cpu_set_t:
+        pass
+    void CPU_ZERO(cpu_set_t *set)
+    void CPU_SET(int cpu, cpu_set_t *set)
+
+cdef extern from "<sys/types.h>":
+    ctypedef int pthread_t
+    ctypedef struct pthread_attr_t:
+        pass
+
+cdef extern from "<pthread.h>" nogil:
+    struct sched_param:
+        int sched_priority
+    int pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*start_routine) (void *), void *arg)
+    void pthread_exit(void *retval)
+    int pthread_sigmask(int how, sigset_t *set, sigset_t *oldset)
+    int pthread_join(pthread_t thread, void **retval)
+    int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize, cpu_set_t *cpuset)
+    int pthread_setschedparam(pthread_t thread, int policy, sched_param *param)
+    pthread_t pthread_self()
+
+cdef extern from "semaphore.h" nogil:
+    cdef union sem_union:
+        pass
+    ctypedef sem_union sem_t
+
+cdef extern from "<alsa/asoundlib.h>":
+    struct _snd_pcm:
+        pass
+    ctypedef _snd_pcm snd_pcm_t
+    struct _snd_pcm_hw_params:
+        pass
+    ctypedef _snd_pcm_hw_params snd_pcm_hw_params_t
+    struct _snd_pcm_sw_params:
+        pass 
+    enum snd_pcm_format_t:
+        SND_PCM_FORMAT_S16
+    enum snd_pcm_access_t:
+        SND_PCM_ACCESS_RW_INTERLEAVED
+    ctypedef _snd_pcm_sw_params snd_pcm_sw_params_t 
+    ctypedef long snd_pcm_sframes_t
+    ctypedef unsigned long snd_pcm_uframes_t
+    snd_pcm_sframes_t snd_pcm_bytes_to_frames (snd_pcm_t *pcm, ssize_t bytes)
+    int snd_pcm_prepare(snd_pcm_t* pcm)
+
+cdef extern from "lineUtilities.h" nogil:
+    ctypedef struct pcm_values_t:
+        const char *device
+        int mode
+        snd_pcm_access_t access
+        snd_pcm_format_t format
+        unsigned int channels
+        unsigned int rate
+        unsigned int buffer_time
+        unsigned int period_time
+        unsigned int periods
+        snd_pcm_uframes_t buffer_size
+        snd_pcm_uframes_t period_size
+    int pcm_init_playback(snd_pcm_t **pHandle, snd_pcm_hw_params_t *hwparams, snd_pcm_sw_params_t *swparams, pcm_values_t *values)
+    void pcm_close(snd_pcm_t *handle, int exitStatus)
+    int pcm_write_buffer(snd_pcm_t *handle, uint8_t *ptr, int cptr)
+    snd_pcm_sframes_t pcm_get_period_size_bytes(pcm_values_t *values)
+
+cdef class LineSinkDriver(sink_driver.SinkDriver):
+    cdef snd_pcm_t *play_handle
+    cdef snd_pcm_hw_params_t *play_hwparams
+    cdef snd_pcm_sw_params_t *play_swparams
+    cdef {{out_dtype}} *pLineOutBuf
+    cdef {{out_dtype}} *pLineOutBufWrite
+    cdef {{out_dtype}} *pLineOutBufRead
+    cdef ssize_t linePeriodSizeBytes
+    cdef ssize_t linePeriodSizeSamples
+    cdef snd_pcm_uframes_t linePeriodSizeFrames
+    cdef ssize_t lineOutBufSizeBytes
+    cdef ssize_t lineOutBufSizeSamples
+    cdef long int lineSamplesWrapped
+    cdef pcm_values_t play_values
+    cdef ssize_t lineBufferedPeriods
+    cdef ssize_t linePeriodsWritten
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *
+    cdef void exit_handler(self, int exitStatus) except *

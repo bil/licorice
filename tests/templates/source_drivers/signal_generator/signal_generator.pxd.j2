@@ -1,0 +1,9 @@
+from runner_utils cimport times_t
+from source_drivers cimport source_driver
+
+cdef class SignalGeneratorSourceDriver(source_driver.SourceDriver):
+    cdef double sleep_duration, fc
+    cdef object signal_args, signals, sig_idxs, out_sig_names
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *
+    cdef void exit_handler(self, int exitStatus) except *

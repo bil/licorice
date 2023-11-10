@@ -1,0 +1,90 @@
+from libc.errno cimport errno, EINTR
+from libc.stdint cimport uint8_t, uint16_t, uint32_t
+from libc.stdio cimport fprintf, stderr
+from libc.string cimport memset
+from posix.types cimport suseconds_t, time_t
+from posix.unistd cimport close
+
+from time import sleep
+
+from runner_utils cimport times_t
+from source_drivers cimport source_driver
+
+cdef extern from "../../utilityFunctions.h":
+  void die(char *errorStr)
+
+
+cdef extern from "<sys/socket.h>":
+  ctypedef uint32_t socklen_t
+
+cdef extern from "<netdb.h>":
+    const char *gai_strerror(int ecode);
+    struct addrinfo:
+        int ai_family
+        int ai_socktype
+        int ai_flags
+        int ai_protocol
+        char *ai_canonname
+        sockaddr *ai_addr
+        addrinfo *ai_next
+        int ai_addrlen
+    int getaddrinfo (const char *node, const char *service, const addrinfo *hints, addrinfo **res)
+    void freeaddrinfo (addrinfo *ai)
+    enum: AI_PASSIVE
+
+cdef extern from "<arpa/inet.h>":
+    ctypedef uint32_t in_addr_t
+    uint16_t htons(uint16_t hostshort)
+    in_addr_t inet_addr(const char *cp);
+
+cdef extern from "<netinet/in.h>":
+    enum: IPPROTO_UDP
+    ctypedef unsigned short sa_family_t
+
+cdef extern from "<sys/socket.h>":
+    enum: AF_INET
+    enum: SOCK_DGRAM
+    enum: MSG_DONTWAIT
+    enum: SOL_SOCKET
+    enum: SO_RCVTIMEO
+    struct sockaddr:
+        unsigned char sa_len
+        unsigned char sa_family
+        char  sa_data[14]
+    ssize_t recvfrom(int, void *restrict, size_t, int, sockaddr *restrict, socklen_t *restrict)
+    int bind(int, const sockaddr *, socklen_t)
+    int socket(int domain, int type, int protocol)
+    int setsockopt(int socket, int level, int option_name,
+             const void *option_value, socklen_t option_len);
+
+    cdef struct sockaddr_storage:
+            unsigned char sa_len
+            sa_family_t sa_family
+
+cdef extern from "<sys/time.h>":
+    cdef struct timeval:
+        time_t tv_sec
+        suseconds_t tv_usec
+
+# TODO add EWOULDBLOCK. not working on Darwin
+# cdef extern from "<errno.h>":
+#   enum: EWOULDBLOCK
+
+cdef enum:
+    MAX_NUM_PACKETS_PER_TICK = {{in_signal['schema']['max_packets_per_tick']}}
+
+cdef class UdpSourceDriver(source_driver.SourceDriver):
+    cdef sockaddr_storage src_addr
+    cdef socklen_t src_addr_len
+
+    cdef addrinfo hints
+    cdef addrinfo *result
+    cdef addrinfo *rp
+    cdef int sfd, s
+    cdef ssize_t recvLen
+    cdef timeval tv
+    cdef float sleep_duration
+
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *
+    cdef void exit_handler(self, int exitStatus) except *

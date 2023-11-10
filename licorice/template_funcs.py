@@ -13,10 +13,16 @@ from sysconfig import get_paths
 
 import jinja2
 import numpy as np
+import yaml
 from toposort import toposort
 
 from licorice.cpu_affinity import determine_cpu_affinity
-from licorice.utils import __find_in_path, __handle_completed_process
+from licorice.utils import (
+    __find_in_path,
+    __handle_completed_process,
+    ignore_patterns,
+    to_upper_camelcase,
+)
 
 # available path constants
 # paths['templates']
@@ -330,6 +336,16 @@ def generate(paths, config, confirmed):
                     in_sig=module_val.get("in"),
                     out_sig=module_val.get("out"),
                 )
+                if not os.path.exists(output_path):
+                    print(
+                        "   - " + module_val["constructor"] + " (constructor)"
+                    )
+                    do_jinja(
+                        __find_in_path(
+                            paths["generators"], construct_template
+                        ),
+                        output_path,
+                    )
 
             if "constructor" in module_val and module_val["constructor"]:
                 if module_val["constructor"] is True:
@@ -419,15 +435,6 @@ def parse(paths, config, confirmed):
         shutil.rmtree(paths["output"], ignore_errors=True)
         print("Removing old output directory.\n")
 
-    # copy helper files to output path
-    for template_path in paths["templates"]:
-        shutil.copytree(
-            template_path,
-            paths["output"],
-            ignore=shutil.ignore_patterns(("*.j2")),
-            dirs_exist_ok=True,
-        )
-
     # set up signal helper variables
     internal_signals = list(signals or [])  # list of numpy signal names
     external_signals = []  # list of external signal names
@@ -479,6 +486,17 @@ def parse(paths, config, confirmed):
         if "latency" not in signal_args:
             signal_args["latency"] = 0
 
+    inbuilt_source_drivers = next(
+        os.walk(f"{paths['templates'][-1]}/source_drivers")
+    )[1]
+    inbuilt_sink_drivers = next(
+        os.walk(f"{paths['templates'][-1]}/sink_drivers")
+    )[1]
+    inbuilt_source_drivers_used = []
+    external_source_drivers = []
+    inbuilt_sink_drivers_used = []
+    external_sink_drivers = []
+
     for module_key, module_val in iter(modules.items()):
         ext_sig = None
         if (
@@ -487,6 +505,11 @@ def parse(paths, config, confirmed):
             and "name" in module_val["in"]
         ):  # source
             ext_sig = module_val["in"]
+            # TODO validate exists
+            if ext_sig["args"]["type"] in inbuilt_source_drivers:
+                inbuilt_source_drivers_used.append(ext_sig["args"]["type"])
+            else:
+                external_source_drivers.append(ext_sig["args"]["type"])
 
             max_packets_per_tick = ext_sig["schema"].get(
                 "max_packets_per_tick"
@@ -497,16 +520,80 @@ def parse(paths, config, confirmed):
                     ext_sig["schema"]["max_packets_per_tick"] = 0
                 else:
                     ext_sig["schema"]["max_packets_per_tick"] = 1
+
+            if (
+                ext_sig.get("schema")
+                and ext_sig["schema"].get("data")
+                and ext_sig["schema"]["data"].get("dtype")
+            ):
+                ext_sig["schema"]["data"]["ctype"] = fix_dtype(
+                    ext_sig["schema"]["data"]["dtype"]
+                )
         elif (
             "out" in module_val
             and isinstance(module_val["out"], dict)
             and "name" in module_val["out"]
         ):  # sink
             ext_sig = module_val["out"]
+            if (
+                ext_sig.get("schema")
+                and ext_sig["schema"].get("data")
+                and ext_sig["schema"]["data"].get("dtype")
+            ):
+                ext_sig["schema"]["data"]["ctype"] = fix_dtype(
+                    ext_sig["schema"]["data"]["dtype"]
+                )
+            # TODO validate exists
+            if ext_sig["args"]["type"] in inbuilt_sink_drivers:
+                inbuilt_sink_drivers_used.append(ext_sig["args"]["type"])
+            else:
+                external_sink_drivers.append(ext_sig["args"]["type"])
         else:  # module
             continue
         external_signals.append(ext_sig["name"])
         signals[ext_sig["name"]] = ext_sig
+
+    # copy licorice template files to output path
+    skipped_driver_paths = []
+    skipped_sds = [
+        d
+        for d in inbuilt_source_drivers
+        if d not in inbuilt_source_drivers_used
+    ]
+    skipped_driver_paths.extend([f"source_drivers/{d}" for d in skipped_sds])
+    skipped_sds = [
+        d for d in inbuilt_sink_drivers if d not in inbuilt_sink_drivers_used
+    ]
+    skipped_driver_paths.extend([f"sink_drivers/{d}" for d in skipped_sds])
+    shutil.copytree(
+        paths["templates"][-1],
+        paths["output"],
+        ignore=ignore_patterns("*.j2", *skipped_driver_paths),
+        dirs_exist_ok=True,
+    )
+
+    # copy external template files to output path
+    for template_path in paths["templates"][:-1]:
+        shutil.copytree(
+            template_path,
+            paths["output"],
+            ignore=ignore_patterns("*.j2", "source_drivers", "sink_drivers"),
+            dirs_exist_ok=True,
+        )
+        for source_driver in external_source_drivers:
+            shutil.copytree(
+                os.path.join(template_path, "source_drivers", source_driver),
+                os.path.join(paths["output"], "source_drivers", source_driver),
+                ignore=ignore_patterns("*.j2"),
+                dirs_exist_ok=True,
+            )
+        for sink_driver in external_sink_drivers:
+            shutil.copytree(
+                os.path.join(template_path, "sink_drivers", sink_driver),
+                os.path.join(paths["output"], "sink_drivers", sink_driver),
+                ignore=ignore_patterns("*.j2"),
+                dirs_exist_ok=True,
+            )
 
     sigkeys = set(signals)
 
@@ -519,8 +606,10 @@ def parse(paths, config, confirmed):
     module_names = []  # list of module names
     source_names = []  # list of source names
     async_readers_dict = {}  # dict of source: async_readers
+    source_driver_names = []
     sink_names = []  # list of sink names
     async_writers_dict = {}  # dict of sink: async_writers
+    sink_driver_names = []
     source_outputs = {}
     in_signals = {}
     out_signals = {}
@@ -531,7 +620,6 @@ def parse(paths, config, confirmed):
     runner_names = list(modules)
     assert len(runner_names) == len(set(runner_names))
 
-    compile_for_line = False
     for module_key, module_val in iter(modules.items()):
 
         if (
@@ -577,8 +665,6 @@ def parse(paths, config, confirmed):
             out_sig_name = module_val["out"]["name"]
             assert "type" in signals[out_sig_name]["args"]
             out_signals[out_sig_name] = signals[out_sig_name]["args"]["type"]
-            if out_signals[out_sig_name] in ["line"]:
-                compile_for_line = True
         else:
             # module
             if "in" not in module_val or not module_val["in"]:
@@ -632,6 +718,13 @@ def parse(paths, config, confirmed):
             {"name": name, "type": child_type, "async": is_async}
         )
 
+    # TODO move this to output dir setup?
+    if len(source_names) == 0:
+        shutil.rmtree(os.path.join(paths["output"], "source_drivers"))
+
+    if len(sink_names) == 0:
+        shutil.rmtree(os.path.join(paths["output"], "sink_drivers"))
+
     # determine dependency directed acyclic graphs, perform a topological
     # sort, and determine the size of the topology
 
@@ -675,35 +768,40 @@ def parse(paths, config, confirmed):
         if name in source_names:
             print(" - " + name + " (source)")
 
+            # load Python or C source template
             if module_language == "python":
                 template = TEMPLATE_SOURCE_PY
                 # TODO split cython and python?
                 in_extensions = [".pyx.j2", ".pyx", ".py.j2", ".py"]
                 out_extension = ".pyx"
             else:
-                raise NotImplementedError()
+                raise NotImplementedError("C sources not implemented.")
                 template = TEMPLATE_SOURCE_C
                 in_extensions = [".c.j2", ".c"]
                 out_extension = ".c"
-            in_signal = signals[module_val["in"]["name"]]
-            out_signals = {
-                x: signals[x] for x in (sigkeys & set(module_val["out"]))
-            }
-            out_sig_nums = {
-                x: internal_signals.index(x) for x in list(out_signals)
-            }
+
+            # configure source templating variables
             has_parser = "parser" in module_val and module_val["parser"]
-            if not has_parser:
-                assert len(out_signals) == 1
+
+            in_signal = signals[module_val["in"]["name"]]
+            in_dtype = in_signal["schema"]["data"]["dtype"]
+            in_dtype = fix_dtype(in_dtype)
+            in_sigtype = in_signal["args"]["type"]
 
             default_params = (
                 in_signal["schema"]["default"]
-                if (in_signal["args"]["type"] == "default")
+                if (in_sigtype == "default")
                 else None
             )
 
-            in_dtype = in_signal["schema"]["data"]["dtype"]
-            in_dtype = fix_dtype(in_dtype)
+            out_signals = {
+                x: signals[x] for x in (sigkeys & set(module_val["out"]))
+            }
+            if not has_parser:
+                assert len(out_signals) == 1
+            out_sig_nums = {
+                x: internal_signals.index(x) for x in list(out_signals)
+            }
             out_sig_types = {}
             for sig, args in iter(out_signals.items()):
                 dtype = args["dtype"]
@@ -717,6 +815,7 @@ def parse(paths, config, confirmed):
                     np.array(literal_eval(str(args["shape"])))
                 )
 
+            # open and format parser code
             sig_sems = []
             for out_sig in module_val["out"]:
                 sig_sems.append((out_sig, sig_sem_dict[out_sig]))
@@ -737,13 +836,18 @@ def parse(paths, config, confirmed):
                     out_sig_dependency_info[out_sig],
                     sig_sem_dict[out_sig],
                 )
-
-            driver_template_name = f'{in_signal["args"]["type"]}'
-            driver_output_name = f"{name}_{driver_template_name}"
+            driver_name = f"{in_sigtype}"
+            source_driver_names.append(driver_name)
             async_source = name in async_readers_dict.keys()
             async_reader_name = async_readers_dict.get(name)
             source_template_kwargs = {
                 "name": name,
+                "driver_name": driver_name,
+                "driver_import": f"{driver_name}.{driver_name}",
+                "driver_class": (
+                    f"{to_upper_camelcase(in_signal['args']['type'])}"
+                    "SourceDriver"
+                ),
                 "source_num": source_names.index(name),
                 "config": config,
                 "source_args": module_val,
@@ -778,6 +882,7 @@ def parse(paths, config, confirmed):
                 "platform_system": platform_system,
             }
 
+            # open and format parser code
             parser_code = ""
             if has_parser:
                 if module_val["parser"] is True:
@@ -847,26 +952,31 @@ def parse(paths, config, confirmed):
             )
 
             # parse source driver
-            driver_template_file = f"{driver_template_name}.pyx.j2"
-            driver_output_path = os.path.join(
-                paths["output"], f"source_drivers/{driver_output_name}.pyx"
-            )
+            driver_folder = f"source_drivers/{driver_name}"
+            driver_template_file = f"{driver_name}.pyx.j2"
+            driver_output_file = f"{driver_name}.pyx"
             do_jinja(
                 __find_in_path(
                     paths["templates"],
-                    f"source_drivers/{driver_template_file}",
+                    f"{driver_folder}/{driver_template_file}",
                 ),
-                driver_output_path,
+                os.path.join(
+                    paths["output"], f"{driver_folder}/{driver_output_file}"
+                ),
                 **source_template_kwargs,
             )
-            with open(driver_output_path, "r") as f:
-                driver_code = f.read()
-            driver_code = {
-                code.partition("\n")[0].strip(): code.partition("\n")[2]
-                for code in filter(
-                    None, driver_code.split("# __DRIVER_CODE__")
-                )
-            }
+            driver_template_file = f"{driver_name}.pxd.j2"
+            driver_output_file = f"{driver_name}.pxd"
+            do_jinja(
+                __find_in_path(
+                    paths["templates"],
+                    f"{driver_folder}/{driver_template_file}",
+                ),
+                os.path.join(
+                    paths["output"], f"{driver_folder}/{driver_output_file}"
+                ),
+                **source_template_kwargs,
+            )
 
             # parse source async reader if async
             if async_source:
@@ -875,7 +985,6 @@ def parse(paths, config, confirmed):
                     os.path.join(
                         paths["output"], async_reader_name + out_extension
                     ),
-                    driver_code=driver_code,
                     is_main_process=False,
                     is_reader=True,
                     **source_template_kwargs,
@@ -885,7 +994,6 @@ def parse(paths, config, confirmed):
             do_jinja(
                 __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
-                driver_code=(None if async_source else driver_code),
                 is_main_process=True,
                 is_reader=(not async_source),
                 **source_template_kwargs,
@@ -1096,13 +1204,19 @@ def parse(paths, config, confirmed):
 
             logger_num_tables = 1 + len(custom_tables)
 
-            driver_template_name = f'{out_signal["args"]["type"]}'
-            driver_output_name = f"{name}_{driver_template_name}"
+            driver_name = f'{out_signal["args"]["type"]}'
             async_sink = name in async_writers_dict.keys()
             async_writer_name = async_writers_dict.get(name)
+            sink_driver_names.append(driver_name)
             has_in_signal = len(list(in_signals)) == 1
             sink_template_kwargs = {
                 "name": name,  # TODO set name properly for async, etc.
+                "driver_name": driver_name,
+                "driver_import": f"{driver_name}.{driver_name}",
+                "driver_class": (
+                    f"{to_upper_camelcase(out_signal['args']['type'])}"
+                    "SinkDriver"
+                ),
                 "sink_num": sink_names.index(name),
                 "config": config,
                 "has_parser": has_parser,
@@ -1226,26 +1340,31 @@ def parse(paths, config, confirmed):
             )
 
             # parse sink driver
-            driver_template_file = f"{driver_template_name}.pyx.j2"
-            driver_output_path = os.path.join(
-                paths["output"], f"sink_drivers/{driver_output_name}.pyx"
-            )
+            driver_folder = f"sink_drivers/{driver_name}"
+            driver_template_file = f"{driver_name}.pyx.j2"
+            driver_output_file = f"{driver_name}.pyx"
             do_jinja(
                 __find_in_path(
-                    paths["templates"], f"sink_drivers/{driver_template_file}"
+                    paths["templates"],
+                    f"{driver_folder}/{driver_template_file}",
                 ),
-                driver_output_path,
+                os.path.join(
+                    paths["output"], f"{driver_folder}/{driver_output_file}"
+                ),
                 **sink_template_kwargs,
             )
-
-            with open(driver_output_path, "r") as f:
-                driver_code = f.read()
-            driver_code = {
-                code.partition("\n")[0].strip(): code.partition("\n")[2]
-                for code in filter(
-                    None, driver_code.split("# __DRIVER_CODE__")
-                )
-            }
+            driver_template_file = f"{driver_name}.pxd.j2"
+            driver_output_file = f"{driver_name}.pxd"
+            do_jinja(
+                __find_in_path(
+                    paths["templates"],
+                    f"{driver_folder}/{driver_template_file}",
+                ),
+                os.path.join(
+                    paths["output"], f"{driver_folder}/{driver_output_file}"
+                ),
+                **sink_template_kwargs,
+            )
 
             # parse sink async writer if async
             if async_sink:
@@ -1254,7 +1373,6 @@ def parse(paths, config, confirmed):
                     os.path.join(
                         paths["output"], async_writer_name + out_extension
                     ),
-                    driver_code=driver_code,
                     is_main_process=False,
                     is_writer=True,
                     **sink_template_kwargs,
@@ -1264,7 +1382,6 @@ def parse(paths, config, confirmed):
             do_jinja(
                 __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
-                driver_code=(None if async_sink else driver_code),
                 is_main_process=True,
                 is_writer=(not async_sink),
                 **sink_template_kwargs,
@@ -1503,9 +1620,45 @@ def parse(paths, config, confirmed):
         .strip()
     )
 
-    extra_incl = ""
+    extra_link_flags = []
     if platform_system == "Linux":
-        extra_incl = "-lrt"
+        extra_link_flags = ["-lrt"]
+
+    def prepare_drivers(driver_names, driver_path):
+        driver_conf = {"drivers_incl": [], "link_flags": []}
+        for name in driver_names:
+            driver_conf["drivers_incl"].append(f"-I {driver_path}/{name}")
+            driver_conf_filepath = __find_in_path(
+                [
+                    os.path.join(
+                        os.path.dirname(os.path.realpath(__file__)),
+                        f"templates/{driver_path}/{name}",
+                    )
+                ],
+                ["config.yaml", "config.yml"],
+                raise_error=False,
+            )
+            if not driver_conf_filepath:
+                continue
+            with open(driver_conf_filepath, "r") as f:
+                try:
+                    driver_config = yaml.safe_load(f)
+                except yaml.YAMLError as e:
+                    raise ValueError(f"Invalid YAML file with exception: {e}")
+            extra_link_flags.append(driver_config["link_flags"])
+        return driver_conf
+
+    drivers_incl = []
+    source_driver_conf = prepare_drivers(source_driver_names, "source_drivers")
+    sink_driver_conf = prepare_drivers(sink_driver_names, "sink_drivers")
+
+    drivers_incl += source_driver_conf["drivers_incl"]
+    drivers_incl += sink_driver_conf["drivers_incl"]
+    drivers_incl = " ".join(drivers_incl)
+
+    extra_link_flags += source_driver_conf["link_flags"]
+    extra_link_flags += sink_driver_conf["link_flags"]
+    extra_link_flags = " ".join(extra_link_flags)
 
     do_jinja(
         __find_in_path(paths["templates"], TEMPLATE_MAKEFILE),
@@ -1513,16 +1666,19 @@ def parse(paths, config, confirmed):
         module_names=module_names,
         source_names=source_names,
         async_reader_names=async_reader_names,
+        source_driver_names=source_driver_names,
         sink_names=sink_names,
         async_writer_names=async_writer_names,
+        sink_driver_names=sink_driver_names,
         source_types=list(map(lambda x: modules[x]["language"], source_names)),
-        extra_incl=extra_incl,
+        extra_link_flags=extra_link_flags,
         numpy_incl=np.get_include(),
+        drivers_incl=drivers_incl,
         py_incl=py_paths["include"],
         py_lib=get_config_var("PY_LDFLAGS"),
         py_link_flags=py_link_flags,
-        line=compile_for_line,
         darwin=(platform_system == "Darwin"),
+        has_drivers=(len(source_driver_names) + len(sink_driver_names) > 0),
     )
 
     # parse timer parent

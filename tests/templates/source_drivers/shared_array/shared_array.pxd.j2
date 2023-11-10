@@ -1,0 +1,13 @@
+from libc.stdint cimport int64_t
+
+import SharedArray as sa
+import time
+
+from runner_utils cimport times_t
+from source_drivers cimport source_driver
+
+cdef class SharedArraySourceDriver(source_driver.SourceDriver):
+    cdef object sleep_func, sleep_kwargs, sa_sig, sa_index
+
+    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *
+    cdef void exit_handler(self, int exitStatus) except *

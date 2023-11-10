@@ -1,0 +1,10 @@
+from runner_utils cimport times_t
+from sink_drivers cimport sink_driver
+
+cdef class UdpSinkDriver(sink_driver.SinkDriver):
+    cdef int s
+    cdef sockaddr_in si_other
+    cdef socklen_t slen
+
+    cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *
+    cdef void exit_handler(self, int exitStatus) except *
