@@ -53,6 +53,8 @@ if [ $SKIP_DEPS -eq 0 ] ; then
 fi
 
 # install pyenv
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
 if [ ! "$(pyenv doctor)" ] ; then
     curl https://pyenv.run | bash
     source "$(dirname "$0")/pyenv_config.sh"
