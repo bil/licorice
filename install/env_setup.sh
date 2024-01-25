@@ -55,7 +55,7 @@ fi
 # install pyenv
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
-if [ ! "$(pyenv doctor)" ] ; then
+if [ ! "$(pyenv --version)" ] ; then
     curl https://pyenv.run | bash
     source "$(dirname "$0")/pyenv_config.sh"
 fi
