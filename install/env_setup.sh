@@ -14,7 +14,6 @@ SKIP_DEPS=${LICO_SKIP_DEPS:-0}
 FORCE_REINSTALL_VENV=${LICO_FORCE_REINSTALL_VENV:-0}
 
 # install platform-specific packages
-
 if [ $SKIP_DEPS -eq 0 ] ; then
     case $OSTYPE in
         linux*)

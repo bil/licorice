@@ -38,6 +38,7 @@ TEMPLATE_MODULE_PY = "module.pyx.j2"
 TEMPLATE_SINK_PY = "sink.pyx.j2"
 TEMPLATE_SINK_C = "sink.c.j2"
 TEMPLATE_SOURCE_PY = "source.pyx.j2"
+TEMPLATE_ASYNC_SOURCE_PY = "async_source.pyx.j2"
 TEMPLATE_SOURCE_C = "source.c.j2"
 
 TEMPLATE_MAKEFILE = "Makefile.j2"
@@ -773,12 +774,14 @@ def parse(paths, model_config, **kwargs):
             # load Python or C source template
             if module_language == "python":
                 template = TEMPLATE_SOURCE_PY
+                async_template = TEMPLATE_ASYNC_SOURCE_PY
                 # TODO split cython and python?
                 in_extensions = [".pyx.j2", ".pyx", ".py.j2", ".py"]
                 out_extension = ".pyx"
             else:
                 raise NotImplementedError("C sources not implemented.")
                 template = TEMPLATE_SOURCE_C
+                # TODO async in c
                 in_extensions = [".c.j2", ".c"]
                 out_extension = ".c"
 
@@ -844,6 +847,7 @@ def parse(paths, model_config, **kwargs):
             async_reader_name = async_readers_dict.get(name)
             source_template_kwargs = {
                 "name": name,
+                "debug": kwargs.get("dbg", False),
                 "driver_name": driver_name,
                 "driver_import": f"{driver_name}.{driver_name}",
                 "driver_class": (
@@ -861,9 +865,14 @@ def parse(paths, model_config, **kwargs):
                     if async_source
                     else None
                 ),
+                # TODO make configurable; add clear documentation on how to set
+                "async_buf_len": None
+                if (not async_source)
+                else 10 * args["max_packets_per_tick"],
                 "in_sig_name": module_val["in"]["name"],
                 "in_signal": in_signal,
                 "out_signals": out_signals,
+                "out_sig_keys": list(out_signals),
                 "out_signal_name": (
                     None if (has_parser) else list(out_signals)[0]
                 ),
@@ -983,12 +992,10 @@ def parse(paths, model_config, **kwargs):
             # parse source async reader if async
             if async_source:
                 do_jinja(
-                    __find_in_path(paths["templates"], template),
+                    __find_in_path(paths["templates"], async_template),
                     os.path.join(
                         paths["output"], async_reader_name + out_extension
                     ),
-                    is_main_process=False,
-                    is_reader=True,
                     **source_template_kwargs,
                 )
 
@@ -996,8 +1003,6 @@ def parse(paths, model_config, **kwargs):
             do_jinja(
                 __find_in_path(paths["templates"], template),
                 os.path.join(paths["output"], name + out_extension),
-                is_main_process=True,
-                is_reader=(not async_source),
                 **source_template_kwargs,
             )
 
@@ -1679,7 +1684,7 @@ def parse(paths, model_config, **kwargs):
         py_incl=py_paths["include"],
         py_lib=get_config_var("PY_LDFLAGS"),
         py_link_flags=py_link_flags,
-        debug=kwargs.get("debug", False),
+        debug=kwargs.get("dbg", False),
         darwin=(platform_system == "Darwin"),
         has_drivers=(len(source_driver_names) + len(sink_driver_names) > 0),
     )

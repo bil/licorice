@@ -120,8 +120,6 @@ static sem_t *pSigSems[NUM_SEM_SIGS];
 // buffer for creating named semaphore names
 char semNameBuf[SEM_NAME_LEN];
 
-static uint32_t *pBufVars;
-
 sigset_t exitMask;
 
 static int running = true;
@@ -595,7 +593,7 @@ int main(int argc, char* argv[]) {
 
   // create shared memory and map it
   printf("Mapping memory...\n");
-  // TODO pmem offsets should be constants, or store in struct
+  fflush(stdout);
   shm_size = ROUND_UP(SHM_SIZE, PAGESIZE);
   open_shared_mem(
     &pmem,
@@ -608,7 +606,6 @@ int main(int argc, char* argv[]) {
   pClockMonotonicRaw = (struct timespec *)(pmem + CLOCK_MONOTONIC_RAW_OFFSET);
   pClockMonotonic = (struct timespec *)(pmem + CLOCK_MONOTONIC_OFFSET);
   pClockRealtime = (struct timespec *)(pmem + CLOCK_REALTIME_OFFSET);
-  pBufVars = (uint32_t *)(pmem + BUF_VARS_OFFSET);
   *pNumTicks = (-1 * (SOURCE_INIT_TICKS + MODULE_INIT_TICKS)) - 1;
 
   // initialize source semaphores
@@ -651,6 +648,8 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < runnerTopoLens[i]; j++) {
       // create runner executable name
       int child_num = runnerTopoOrder[i][j];
+      printf("Forking: %s\n", childProcnames[child_num]);
+      fflush(stdout);
       sprintf(childExecName, "./%s", childProcnames[child_num]);
 
       ch_pids[child_num] = run_child_process(

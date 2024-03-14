@@ -36,7 +36,8 @@ void init_utils(void (*pHandleExit)(int errorStr), sigset_t *pExitMask) {
 void make_realtime() {
   // lock stack mem
   if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
-    die("NETWORK ERROR: memory lock error.\n");
+    perror("mlockall");
+    die("mlockall failed. errno: %d\n", errno);
   }
 
   // stack_prefault();
@@ -94,20 +95,28 @@ void open_shared_mem(
   int shm_flags,
   int mmap_flags
 ) {
+
   int fd = shm_open(pName, shm_flags, 0666);
   if(fd == -1) {
+    printf("errno: %d\n", errno);
+    fflush(stdout);
+    perror("shm_open");
     die("shm_open failed.\n");
   }
+
   // check if O_CREAT (1 << 6) is set 
   if (shm_flags & O_CREAT) {
     if (ftruncate(fd, numBytes)) {
       die("ftruncate failed.\n");
     } 
   }
+
+  // TODO this is assumed to be zero'ed out
   *ppmem = (uint8_t*) mmap(NULL, numBytes, mmap_flags, MAP_SHARED, fd, 0);
   if (*ppmem == (void*)-1) {
     die("mmap failed\n");
   }
+
   close(fd);
 
   // TODO memset necessary to zero out buffer?

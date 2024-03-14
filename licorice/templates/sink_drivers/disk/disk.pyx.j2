@@ -2,6 +2,9 @@ from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit, malloc, free
 from libc.string cimport memcpy, strcat, strcpy, strlen
 
+import numpy as np
+cimport numpy as np
+
 import time
 
 # TODO convert to #define in a separate .h file
@@ -247,6 +250,7 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
         elif dtype == "int8":
             return msgpack_pack_int8(pk, (<int8_t *>pVal)[offset])
         elif dtype == "int16":
+            # printf("%d ", (<int16_t *>pVal)[offset])
             return msgpack_pack_int16(pk, (<int16_t *>pVal)[offset])
         elif dtype == "int32":
             return msgpack_pack_int32(pk, (<int32_t *>pVal)[offset])
@@ -412,12 +416,8 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
 
             sig_len = sig_lens[table_sigs[0]]
             for sig in table_sigs:
-                # TODO revert assert
-                # assert sig_lens[sig] == sig_len
-                if sig_lens[sig] != sig_len:
-                    # print(f"Logger warning: {sig} with len {sig_lens[sig]} should have len {sig_len} as f{table_sigs[0]}", flush=True)
-                    printf("%d: Mismatched sig_lens.\n", times.tick)
-                    fflush(stdout)
+                assert sig_lens[sig] == sig_len
+
             for j in range(sig_len):
                 pCustomDataCur.timeTicks[j] = times.tick
 
@@ -432,9 +432,6 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
         uint32_t *sigNumPktsRecvd, int pkt_num
     ):
         global msgpack_sigs
-
-        if len(sig_keys) == 0:
-            return
 
         cdef int i, j, m_i
         cdef int num_extra_cols = 0 # restart counter for each row loggedc
@@ -458,12 +455,18 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
 
         for i, sig in enumerate(sig_keys):
             args = sigs[sig]
-            pSig = sigBufs[i] + <int>(pkt_num * args["bytes"])
-            if args["log"]["type"] == "msgpack": # msgpack signal
+
+            pSig = sigBufs[i] + <int>(
+                pkt_num * args["packet_size"] * sigNumPktsRecvd[i] *
+                args["bytes"]
+            )
+
+            if args["log"]["type"] == "msgpack": # msgpack signal)
                 m_i = msgpack_sigs.index(sig)
                 msgpack_sbuffer_clear(&self.msgpackBufs[m_i])
                 msgpack_pack_array(
-                    &self.msgpackPkrs[m_i], args["packet_size"] * sigNumPktsRecvd[i]
+                    &self.msgpackPkrs[m_i],
+                    args["packet_size"] * sigNumPktsRecvd[i]
                 )
                 for j in range (args["packet_size"] * sigNumPktsRecvd[i]):
                     self.msgpack_pack(
@@ -634,12 +637,7 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
                 pCustomDataStrt = self.customTableBufStrts[i] + self.bufferOffsetStrt
                 sig_pkts = pCustomDataStrt.sigNumPktsRecvd[0]
                 for j in range(1, len(custom_tables[table_name])):
-                    # TODO revert assert
-                    # assert sig_pkts == pCustomDataStrt.sigNumPktsRecvd[j]
-                    if sig_pkts != pCustomDataStrt.sigNumPktsRecvd[j]:
-                        # print(custom_tables[table_name][j], sig_pkts, flush=True)
-                        printf("%d: Mismatched sig_pkts.\n", pCustomDataStrt.timeTicks[0])
-                        fflush(stdout)
+                    assert sig_pkts == pCustomDataStrt.sigNumPktsRecvd[j]
 
                 for j in range(sig_pkts):
                     self.performFlush(
@@ -684,10 +682,13 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
 
     cdef void run(self, times_t *times, void *outBuf, size_t outBufLen, object in_sigs, object in_sig_lens) except *:
 
-        # for now we assume signals are synchronous and we get one signal each tick.
-        # signals can be put in separate tables if needed for multiple async.
+        # tick table signals are synchronous and we get one packet each tick.
+        # custom table signals can be async and have a different fundamental
+        # frequency from the tick length
         # sufficient ticks must be buffered for async to work. error handling??
         # parsing happens on async side, so need previous tick signals exposed here
+
+        # copy this tick's signals to a buffer to be flushed later
         self.bufferSignals(times, in_sigs, in_sig_lens)
         self.bufferOffsetCur += 1
         if (self.bufferOffsetCur == self.tableBufSize):

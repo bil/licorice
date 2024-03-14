@@ -208,6 +208,7 @@ def test_async_combo(capfd):
     sa_sig_out = create_shared_array(sa_sig_out_name, 100, np.uint64)
 
     # run LiCoRICE with sink parser
+    print(async_combo_model)
     licorice.go(
         async_combo_model,
         confirm=True,

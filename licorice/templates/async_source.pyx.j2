@@ -1,0 +1,413 @@
+# declare jinja variables
+{% set test_throughput = ('test_throughput' in config['config'] and config['config']['test_throughput']) %}
+
+# cimport C libraries
+cimport cython
+cimport numpy as np
+from libc.stdio cimport printf, snprintf, stderr, stdout, fflush
+from libc.stdlib cimport exit, malloc, free, calloc, EXIT_SUCCESS, EXIT_FAILURE
+from libc.stdint cimport int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t
+from libc.signal cimport SIGINT, SIGUSR1, SIGBUS, SIGSEGV, SIGQUIT, SIGUSR2, SIGTERM
+from libc.string cimport memset, memcpy
+from posix.signal cimport kill, sigaction, sigaction_t, sigset_t, sigemptyset, sigaddset, sigfillset
+from posix.unistd cimport getpid, getppid, pause
+from posix.mman cimport munmap, PROT_READ, PROT_WRITE, MAP_SHARED, mlockall, MCL_CURRENT, MCL_FUTURE, munlockall, shm_unlink
+from posix.types cimport pid_t
+from posix.fcntl cimport O_RDWR, open, fcntl, O_CREAT, O_RDONLY, O_TRUNC, F_SETFL, O_NONBLOCK
+from posix.ioctl cimport ioctl
+from posix.time cimport clock_gettime, timespec
+
+from runner_utils cimport times_t
+
+# import Python libraries
+import numpy as np
+import SharedArray as sa
+import time
+
+# cimport key Python libraries
+cimport numpy as np
+cimport cython
+
+# import LiCoRICE utils
+from module_utils import create_shared_array
+
+# import driver
+cimport source_drivers.{{ driver_import }} as {{ driver_name }}
+import source_drivers.{{ driver_import }} as {{ driver_name }}
+
+
+# headers for all sources
+cdef extern from "semaphore.h" nogil:
+  cdef union sem_union:
+    pass
+  ctypedef sem_union sem_t
+  sem_t *sem_open(const char *name, int oflag)
+  int sem_wait(sem_t *)
+  int sem_post(sem_t *)
+  int sem_close(sem_t *sem)
+  int sem_getvalue(sem_t * sem, int * sval)
+
+cdef extern from "stdatomic.h":
+  enum memory_order:
+    memory_order_relaxed,
+    memory_order_consume,
+    memory_order_acquire,
+    memory_order_release,
+    memory_order_acq_rel,
+    memory_order_seq_cst
+  void atomic_thread_fence(memory_order)
+
+cdef extern from "utilityFunctions.h":
+  void init_utils(void (*pHandleExit)(int exitStatus), sigset_t *pExitMask)
+  void die(char *errorStr, ...)
+  void open_shared_mem(uint8_t **ppmem, const char *pName, int numBytes, int shm_flags, int mmap_flags)
+  void set_sighandler(int signum, void *psh, sigset_t *block_mask)
+  void make_realtime()
+
+cdef extern from "constants.h":
+  enum: PAGESIZE
+  const char *SMEM0_PATHNAME
+  enum: NUM_SEM_SIGS
+  enum: NUM_INTERNAL_SIGS
+  size_t ROUND_UP(int X, int Y)
+  enum: BUF_VARS_LEN
+  enum: SHM_SIZE
+  enum: NUM_TICKS_OFFSET
+  enum: CLOCK_MONOTONIC_RAW_OFFSET
+  enum: CLOCK_MONOTONIC_OFFSET
+  enum: CLOCK_REALTIME_OFFSET
+  enum: BUF_VARS_OFFSET
+  enum: ASYNC_READER_MUTEXES_OFFSET
+  enum: SEM_NAME_LEN
+  enum: SOURCE_INIT_TICKS
+  enum: MODULE_INIT_TICKS
+  enum: TICK_LEN_S
+  enum: TICK_LEN_NS
+
+# cdef variables
+cdef pid_t pid, ppid
+cdef sigset_t exitMask
+cdef int parse_idx
+cdef int semVal
+cdef int ret
+
+cdef size_t shm_size
+cdef uint8_t *pmem
+cdef int64_t *pNumTicks
+cdef times_t times
+cdef timespec *pClockMonotonicRaw
+cdef timespec *pClockMonotonic
+cdef timespec *pClockRealtime
+cdef uint8_t *pAsyncMem
+cdef size_t asyncShmSize
+# one extra for valid check
+ASYNC_BUF_STEP = BUF_VARS_LEN * {{out_sig_keys|length}} + 1
+ASYNC_BUF_LEN = {{async_buf_len}} * ASYNC_BUF_STEP
+cdef uint32_t *pAsyncBuf
+cdef uint32_t asyncBufIdx = 0
+# sleep for half a tick on buffer wrap
+cdef float sleepDuration = (TICK_LEN_S + TICK_LEN_NS * 1.e-9) / 2.
+cdef uint32_t *pBufVars
+# 0: tick start
+# 1: tick end
+# 2: next data location
+# 3: num samples received this tick
+# 4: buffer end offset (samples)
+# 5: packet size (bytes)
+# 6: max samples per tick (samples)
+# 7: buffer size offset (samples)
+cdef unsigned long packetNum = 0
+cdef unsigned long numDropped = 0
+cdef int i
+{%- for sig, dtype in (sig_types.items()) %} # declare signal BufVars pointers (to point into pBufVars)
+cdef uint32_t *{{sig}}BufVars
+cdef uint32_t *{{sig}}AsyncBufVars
+cdef uint32_t {{sig}}BufVarsNext
+cdef uint32_t {{sig}}BufVarsNdNext
+cdef {{dtype}} *{{sig}}StrtPtr
+cdef {{dtype}} *{{sig}}EndPtr
+{%- endfor %}
+
+cdef uint32_t packetSize = {{in_signal["schema"]["data"]["size"]}} * sizeof({{in_dtype}})
+cdef {{in_dtype}} *inBufStrt
+cdef {{in_dtype}} *inBufEnd
+cdef {{in_dtype}} *inBuf
+cdef size_t inBufLen
+# driver
+cdef {{ driver_name }}.{{ driver_class }} driver
+
+# python variables
+# declare output signals
+driver = None
+out_sigs = {}
+out_sig_keys = {{out_sig_keys}}
+sigs = {}
+{%- if not has_parser %} # output packing is handled by parser code
+out_sig = None
+{%- endif %}
+shouldExit = False
+
+# function to close the source
+cdef void handle_exit(int exitStatus) noexcept:
+  global pmem, shm_size, udpReadThread, exitMutex, exitRoutine, pSourceUpSem, pSourceDownSem, pSigSems, driver
+
+  {{ destruct_code }}
+
+  if driver:
+    driver.exit_handler(exitStatus)
+
+  # delete the signal's shared memory array
+{%- if platform_system == "Linux" %}
+  sa_names = [sig.name for sig in sa.list()]
+  {%- for sig in out_sig_keys %}
+  if b"{{sig}}" in sa_names:
+    sa.delete("shm://{{sig}}")
+  else:
+    printf("Could not delete shared array {{sig}}.\n")
+  {%- endfor %}
+{%- else %}
+  {%- for sig in out_sig_keys %}
+  try:
+    sa.delete("shm://{{sig}}")
+  except Exception as e:
+    print(e)
+  {%- endfor %}
+{%- endif %}
+
+{%- if has_parser %}
+  free(inBufStrt)
+{%- endif %}
+
+  munmap(pmem, shm_size)
+  munlockall()
+
+  shm_unlink("/async_mem_{{name}}")
+
+  if exitStatus != -1:
+    exit(exitStatus)
+  else:
+    # wait for user to cancel program in debug mode
+    print("Spinning to allow debugging\n", flush=True)
+    while True:
+      pass
+    exit(1)
+
+
+cdef void int_handler(int signum):
+  pass
+
+cdef void exit_handler(int signum):
+  global shouldExit
+  printf("EXIT HANDLER for async {{name}}\n")
+  shouldExit = True
+
+cdef void bus_handler(int signum):
+  printf("Bus Error in async {{name}}.\n")
+  handle_exit(1)
+
+cdef void segv_handler(int signum):
+  printf("Seg Fault in async {{name}}.\n")
+  fflush(stdout)
+  {%- if debug %}
+  handle_exit(-1)
+  {%- else %}
+  handle_exit(1)
+  {%- endif %}
+
+cdef void usr2_handler(int signum):
+  pass
+
+# main
+sigfillset(&exitMask)
+init_utils(&handle_exit, &exitMask)
+
+pid = getpid()
+ppid = getppid()
+
+set_sighandler(SIGINT, &int_handler, &exitMask)
+set_sighandler(SIGTERM, &exit_handler, &exitMask)
+set_sighandler(SIGBUS, &bus_handler, &exitMask)
+set_sighandler(SIGSEGV, &segv_handler, &exitMask)
+set_sighandler(SIGUSR2, &usr2_handler, NULL)
+
+# open and map shared memory
+shm_size = ROUND_UP(SHM_SIZE, PAGESIZE)
+open_shared_mem(&pmem, SMEM0_PATHNAME, shm_size, O_RDWR, PROT_READ | PROT_WRITE)
+pNumTicks = <int64_t *>(pmem + NUM_TICKS_OFFSET)
+pClockMonotonicRaw = <timespec *>(pmem + CLOCK_MONOTONIC_RAW_OFFSET)
+pClockMonotonic = <timespec *>(pmem + CLOCK_MONOTONIC_OFFSET)
+pClockRealtime = <timespec *>(pmem + CLOCK_REALTIME_OFFSET)
+pBufVars = <uint32_t *>(pmem + BUF_VARS_OFFSET)
+
+{% for sig,args in (out_signals.items()) %}
+{{sig}}BufVars = pBufVars + ({{out_sig_nums[sig] * buf_vars_len}})
+{{sig}}BufVarsNext = {{args["max_packets_per_tick"] * args["packet_size"]}}
+{{sig}}BufVarsNdNext = {{args["max_packets_per_tick"]}}
+{%- endfor %}
+
+# put buffer flush tracking variables in shared memory between
+asyncShmSize = ROUND_UP(
+  sizeof(uint32_t) * ASYNC_BUF_STEP * ASYNC_BUF_LEN,
+  PAGESIZE
+)
+open_shared_mem(
+  &pAsyncMem,
+  "/async_mem_{{name}}",
+  asyncShmSize,
+  O_TRUNC | O_CREAT | O_RDWR,
+  PROT_READ | PROT_WRITE
+)
+
+pAsyncBuf = <uint32_t *>pAsyncMem
+
+{%- if platform_system == "Linux" %}
+created_mem = sa.list()
+{%- endif %}
+{% for sig,args in (out_signals.items()) %}
+  {%- if platform_system == "Linux" %}
+if any([b'{{sig}}' == x[0] for x in created_mem]):
+  sa.delete("shm://{{sig}}")
+  printf("Numpy signal {{sig}} already created. Overwriting\n")
+  {%- endif %}
+
+out_sigs["{{sig}}"] = create_shared_array(
+  "shm://{{sig}}", {{args["sig_shape"]}}, dtype=np.{{args["dtype"]}}
+)
+
+{{sig}}Raw = out_sigs["{{sig}}"]
+# TODO this used to be based off {{sig}}BufVars[10], but that might not be set when this runs
+sigs["{{sig}}"] = {{sig}}Raw[{{args["max_packets_per_tick"]}}]
+{{sig}} = sigs["{{sig}}"]
+{{sig}}StrtPtr = <{{sig_types[sig]}} *><long>{{sig}}Raw.__array_interface__["data"][0]
+{{sig}}EndPtr = {{sig}}StrtPtr + len(out_sigs["{{sig}}"])
+  {%- if not has_parser %}
+out_sig = out_sigs["{{sig}}"]
+  {%- endif %}
+
+  {%-  if py_maj_ver == 2 %}
+# TODO determine usage in SharedArray>2.0.4
+sa.mlock(out_sigs["{{sig}}"])
+  {%- endif %}
+{%- endfor %}
+
+driver = {{ driver_name }}.{{ driver_class }}()
+
+
+{%- if has_parser %}
+inBufStrt = <{{in_dtype}} *>malloc(packetSize)
+inBuf = inBufStrt
+inBufEnd = inBufStrt + packetSize
+{%- else %}
+inBufStrt = <{{out_signal_type}} *><long>out_sig.__array_interface__["data"][0]
+inBuf = inBufStrt
+inBufEnd = inBufStrt + {{out_signal_name}}BufVars[7]
+# inBufEnd = inBufStrt + packetSize
+{%- endif %}
+inBufLen = inBufEnd - inBufStrt
+
+{% if default_params -%}
+{{in_sig_name}} = {{default_params}}
+{%- endif %}
+
+
+{{ construct_code }}
+
+
+{%- if platform_system != "Darwin" %}
+make_realtime()
+{%- endif %}
+kill(ppid, SIGUSR2) # this source is initialized
+pause()
+
+while(True):
+
+  if pNumTicks[0] >= 0:
+    times.tick = pNumTicks[0]
+    times.monotonic_raw = <uint64_t>(
+      pClockMonotonicRaw[0].tv_sec * 1e9 + pClockMonotonicRaw[0].tv_nsec
+    )
+    times.monotonic = <uint64_t>(
+      pClockMonotonic[0].tv_sec * 1e9 + pClockMonotonic[0].tv_nsec
+    )
+    times.realtime = <uint64_t>(
+      pClockRealtime[0].tv_sec * 1e9 + pClockRealtime[0].tv_nsec
+    )
+
+  if (shouldExit):
+    handle_exit(0)
+
+{%- if not has_parser %}
+  inBuf = inBufStrt + {{out_signal_name}}BufVarsNext
+{%- endif %}
+
+  inBufLen = driver.run(&times, <void *>inBuf, packetSize, sigs)
+
+  if (shouldExit):
+    handle_exit(0)
+
+{%- if has_parser %}
+  {%- for sig, args in out_signals.items() %}
+  # set signal helper variable
+  if {{sig}}BufVarsNdNext == {{sig}}BufVars[15]: # wrap
+    sigs["{{sig}}"] = {{sig}}Raw[0]
+  else:
+    try:
+      sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVarsNdNext]
+    except IndexError:
+      print("IndexError: {{sig}}",
+        {{sig}}BufVarsNext, {{sig}}BufVars[5], {{sig}}BufVars[6],
+        {{sig}}BufVars[7], {{sig}}BufVarsNdNext, {{sig}}BufVars[15], flush=True
+      )
+
+  # TODO test default without wrap check:
+  # sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
+
+  {{sig}} = sigs["{{sig}}"]
+  {%- endfor %}
+
+  # use user parser
+  {{ parser_code }}
+{%- endif %}
+
+  # update bufVars
+
+{% for sig in out_sig_keys %}
+  {{sig}}AsyncBufVars = pAsyncBuf + asyncBufIdx + BUF_VARS_LEN * {{loop.index0}}
+{%- endfor %}
+  sleep_count = 0
+  while (pAsyncBuf[asyncBufIdx+ASYNC_BUF_STEP-1] == 1):
+    if (sleep_count > 20 or shouldExit):
+      handle_exit(0)
+    # TODO could use clock_nanosleep
+    time.sleep(sleepDuration)
+    sleep_count += 1
+
+{%- for sig,args in (out_signals.items()) %}
+  # TODO implement dynamic buffer allocation?
+  # {{sig}}BufVars[6] = {{sig}}BufVars[9] - {{sig}}BufVars[8]
+  {{sig}}BufVarsNext += {{sig}}BufVars[5]
+  {{sig}}BufVarsNdNext += {{sig}}BufVars[13]
+  # {{sig}}BufVars[3] += {{sig}}BufVars[5]
+  # {{sig}}BufVars[11] += 1
+
+  # wrap buffer for async readers
+  if {{sig}}BufVars[7] <= {{sig}}BufVarsNext: # assume [7] multiple of [5]
+    {{sig}}BufVarsNext = {{args["max_packets_per_tick"] * args["packet_size"]}}
+    {{sig}}BufVarsNdNext = {{args["max_packets_per_tick"]}}
+    memcpy(
+      {{sig}}StrtPtr,
+      {{sig}}StrtPtr + {{sig}}BufVars[7] - {{sig}}BufVarsNext,
+      {{sig}}BufVarsNext
+    )
+
+  {{sig}}AsyncBufVars[2] = {{sig}}BufVarsNext
+  {{sig}}AsyncBufVars[10] = {{sig}}BufVarsNdNext
+
+{%- endfor %}
+
+  asyncBufIdx += BUF_VARS_LEN * {{out_sig_keys|length}}
+
+  pAsyncBuf[asyncBufIdx] = 1
+  asyncBufIdx += 1
+  if asyncBufIdx >= ASYNC_BUF_LEN:
+    asyncBufIdx = 0

@@ -11,16 +11,22 @@ else
   NC_OPTIONS=4u
 fi
 
+messages=("STAN" "FORD" "TREE" "MESS" "AGES")
+
 while :
 do
-  # netcat options:
-  # -4 ipv4 address
-  # -u UDP
-  # -w timeout (seconds)
-  # -N    Shutdown the network socket after EOF on stdin
-  echo "STAN" | nc -$NC_OPTIONS -w 1 $INTERFACE $PORT
-  echo "FORD" | nc -$NC_OPTIONS -w 1 $INTERFACE $PORT
-  echo "TREE" | nc -$NC_OPTIONS -w 1 $INTERFACE $PORT
-  echo "MESS" | nc -$NC_OPTIONS -w 1 $INTERFACE $PORT
-  echo "AGES" | nc -$NC_OPTIONS -w 1 $INTERFACE $PORT
+  for message in "${messages[@]}"; do
+    # netcat options:
+    # -4 ipv4 address
+    # -u UDP
+    # -w timeout (seconds)
+    # -N    Shutdown the network socket after EOF on stdin
+    echo $message
+    echo $message | nc -$NC_OPTIONS -w 1 $INTERFACE $PORT
+    case $OSTYPE in
+      darwin*)
+        sleep 1
+        ;;
+    esac
+  done
 done

@@ -197,7 +197,9 @@ cdef void handle_exit(int exitStatus) noexcept:
     printf("Could not close sink signal semaphore. \n")
   {%- endfor %}
 
+  {% if async %}
   shm_unlink("/async_mem_{{name}}")
+  {%- endif %}
 {%- endif %}
   exit(exitStatus)
 

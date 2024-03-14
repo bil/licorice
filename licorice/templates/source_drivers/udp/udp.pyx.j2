@@ -40,7 +40,7 @@ cdef class UdpSourceDriver(source_driver.SourceDriver):
             die("Could not bind.\n")
 
 
-        self.tv.tv_sec = 60
+        self.tv.tv_sec = {{in_signal["args"]["timeout_s"]}}
         self.tv.tv_usec = 0
         if (setsockopt(self.sfd, SOL_SOCKET, SO_RCVTIMEO, &self.tv, sizeof(self.tv)) < 0):
             die("Could not set socket timeout.")
@@ -53,6 +53,7 @@ cdef class UdpSourceDriver(source_driver.SourceDriver):
         cdef size_t inBufLen
 
         inBufLen = recvfrom(self.sfd, inBuf, packetSize, 0, <sockaddr *> &self.src_addr, &self.src_addr_len)
+
         if (inBufLen == -1):
             if (errno == EAGAIN):# or errno == EWOULDBLOCK)):
                 die("recvfrom timeout.\n")
