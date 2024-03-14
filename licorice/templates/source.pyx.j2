@@ -38,6 +38,7 @@ cimport source_drivers.{{ driver_import }} as {{ driver_name }}
 import source_drivers.{{ driver_import }} as {{ driver_name }}
 {%- endif %}
 
+import time
 
 # headers for all sources
 cdef extern from "semaphore.h" nogil:
@@ -362,6 +363,7 @@ pause()
 while(True):
 {%- if is_main_process %}
   sem_wait(pSourceUpSem)
+  t1 = time.time()
 {%- endif %}
 
   if pNumTicks[0] >= 0:
@@ -554,5 +556,8 @@ while(True):
     sem_post(pSigSems[{{dep_tuple[1]}}])
   {%- endfor %}
 {%- endfor %}
+  t2 = time.time()
+  if ((t2 - t1) * 1e9 > 10000):
+    print(f"tick: {pNumTicks[0]} source time: {t2 - t1}", flush=True)
   sem_post(pSourceDownSem)
 {%- endif %}
