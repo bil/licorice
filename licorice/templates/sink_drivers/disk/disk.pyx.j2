@@ -1,4 +1,4 @@
-from libc.stdio cimport printf, stdout, fflush, perror
+from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit, malloc, free
 from libc.string cimport memcpy, strcat, strcpy, strlen
 
@@ -173,13 +173,6 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
         )
         if self.db == NULL:
             die("openDatabase error\n")
-        rc = sqlite3_exec(
-            self.db, "PRAGMA synchronous = OFF;", NULL, NULL, &zErrMsg
-        )
-        if (rc != SQLITE_OK):
-            printf("%s\n", zErrMsg)
-            sqlite3_free(zErrMsg)
-            die("SQL pragma synchronous error\n")
         rc = sqlite3_exec(
             self.db, "PRAGMA synchronous = OFF;", NULL, NULL, &zErrMsg
         )

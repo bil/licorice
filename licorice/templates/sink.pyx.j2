@@ -113,9 +113,6 @@ cdef sem_t *pSinkDownSem
 cdef sem_t *pSigSems[NUM_SEM_SIGS]
 cdef char semNameBuf[SEM_NAME_LEN]
 {%- endif %}
-{%- if async %}
-cdef pthread_mutex_t *pAsyncMutex
-{%- endif %}
 cdef uint32_t *pBufVars
 {%- for sig, dtype in sig_types.items() %}
 cdef uint32_t *{{sig}}BufVars
