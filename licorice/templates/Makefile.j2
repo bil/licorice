@@ -1,6 +1,6 @@
 CC = gcc
 DEFAULTFLAGS = -Wall 
-CFLAGS = -O0 $(DEFAULTFLAGS)
+CFLAGS = {% if debug %}-g{% endif %} -O3 $(DEFAULTFLAGS)
 CFLAGSUNOPT = -O0 $(DEFAULTFLAGS)
 # TODO test -Os again
 CYFLAGS = -O0 -I {{py_incl}} -I {{numpy_incl}} {{drivers_incl}}

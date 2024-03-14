@@ -2,11 +2,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "../../utilityFunctions.h"
 #include "sqlHelpers.h"
 
 static int prc;
+
+int file_exists (char *f) {
+  struct stat buf;
+  return stat(f, &buf) == 0;
+}
 
 void sql_bind_int(sqlite3_stmt *stmt, int index, const char* dtype, const void* value) { 
   int val;
@@ -63,13 +69,15 @@ void sql_bind_blob(sqlite3_stmt *stmt, int index, const void* value, int numByte
 }
 
 void sql_exec(sqlite3 *db, const char* sql, int (*callback)(void*,int,char**,char**),void *arg, char **errmsg) {
-
+  die("sql_exec not implemented.");
 }
 
-void sql_prepare(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail) {
-  prc = sqlite3_prepare_v2(db, zSql, nByte, ppStmt, pzTail);
+void sql_prepare(sqlite3 *db, const char *zSql, int nByte, int prepFlags, sqlite3_stmt **ppStmt, const char **pzTail) {
+  prc = sqlite3_prepare_v3(db, zSql, nByte, prepFlags, ppStmt, pzTail);
+  // prc = sqlite3_prepare_v2(db, zSql, nByte, ppStmt, pzTail);
   if (prc != SQLITE_OK) {
-    die("sqlite3_prepare_v2 failed: %d\n", prc);
+    perror("!");
+    die("sqlite3_prepare_v3 failed: %d\n", prc);
   }
 }
 
@@ -78,6 +86,20 @@ void sql_step(sqlite3_stmt *stmt) {
   if (prc != SQLITE_DONE) {
     printf("failed with %d\n", prc);
     die("sqlite3_step failed: %d\n", prc);
+  }
+}
+
+void sql_reset(sqlite3_stmt *stmt) {
+  // prc = sqlite3_clear_bindings(stmt);
+  // if (prc != SQLITE_OK) {
+  //   printf("failed with %d\n", prc);
+  //   die("sqlite3_clear_bindings failed: %d\n", prc);
+  // }
+
+  prc = sqlite3_reset(stmt);
+  if (prc != SQLITE_OK) {
+    printf("failed with %d\n", prc);
+    die("sqlite3_reset failed: %d\n", prc);
   }
 }
 
@@ -98,6 +120,16 @@ static char *zErrMsg = NULL;
 void openDatabase(
   sqlite3 **db, char* startName, int db_index, char* newNameLocation
 ) {
+  // TODO allow more than 1000 database files
+  // of interest: https://stackoverflow.com/questions/70570379/whats-the-source-of-this-enigmatic-buffer-overflow-detected-terminated
+  // too many file descriptors
+  if (db_index == 999) {
+    *db = NULL;
+    printf("Too many database files. Increase new_db_num_ticks.\n");
+    fflush(stdout);
+    return;
+  }
+
   if(strlen(startName) > 48 - DB_INDEX_PAD_LENGTH) { // was > 48, but now need to leave room for db index
     sprintf(buf, "Name %s too long.\n", startName);
     die(buf);
@@ -111,23 +143,16 @@ void openDatabase(
   }
   strcat(buf, db_index_str);
   strcat(buf,".db");
-  flags = SQLITE_OPEN_READWRITE; // | SQLITE_OPEN_MEMORY;
-  rc = sqlite3_open_v2(buf, db, flags, NULL);
-  while(!rc) {
-    tempVal++;
-    sqlite3_close(*db);
-    //int max for 4 byte integer
-    if(tempVal == 2147483647) {
-      die("Too many files. Clean up workspace.\n");
-    }
-    strcpy(buf, startName);
 
-    sprintf(tempBuf,"(%d)",tempVal);
-    strcat(buf, tempBuf);
-    strcat(buf,".db");
-    rc = sqlite3_open_v2(buf, db, flags, NULL);
+
+  flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+
+  rc = sqlite3_open_v2(buf, db, flags, NULL);
+  if (rc != SQLITE_OK) {
+    printf("%d\n", rc);
+    fflush(stdout);
+    die("sqlite3_open_v2 error\n");
   }
-  sqlite3_open(buf, db);
   strcpy(newNameLocation,buf);
 
   // chown(buf, atoi(getenv("SUDO_UID")), atoi(getenv("SUDO_GID"))); // set db file ownership to user

@@ -36,6 +36,8 @@ KERNEL_VERSION_0=$( echo ${KERNEL_VERSION} | cut -d. -f1 )
 KERNEL_VERSION_1=$( echo ${KERNEL_VERSION} | cut -d. -f2 )
 KERNEL_VERSION_2=$( echo ${KERNEL_VERSION} | cut -d. -f3 )
 
+KERNEL_VERSION=${LICO_KERNEL_VERSION:-$KERNEL_VERSION}
+
 # update to most recent version of packages, install essentials, do some cleanup
 export DEBIAN_FRONTEND=noninteractive
 export DEBIAN_PRIORITY=critical
@@ -48,7 +50,7 @@ sudo apt-get -y autoremove
 cd $TMP_DIR
 #wget https://git.kernel.org/pub/scm/linux/kernel/git/rt/linux-stable-rt.git/snapshot/linux-stable-rt-5.4.209-rt77.tar.gz
 wget https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION_0}.x/linux-${KERNEL_VERSION}.tar.gz
-wget https://www.kernel.org/pub/linux/kernel/projects/rt/${KERNEL_VERSION_0}.${KERNEL_VERSION_1}/older/patch-${KERNEL_VERSION}-${RT_PATCH}.patch.gz
+wget https://www.kernel.org/pub/linux/kernel/projects/rt/${KERNEL_VERSION_0}.${KERNEL_VERSION_1}/older/patch-${RT_KERNEL_VERSION}-${RT_PATCH}.patch.gz
 
 # to check signature
 #
@@ -66,7 +68,7 @@ mkdir -p $KERNEL_DIR
 cd $KERNEL_DIR
 tar -zxvf ${TMP_DIR}/linux-${KERNEL_VERSION}.tar.gz
 cd linux-${KERNEL_VERSION}
-zcat ${TMP_DIR}/patch-${KERNEL_VERSION}-${RT_PATCH}.patch.gz | patch -p1
+zcat ${TMP_DIR}/patch-${RT_KERNEL_VERSION}-${RT_PATCH}.patch.gz | patch -p1
 
 
 # manually edit config
@@ -89,7 +91,7 @@ make clean
 make -j $NUM_CPUS
 sudo make INSTALL_MOD_STRIP=1 modules_install
 sudo make install
-sudo update-initramfs -c -k ${KERNEL_VERSION}-${RT_PATCH}-licorice-${KERNEL_VERSION_TEXT}
+sudo update-initramfs -c -k ${RT_KERNEL_VERSION}-${RT_PATCH}-licorice-${KERNEL_VERSION_TEXT}
 sudo update-grub
 
 # notify reboot when done

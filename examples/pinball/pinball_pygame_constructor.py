@@ -3,6 +3,7 @@ import math
 import pygame
 
 pygame.display.init()
+pygame.font.init()
 
 
 class Circle(pygame.sprite.Sprite):
@@ -49,6 +50,10 @@ screen_width = 1280
 screen_height = 1024
 screen = pygame.display.set_mode((screen_width, screen_height))
 screen.fill(black)
+
+screen_font = pygame.font.SysFont("Helvetica", 30)
+text_surface = screen_font.render("0,0", False, (255, 255, 255))
+screen.blit(text_surface, (0, 0))
 
 refresh_rate = 2  # ticks (20 ms)
 sprite_cursor = Circle(color_cursor, size_cursor[0], pos_cursor)

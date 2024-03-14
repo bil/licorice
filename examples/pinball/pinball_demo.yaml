@@ -77,18 +77,20 @@ modules:
   # sources
   joystick_reader:
     language: python
-    parser: true
+    parser: True
     in:
       name: joystick_raw
+      async: True
       args:
         type: pygame_joystick
       schema:
         data:
-          dtype: float
-          size: 8
+          dtype: double
+          size: 2
     out:
       - joystick_axis
       - joystick_buttons
+
 
 
   # modules
@@ -114,6 +116,7 @@ modules:
     parser: true
     destructor: true
     in:
+      - joystick_axis
       - pos_cursor
       - pos_target
       - size_cursor

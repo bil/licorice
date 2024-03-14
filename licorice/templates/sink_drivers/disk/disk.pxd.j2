@@ -65,6 +65,7 @@ cdef extern from "<sqlite3.h>" nogil:
     ctypedef void (*destructor)(void*)
     destructor SQLITE_STATIC
     enum: SQLITE_OPEN_READWRITE
+    enum: SQLITE_PREPARE_PERSISTENT
     int sqlite3_open_v2(
         const char *filename,
         sqlite3 **ppDb,
@@ -88,9 +89,10 @@ cdef extern from "sqlHelpers.h" nogil:
         sqlite3_stmt *stmt, int index, const void* value, int numBytes, destructor destruct
     )
     void sql_prepare(
-        sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail
+        sqlite3 *db, const char *zSql, int nByte, int prepFlags, sqlite3_stmt **ppStmt, const char **pzTail
     )
     void sql_step(sqlite3_stmt *stmt)
+    void sql_reset(sqlite3_stmt *stmt)
     void sql_finalize(sqlite3_stmt *stmt)
     void openDatabase(
         sqlite3 **db, char *startName, int db_index, char* newNameLocation
@@ -158,8 +160,8 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
 
     # sqlite variables
     cdef sqlite3 *db
-    cdef sqlite3_stmt *contStmt
-    cdef sqlite3_stmt *signalsStmt
+    cdef sqlite3_stmt *tickTableStmt
+    cdef sqlite3_stmt *customTableStmts[{{custom_tables|length}}]
     cdef SQLTable databaseArray[{{logger_num_tables}}]
     cdef SQLTableElement *tickTableCols
     cdef SQLTableElement *customTableCols[{{custom_tables|length}}]
@@ -191,7 +193,7 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
     cdef void* bufferSignals(self, times_t *times, object sigs, object sig_lens)
     cdef void performFlush(
         self, sig_keys, sigs,
-        char *query, sqlite3_stmt *stmt,
+        sqlite3_stmt *stmt,
         uint8_t **sigBufs, int64_t *tickPtr, uint64_t *tickMonotonicRawPtr,
         uint64_t *tickMonotonicPtr, uint64_t *tickRealtimePtr,
         uint32_t *sigNumPktsRecvd, int pkt_num

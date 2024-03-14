@@ -38,6 +38,7 @@ cimport source_drivers.{{ driver_import }} as {{ driver_name }}
 import source_drivers.{{ driver_import }} as {{ driver_name }}
 {%- endif %}
 
+
 # headers for all sources
 cdef extern from "semaphore.h" nogil:
   cdef union sem_union:
@@ -103,6 +104,7 @@ cdef pid_t pid, ppid
 cdef sigset_t exitMask
 cdef int parse_idx
 cdef int semVal
+cdef int ret
 
 cdef size_t shm_size
 cdef uint8_t *pmem
@@ -226,11 +228,15 @@ cdef void exit_handler(int signum):
 {%- endif %}
 
 cdef void bus_handler(int signum):
-  printf("Bus Error\n")
+  printf("Bus Error in {{name}}.\n")
   handle_exit(1)
 
 cdef void segv_handler(int signum):
-  printf("Seg Fault\n")
+  printf("Seg Fault in {{name}}.\n")
+  {% if name == "cerebus_in" %}
+  while True:
+    pass
+  {% endif %}
   handle_exit(1)
 
 cdef void usr2_handler(int signum):
@@ -393,7 +399,10 @@ while(True):
   if {{sig}}BufVars[10] == {{sig}}BufVars[15]:
     sigs["{{sig}}"] = {{sig}}Raw[0]
   else:
-    sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
+    try:
+      sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
+    except IndexError:
+      print("IndexError: {{sig}}", {{sig}}BufVars[2], {{sig}}BufVars[5], {{sig}}BufVars[6], {{sig}}BufVars[7], {{sig}}BufVars[10], {{sig}}BufVars[15], flush=True)
   # TODO test default:
   # sigs["{{sig}}"] = {{sig}}Raw[{{sig}}BufVars[10]]
   {{sig}} = sigs["{{sig}}"]
@@ -405,18 +414,24 @@ while(True):
 
   # update bufVars
   {%- if async %}
-  pthread_mutex_lock(pAsyncMutex)
+  ret = pthread_mutex_lock(pAsyncMutex)
+  if (ret != 0):
+    die("Mutex lock error: %d", ret)
+
   {%- endif %}
+
+  slen = -1
+  {%- for sig,args in (out_signals.items()) %}
+  if slen == -1:
+    slen = {{sig}}BufVars[13]
+  else:
+    if (slen != ({{sig}}BufVars[13])):
+      print(f"source: unmatched lens: {{sig}}: {slen} { {{sig}}BufVars[13] }", flush=True)
+  {%- endfor %}
+
   {%- for sig,args in (out_signals.items()) %}
     {%- if async %}
-
-  if (({{sig}}BufVars[9] - {{sig}}BufVars[8]) > {{sig}}BufVars[6]):
-    printf(
-      "Warning: more data received on tick %ld than accounted for in {{name}}.\n",
-      pNumTicks[0]
-    )
-    fflush(stdout)
-    # TODO implement dynamic buffer allocation
+    # TODO implement dynamic buffer allocation?
     # {{sig}}BufVars[6] = {{sig}}BufVars[9] - {{sig}}BufVars[8]
     {%- endif %}
   {{sig}}BufVars[2] += {{sig}}BufVars[5]
@@ -435,6 +450,7 @@ while(True):
     if pNumTicks[0] < 0:
       {{sig}}BufVars[2] = 0
       {{sig}}BufVars[10] = 0
+    # TODO this is broken for num_ticks = -1
     elif pNumTicks[0] == {{config["config"]["num_ticks"]}} - 1:
       pause()
       if (shouldExit):
@@ -447,19 +463,28 @@ while(True):
   ):
     # TODO this should be a check on the in_signal, not out_signal.
     # out_signals should inherit max_packets_per_tick by default
-    printf("More packets received than allowed in {{name}}. Increase max_packets_per_tick.\n")
-    fflush(stdout)
+    # printf("{{sig}}: More packets received than allowed in {{name}}. Increase max_packets_per_tick.\n")
+    # fflush(stdout)
+    pass
     {%- endif %}
+
   {%- endfor %}
   {%- if async %}
-  pthread_mutex_unlock(pAsyncMutex)
+  ret = pthread_mutex_unlock(pAsyncMutex)
+  if (ret != 0):
+    die("Mutex unlock error: %d", ret)
   {%- endif %}
 {%- endif %}
 
 {%- if is_main_process %}
   {%- if async %}
-  pthread_mutex_lock(pAsyncMutex)
+  ret = pthread_mutex_lock(pAsyncMutex)
+  if (ret != 0):
+    die("Mutex lock error: %d", ret)
   {%- endif %}
+
+  atomic_thread_fence(memory_order_seq_cst)
+
   {%- for sig,args in (out_signals.items()) %}
   if {{sig}}BufVars[2] == 0:
     {{sig}}BufVars[1] = {{sig}}BufVars[7]
@@ -514,10 +539,14 @@ while(True):
   {{sig}}BufVars[3] = 0
   {{sig}}BufVars[11] = 0
   {%- endfor %}
-  {%- if async %}
-  pthread_mutex_unlock(pAsyncMutex)
-  {%- endif %}
+
   atomic_thread_fence(memory_order_seq_cst)
+
+  {%- if async %}
+  ret = pthread_mutex_unlock(pAsyncMutex)
+  if (ret != 0):
+    die("Mutex unlock error: %d", ret)
+  {%- endif %}
 
 {% for dep_name, dep_tuple in out_sig_dependency_info.items() %}
   {% for i in range(dep_tuple[0]) %}

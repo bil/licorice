@@ -2,6 +2,7 @@ import glob
 import os
 from distutils.core import Extension, setup
 
+import numpy as np # TODO make configurable?
 import yaml
 from Cython.Build import cythonize
 
@@ -55,7 +56,7 @@ def setup_drivers(package_name, module_name):
         Extension(
             f"{package_name}.{name}.{name}",
             files,
-            include_dirs=[os.getcwd()],
+            include_dirs=[os.getcwd(), np.get_include()],
             libraries=libs,
         )
         for name, files, libs in zip(driver_names, driver_files, driver_libs)

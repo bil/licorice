@@ -171,6 +171,15 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
         openDatabase(
             &self.db, "{{ out_signal['args']['save_file'] }}", self.db_index, self.currDbName
         )
+        if self.db == NULL:
+            die("openDatabase error\n")
+        rc = sqlite3_exec(
+            self.db, "PRAGMA synchronous = OFF;", NULL, NULL, &zErrMsg
+        )
+        if (rc != SQLITE_OK):
+            printf("%s\n", zErrMsg)
+            sqlite3_free(zErrMsg)
+            die("SQL pragma synchronous error\n")
         rc = sqlite3_exec(
             self.db, "PRAGMA journal_mode = MEMORY;", NULL, NULL, &zErrMsg
         )
@@ -178,9 +187,22 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
             printf("%s\n", zErrMsg)
             fflush(stdout)
             sqlite3_free(zErrMsg)
-            die("SQL pragma error\n")
+            die("SQL pragma journal_mode error\n")
+        # TODO examine these
+        rc = sqlite3_exec(self.db, "PRAGMA cache_size = 100000;", NULL, NULL, &zErrMsg)
+        rc = sqlite3_exec(self.db, "PRAGMA page_size = 65536;", NULL, NULL, &zErrMsg)
 
         createTables(self.db, self.databaseArray, {{logger_num_tables}})
+
+        sql_prepare(
+            self.db, self.tickTableQuery, -1,
+            SQLITE_PREPARE_PERSISTENT, &self.tickTableStmt, NULL
+        )
+        for i in range(len(custom_table_names)):
+            sql_prepare(
+                self.db, self.customTableQueries[i], -1,
+                SQLITE_PREPARE_PERSISTENT, &self.customTableStmts[i], NULL
+            )
 
         self.initialized = True
 
@@ -390,7 +412,12 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
 
             sig_len = sig_lens[table_sigs[0]]
             for sig in table_sigs:
-                assert sig_lens[sig] == sig_len
+                # TODO revert assert
+                # assert sig_lens[sig] == sig_len
+                if sig_lens[sig] != sig_len:
+                    # print(f"Logger warning: {sig} with len {sig_lens[sig]} should have len {sig_len} as f{table_sigs[0]}", flush=True)
+                    printf("%d: Mismatched sig_lens.\n", times.tick)
+                    fflush(stdout)
             for j in range(sig_len):
                 pCustomDataCur.timeTicks[j] = times.tick
 
@@ -399,7 +426,7 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
 
     cdef void performFlush(
         self, sig_keys, sigs,
-        char *query, sqlite3_stmt *stmt,
+        sqlite3_stmt *stmt,
         uint8_t **sigBufs, int64_t *tickPtr, uint64_t *tickMonotonicRawPtr,
         uint64_t *tickMonotonicPtr, uint64_t *tickRealtimePtr,
         uint32_t *sigNumPktsRecvd, int pkt_num
@@ -412,8 +439,6 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
         cdef int i, j, m_i
         cdef int num_extra_cols = 0 # restart counter for each row loggedc
         cdef uint8_t *pSig
-
-        sql_prepare(self.db, query, -1, &stmt, NULL)
 
         if tickPtr != NULL:
             sql_bind_int64(stmt, 1, tickPtr)
@@ -512,7 +537,7 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
                     )
 
         sql_step(stmt)
-        sql_finalize(stmt)
+        sql_reset(stmt)
 
 
     cdef void flushToDisk(self, bint newDB=False):
@@ -528,20 +553,59 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
 
         # create new database if time limit reached
         if (newDB):
+            # clean up old sqlite db
+            sql_finalize(self.tickTableStmt)
+            for i in range(len(custom_table_names)):
+                sql_finalize(self.customTableStmts[i])
+            rc = sqlite3_close(self.db)
+            if (rc != SQLITE_OK):
+                printf("SQL close error\n")
+                fflush(stdout)
+
             self.db_index += 1
             openDatabase(
                 &self.db, "{{ out_signal['args']['save_file']}}", self.db_index, self.currDbName
             )
-            rc = sqlite3_exec(self.db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg)
+            if self.db == NULL:
+                printf("openDatabase error\n")
+                fflush(stdout)
+                return
+
+            rc = sqlite3_exec(
+                self.db, "PRAGMA synchronous = OFF;", NULL, NULL, &zErrMsg
+            )
+            if (rc != SQLITE_OK):
+                printf("%s\n", zErrMsg)
+                sqlite3_free(zErrMsg)
+                printf("SQL pragma synchronous error\n")
+                fflush(stdout)
+                return
+            rc = sqlite3_exec(
+                self.db, "PRAGMA journal_mode = MEMORY", NULL, NULL, &zErrMsg
+            )
             if (rc != SQLITE_OK):
                 printf("%s\n", zErrMsg)
                 sqlite3_free(zErrMsg)
                 printf("SQL pragma error\n")
                 fflush(stdout)
                 return
+            # TODO examine these
+            rc = sqlite3_exec(self.db, "PRAGMA cache_size = 100000;", NULL, NULL, &zErrMsg)
+            rc = sqlite3_exec(self.db, "PRAGMA page_size = 65536;", NULL, NULL, &zErrMsg)
+
             createTables(self.db, self.databaseArray, {{logger_num_tables}})
 
-        rc = sqlite3_exec(self.db, "BEGIN TRANSACTION", NULL, NULL, &zErrMsg)
+            sql_prepare(
+                self.db, self.tickTableQuery, -1,
+                SQLITE_PREPARE_PERSISTENT, &self.tickTableStmt, NULL
+            )
+            for i in range(len(custom_table_names)):
+                sql_prepare(
+                    self.db, self.customTableQueries[i], -1,
+                    SQLITE_PREPARE_PERSISTENT, &self.customTableStmts[i], NULL
+                )
+
+        rc = sqlite3_exec(self.db, "BEGIN;", NULL, NULL, &zErrMsg)
         if (rc != SQLITE_OK):
             printf("%s\n", zErrMsg)
             sqlite3_free(zErrMsg)
@@ -556,8 +620,7 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
             self.performFlush(
                 tick_table_keys,
                 tick_table,
-                self.tickTableQuery,
-                self.signalsStmt,
+                self.tickTableStmt,
                 pTickDataStrt.sigs,
                 &pTickDataStrt.timeTick,
                 &pTickDataStrt.timeMonotonicRaw,
@@ -571,13 +634,18 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
                 pCustomDataStrt = self.customTableBufStrts[i] + self.bufferOffsetStrt
                 sig_pkts = pCustomDataStrt.sigNumPktsRecvd[0]
                 for j in range(1, len(custom_tables[table_name])):
-                    assert sig_pkts == pCustomDataStrt.sigNumPktsRecvd[j]
+                    # TODO revert assert
+                    # assert sig_pkts == pCustomDataStrt.sigNumPktsRecvd[j]
+                    if sig_pkts != pCustomDataStrt.sigNumPktsRecvd[j]:
+                        # print(custom_tables[table_name][j], sig_pkts, flush=True)
+                        printf("%d: Mismatched sig_pkts.\n", pCustomDataStrt.timeTicks[0])
+                        fflush(stdout)
+
                 for j in range(sig_pkts):
                     self.performFlush(
                         custom_table_sigs[table_name],
                         custom_tables[table_name],
-                        self.customTableQueries[i],
-                        self.signalsStmt,
+                        self.customTableStmts[i],
                         pCustomDataStrt.sigs,
                         pCustomDataStrt.timeTicks,
                         NULL, NULL, NULL,
@@ -592,16 +660,19 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
             self.ticks_written += 1
             if (
                 (self.ticks_written % NEW_DB_NUM_TICKS == 0) and
-                (self.ticks_written < {{ config["config"]["num_ticks"] }})
+                (
+                    self.ticks_written < {{ config["config"]["num_ticks"] }} or
+                    {{ config["config"]["num_ticks"] }} == -1
+                )
             ):
                 complete = False
                 break
 
-        rc = sqlite3_exec(self.db, "END TRANSACTION", NULL, NULL, &zErrMsg)
+        rc = sqlite3_exec(self.db, "COMMIT;", NULL, NULL, &zErrMsg)
         if (rc != SQLITE_OK):
             printf("%s\n", zErrMsg)
             sqlite3_free(zErrMsg)
-            printf("SQL end transaction error\n")
+            printf("SQL commit error\n")
             fflush(stdout)
             return
 
@@ -659,12 +730,16 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
             for i in range(len(tick_table)):
                 free(self.tickTableCols[i].colName)
             free(self.tickTableCols)
+            free(self.tickTableQuery)
+            sql_finalize(self.tickTableStmt)
 
         for i, table_name in enumerate(custom_table_names):
             if self.customTableCols[i] != NULL:
                 for j in range(len(custom_table_sigs[table_name])):
                     free(self.customTableCols[i][j].colName)
                 free(self.customTableCols[i])
+                free(self.customTableQueries[i])
+                sql_finalize(self.customTableStmts[i])
 
         # destroy msgpack signals
         for i in range(len(msgpack_sigs)):

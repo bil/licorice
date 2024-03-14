@@ -17,6 +17,7 @@ AUDIO_PATH = "examples/media"
 os.putenv("AUDIODRIVER", "alsa")
 # os.putenv('AUDIODEV', 'plughw:0,1') # set this to the card,device to output sound to
 
+pygame.init()
 pygame.mixer.pre_init(buffer=512)
 pygame.mixer.init()
 

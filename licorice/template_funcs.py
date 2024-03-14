@@ -145,8 +145,10 @@ def do_jinja(template_path, out_path, **data):
 
 
 # generate empty templates for modules, parsers, constructors, and destructors
-def generate(paths, config, confirmed):
+def generate(paths, model_config, **kwargs):
     print("Generating modules...\n")
+
+    config = copy.deepcopy(model_config)
 
     if len(paths["modules"]) > 1:
         print(
@@ -160,7 +162,7 @@ def generate(paths, config, confirmed):
     # TODO keeping this directory around causes an error where old generated
     # files can be copied over even after they're removed from the model
     # if os.path.exists(modules_path):
-    #     if not confirmed:
+    #     if not kwargs["confirm"]:
     #         while True:
     #             sys.stdout.write("Ok to remove old module directory? ")
     #             choice = input().lower()
@@ -379,10 +381,10 @@ def generate(paths, config, confirmed):
                     )
 
 
-def parse(paths, config, confirmed):
+def parse(paths, model_config, **kwargs):
     print("Parsing")
 
-    config = copy.deepcopy(config)
+    config = copy.deepcopy(model_config)
 
     platform_system = platform.system()
 
@@ -414,7 +416,7 @@ def parse(paths, config, confirmed):
 
     # set up output directory
     if os.path.exists(paths["output"]):
-        if not confirmed:
+        if not kwargs["confirm"]:
             while True:
                 sys.stdout.write("Ok to remove old output directory? ")
                 choice = input().lower()
@@ -1064,7 +1066,7 @@ def parse(paths, config, confirmed):
             tick_table_sigs = {}
             custom_tables = {}  # signals to be logged in their own tables
             msgpack_sigs = []  # signals to be wrapped in msgpack
-            extra_cols = 0
+            tick_view_extra_cols = 0
 
             if out_signal["args"]["type"] == "disk":
                 # TODO this validation and logic should be moved to driver
@@ -1146,9 +1148,9 @@ def parse(paths, config, confirmed):
                         in_signals[sig]["log"]["num_cols"] = args[
                             "packet_size"
                         ]
-                        extra_cols += (
-                            args["packet_size"] - 1
-                        )  # only count *extra* columns
+                        if log["table"] == out_signal["args"]["tick_table"]:
+                            # only count *extra* columns
+                            tick_view_extra_cols += args["packet_size"] - 1
                     elif log["type"] == "text":
                         # determine number of bytes in one signal
                         # element
@@ -1259,7 +1261,7 @@ def parse(paths, config, confirmed):
                 if (not async_sink)
                 else math.ceil(1e6 / config["config"]["tick_len"]),
                 # logger-specific:
-                "tick_view_extra_cols": extra_cols,
+                "tick_view_extra_cols": tick_view_extra_cols,
                 "tick_table": tick_table_sigs,
                 "custom_table_names": list(custom_tables.keys()),
                 "custom_table_sigs": {
@@ -1677,6 +1679,7 @@ def parse(paths, config, confirmed):
         py_incl=py_paths["include"],
         py_lib=get_config_var("PY_LDFLAGS"),
         py_link_flags=py_link_flags,
+        debug=kwargs.get("debug", False),
         darwin=(platform_system == "Darwin"),
         has_drivers=(len(source_driver_names) + len(sink_driver_names) > 0),
     )
@@ -1744,7 +1747,7 @@ def parse(paths, config, confirmed):
     )
 
 
-def export(paths, confirmed):
+def export(paths, **kwargs):
     os.mkdir(paths["export"])
     # TODO support list of paths
     if os.path.exists(paths["modules"]):

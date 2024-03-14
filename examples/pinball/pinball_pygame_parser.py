@@ -1,3 +1,6 @@
+joystick_strs = [f"{x:.2f}" for x in joystick_axis]
+text_surface = screen_font.render(",".join(joystick_strs), False, (255, 255, 255))
+
 if pygame.event.peek(eventtype=pygame.QUIT):
     pygame.quit()
     handle_exit(0)
@@ -20,4 +23,5 @@ if not pNumTicks[0] % refresh_rate:
 
     screen.fill(black)
     sprites.draw(screen)
+    screen.blit(text_surface, (0, 0))
     pygame.display.flip()

@@ -49,6 +49,17 @@ cdef extern from "semaphore.h" nogil:
   int sem_post(sem_t *)
   int sem_close(sem_t *sem)
 
+cdef extern from "stdatomic.h":
+  enum memory_order:
+    memory_order_relaxed,
+    memory_order_consume,
+    memory_order_acquire,
+    memory_order_release,
+    memory_order_acq_rel,
+    memory_order_seq_cst
+  void atomic_thread_fence(memory_order)
+
+
 cdef extern from "constants.h" nogil:
   enum: NUM_CHANNELS
   enum: NUM_CHILDREN
@@ -70,9 +81,18 @@ cdef extern from "constants.h" nogil:
   enum: SEM_NAME_LEN
 
 {%- if async %}
+cdef extern from "<sys/types.h>":
+  ctypedef struct pthread_mutex_t:
+    pass
+  ctypedef struct pthread_mutexattr_t:
+    pass
+
 cdef extern from "<pthread.h>" nogil:
   struct sched_param:
     int sched_priority
+  int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *)
+  int pthread_mutex_lock(pthread_mutex_t *)
+  int pthread_mutex_unlock(pthread_mutex_t *)
 {%- endif %}
 
 
@@ -194,7 +214,7 @@ cdef void exit_handler(int signum):
 
 cdef void bus_handler(int signum):
   global shouldExit
-  printf("Bus Error\n")
+  printf("Bus Error in {{name}}.\n")
   fflush(stdout)
   if shouldExit:
     exit(1)
@@ -207,7 +227,7 @@ cdef void bus_handler(int signum):
 
 cdef void segv_handler(int signum):
   global shouldExit
-  printf("Seg Fault\n")
+  printf("Seg Fault in {{name}}.\n")
   fflush(stdout)
   if shouldExit:
     exit(1)
@@ -215,7 +235,13 @@ cdef void segv_handler(int signum):
   handle_exit(1)
 {%- else %}
   shouldExit = True
+  # TODO useful for --debug mode
+  # {% if name == "logger" %}
+  # while True:
+  #   pass
+  # {% endif %}
 {%- endif %}
+
 
 
 cdef void usr2_handler(int signum):
@@ -257,7 +283,7 @@ pSigSems[{{sem_num}}] = sem_open(semNameBuf, 0)
 
 {%- if async %}
 # put buffer flush tracking variables in shared memory between
-asyncShmSize = ROUND_UP(sizeof(asyncBufTickInfo) * ASYNC_BUF_LEN, PAGESIZE)
+asyncShmSize = ROUND_UP(sizeof(asyncBufTickInfo) * ASYNC_BUF_LEN + sizeof(pthread_mutex_t), PAGESIZE)
   {% if is_main_process %}
 open_shared_mem(
   &pAsyncMem,
@@ -275,6 +301,7 @@ open_shared_mem(
   PROT_READ | PROT_WRITE
 )
   {% endif %}
+
 pAsyncFlushIndexStrt = <uint32_t *>pAsyncMem
 pAsyncFlushIndexEnd = <uint32_t *>(pAsyncMem + sizeof(uint32_t))
 pAsyncBufInfo = <asyncBufTickInfo *>(pAsyncMem + 2 * sizeof(uint32_t))
@@ -282,6 +309,7 @@ pAsyncBufInfo = <asyncBufTickInfo *>(pAsyncMem + 2 * sizeof(uint32_t))
 pAsyncFlushIndexStrt[0] = 0
 pAsyncFlushIndexEnd[0] = 0
   {%- endif %}
+
 {%- endif %}
 
 {% if is_writer -%}
@@ -415,6 +443,8 @@ while(True):
     time.sleep({{config["config"]["tick_len"]}} / (2. * 1e6))
     continue
 
+  atomic_thread_fence(memory_order_seq_cst)
+
   times.tick = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeTick
   times.monotonic_raw = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonicRaw
   times.monotonic = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].timeMonotonic
@@ -434,6 +464,9 @@ while(True):
   sig_lens["{{sig}}"] = pAsyncBufInfo[pAsyncFlushIndexStrt[0]].{{sig}}Len
   {{sig}}Len =  sig_lens["{{sig}}"]
     {% endfor %}
+
+  atomic_thread_fence(memory_order_seq_cst)
+
     {%- if has_parser %}
 
   {{parser_code}}

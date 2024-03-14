@@ -236,6 +236,12 @@ def __parse_args(input_tuple=None):
         help="run LiCoRICE with realtime timing guarantees",
     )
     arg_parser.add_argument(
+        "--dbg",
+        "--debug",
+        action="store_true",
+        help="run LiCoRICE with gdb for debugging",
+    )
+    arg_parser.add_argument(
         "--config",
         type=str,
         help="override model configuration. accepts JSON input",
@@ -298,7 +304,7 @@ def __parse_kwargs(func_name, model, **kwargs):
 
 def __export_model(**kwargs):
     _, _, paths = __load_and_validate_model(**kwargs)
-    template_funcs.export(paths, kwargs["confirm"])
+    template_funcs.export(paths, **kwargs)
 
 
 @overload
@@ -338,7 +344,7 @@ def export_model(model, **kwargs):  # noqa: E302
 
 def __generate_model(**kwargs):
     model_hash, model_yaml, paths = __load_and_validate_model(**kwargs)
-    template_funcs.generate(paths, model_yaml, kwargs["confirm"])
+    template_funcs.generate(paths, model_yaml, **kwargs)
 
 
 @overload
@@ -378,7 +384,7 @@ def generate_model(model, **kwargs):  # noqa: E302
 
 def __parse_model(**kwargs):
     model_hash, model_yaml, paths = __load_and_validate_model(**kwargs)
-    template_funcs.parse(paths, model_yaml, kwargs["confirm"])
+    template_funcs.parse(paths, model_yaml, **kwargs)
 
 
 @overload
@@ -478,12 +484,15 @@ def __run_model(**kwargs):
     _, _, paths = __load_and_validate_model(**kwargs)
     os_env = os.environ.copy()
     os_env["PYTHONPATH"] = get_python_lib() + ":."
+    debug_cmd = "gdb"
+    run_cmd = "./timer"
+    if kwargs["dbg"]:
+        run_cmd = f"{debug_cmd} {run_cmd}"
     if kwargs["rt"]:
         # TODO rt models must set up cpuset themselves.
         # integrate this into LiCoRICE
-        run_cmd = "cset shield --exec nice -- -n -20 ./timer"
-    else:
-        run_cmd = "./timer"
+        run_cmd = f"cset shield --exec nice -- -n -20 {run_cmd}"
+
     for line in __execute_iterable_output(
         shlex.split(run_cmd),
         cwd=paths["output"],
