@@ -98,10 +98,8 @@ void open_shared_mem(
 
   int fd = shm_open(pName, shm_flags, 0666);
   if(fd == -1) {
-    printf("errno: %d\n", errno);
-    fflush(stdout);
     perror("shm_open");
-    die("shm_open failed.\n");
+    die("shm_open failed. errno: %d\n", errno);
   }
 
   // check if O_CREAT (1 << 6) is set 

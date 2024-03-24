@@ -10,7 +10,9 @@ cdef class ParportSourceDriver(source_driver.SourceDriver):
         self.pport.setDataDir(False) # read from data pins, sets PPDATADIR
         self.sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
-    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *:
+    cdef size_t run(
+        self, times_t *times, void *inBuf, size_t packetSize, object out_sigs
+    ) except *:
         (<unsigned char *>inBuf)[0] = <unsigned char>self.pport.getData()
 
 {%- if async %}

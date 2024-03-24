@@ -49,7 +49,9 @@ cdef class UdpSourceDriver(source_driver.SourceDriver):
 
         self.sleep_duration = {{config["config"]["tick_len"]}} / (2. * 1e6)
 
-    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object out_sigs) except *:
+    cdef size_t run(
+        self, times_t *times, void *inBuf, size_t packetSize, object out_sigs
+    ) except *:
         cdef size_t inBufLen
 
         inBufLen = recvfrom(self.sfd, inBuf, packetSize, 0, <sockaddr *> &self.src_addr, &self.src_addr_len)

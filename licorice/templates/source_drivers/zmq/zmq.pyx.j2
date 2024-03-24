@@ -28,8 +28,7 @@ cdef class ZmqSourceDriver(source_driver.SourceDriver):
 
 
     cdef size_t run(
-        self, times_t *times,
-        void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens
+         self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs
     ) except *
         cdef size_t inBufLen
 

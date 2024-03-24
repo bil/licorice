@@ -38,5 +38,7 @@ cdef class LineSourceDriver(source_driver.SourceDriver):
     cdef snd_pcm_uframes_t lineBufferSizeFrames
     cdef pcm_values_t cap_values
 
-    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens) except *
+    cdef size_t run(
+        self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs
+    ) except *
     cdef void exit_handler(self, int exitStatus) except *

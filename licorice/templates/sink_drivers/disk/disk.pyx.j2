@@ -2,9 +2,6 @@ from libc.stdio cimport printf, stdout, fflush
 from libc.stdlib cimport exit, malloc, free
 from libc.string cimport memcpy, strcat, strcpy, strlen
 
-import numpy as np
-cimport numpy as np
-
 import time
 
 # TODO convert to #define in a separate .h file
@@ -250,7 +247,6 @@ cdef class DiskSinkDriver(sink_driver.SinkDriver):
         elif dtype == "int8":
             return msgpack_pack_int8(pk, (<int8_t *>pVal)[offset])
         elif dtype == "int16":
-            # printf("%d ", (<int16_t *>pVal)[offset])
             return msgpack_pack_int16(pk, (<int16_t *>pVal)[offset])
         elif dtype == "int32":
             return msgpack_pack_int32(pk, (<int32_t *>pVal)[offset])

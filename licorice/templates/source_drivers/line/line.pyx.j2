@@ -95,7 +95,9 @@ cdef class LineSourceDriver(source_driverSourceDriver):
         # sleep_duration = sleep_duration * 2.
 
 
-    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens) except *
+    cdef size_t run(
+        self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs
+    ) except *:
         # printf("read (num_ticks, lineBufferSizeFrames, lineBufferSizeBytes): %ld, %lu, %lu\n",
         #   pNumTicks[0], lineBufferSizeFrames, lineBufferSizeBytes)
         # fflush(stdout)

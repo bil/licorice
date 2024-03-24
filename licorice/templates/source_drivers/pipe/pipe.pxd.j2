@@ -15,5 +15,7 @@ cdef class PipeSourceDriver(source_driver.SourceDriver):
     cdef long tNSec = 100000L
     cdef {{in_dtype}} *zeroPtr
 
-    cdef size_t run(self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs, object *out_sig_lens) except *
+    cdef size_t run(
+        self, times_t *times, void *inBuf, size_t packetSize, object *out_sigs
+    ) except *
     cdef void exit_handler(self, int exitStatus) except *
